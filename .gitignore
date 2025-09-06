@@ -1,0 +1,14 @@
+wandb
+visualizations
+models
+data
+Videos
+logs
+outputs
+videos
+model_weights
+results
+*__pycache__
+*.pyc
+*.pth
+*.cpython-39.pyc
