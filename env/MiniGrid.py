@@ -1,5 +1,5 @@
 import os
-import pickle
+import json
 import random
 import numpy as np
 
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     env = RandomObjectsEnv(max_steps=20, size=8, tile_size=16)
     env = RGBImgPartialObsWrapper(env, tile_size=16)
 
-    total_training_data = 100000
+    total_training_data = 10000
     validation_data = 100
     No_changes = 0
     paired_data = []  # list of dicts: {"frame": , "caption": , "changed_caption": , "changed_frame": }
@@ -398,21 +398,58 @@ if __name__ == "__main__":
 
     training_data = paired_data[:total_training_data]
     val_data = paired_data[total_training_data:]
-    # Save the paired training dataset
+    
     save_dir = f"data/{env.unwrapped.name}/training"
     os.makedirs(save_dir, exist_ok=True)
+    images_dir = os.path.join(save_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    metadata_path = os.path.join(save_dir, "metadata.jsonl")
 
-    with open(os.path.join(save_dir, "paired.pkl"), "wb") as f:
-        pickle.dump(training_data, f)
+    with open(metadata_path, "w") as f:
+        for i, data in enumerate(training_data):
+            # Save original image
+            img_orig = Image.fromarray(data["frame"])
+            orig_path = os.path.join(images_dir, f"original_{i:06d}.png")
+            img_orig.save(orig_path)
+            
+            # Save edited image
+            img_edit = Image.fromarray(data["changed_frame"])
+            edit_path = os.path.join(images_dir, f"edited_{i:06d}.png")
+            img_edit.save(edit_path)
+            
+            # Write metadata with _file_name keys for image paths
+            f.write(json.dumps({
+                "input_image_file_name": f"images/original_{i:06d}.png",
+                "edit_prompt": data["change_description"],
+                "edited_image_file_name": f"images/edited_{i:06d}.png",
+            }) + "\n")
 
     print(f"Saved {len(training_data)} paired training examples to {save_dir}")
     
-    # Save the paired validation dataset
+    # Save the paired validation dataset in required format
     save_dir = f"data/{env.unwrapped.name}/validation"
     os.makedirs(save_dir, exist_ok=True)
+    images_dir = os.path.join(save_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    metadata_path = os.path.join(save_dir, "metadata.jsonl")
 
-    with open(os.path.join(save_dir, "paired.pkl"), "wb") as f:
-        pickle.dump(val_data, f)
+    with open(metadata_path, "w") as f:
+        for i, data in enumerate(val_data):
+            # Save original image
+            img_orig = Image.fromarray(data["frame"])
+            orig_path = os.path.join(images_dir, f"original_{i:06d}.png")
+            img_orig.save(orig_path)
+            
+            # Save edited image
+            img_edit = Image.fromarray(data["changed_frame"])
+            edit_path = os.path.join(images_dir, f"edited_{i:06d}.png")
+            img_edit.save(edit_path)
+            
+            # Write metadata with _file_name keys for image paths
+            f.write(json.dumps({
+                "input_image_file_name": f"images/original_{i:06d}.png",
+                "edit_prompt": data["change_description"],
+                "edited_image_file_name": f"images/edited_{i:06d}.png",
+            }) + "\n")
 
     print(f"Saved {len(val_data)} paired validation examples to {save_dir}")
-
