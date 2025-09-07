@@ -11,7 +11,7 @@ pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dt
 pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
 
-def edit_minigrid_image(observation, prompt="change the red key to blue key", orig_obs=None):
+def edit_minigrid_image(observation, prompt="change the purple box to blue key", orig_obs=None):
     """
     Edit an RGB MiniGrid observation using InstructPix2Pix.
     
@@ -24,18 +24,16 @@ def edit_minigrid_image(observation, prompt="change the red key to blue key", or
         np.ndarray: Edited RGB image array
         np.ndarray (optional): Updated MiniGrid observation if orig_obs is provided
     """
-    # Ensure observation is an RGB array
-    rgb_image = observation.astype(np.uint8)  # Shape: (height, width, 3)
     
     # Convert to PIL Image
-    pil_image = Image.fromarray(rgb_image)
+    pil_image = observation
     
     pil_image.save("original_frame.png")
     # Perform editing with InstructPix2Pix
     edited_image = pipe(
         prompt=prompt,
         image=pil_image,
-        num_inference_steps=500,
+        num_inference_steps=10,
         guidance_scale=7.5,
         image_guidance_scale=1.5,  # Balance between original image and prompt
     ).images[0]
@@ -56,11 +54,6 @@ def edit_minigrid_image(observation, prompt="change the red key to blue key", or
     
     return edited_array
 
-# Example usage with loaded data
-with open("data/MiniGrid/states.pkl", "rb") as f:
-    data = pickle.load(f)
-    # Assuming data is a list of RGB observations or a single RGB observation
-    observation = data[0] if isinstance(data, list) else data
-    # If you have a separate MiniGrid observation array (obj_type, color, state), pass it as orig_obs
-    # Example: edited_rgb, edited_obs = edit_minigrid_image(observation, orig_obs=some_minigrid_array)
-    edited_rgb = edit_minigrid_image(observation)
+# Example usage 
+image = Image.open("data/MiniGrid/training/images/edited_000000.png")
+edited_rgb = edit_minigrid_image(image)

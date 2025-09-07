@@ -115,7 +115,7 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default="timbrooks/instruct-pix2pix",
+        default="runwayml/stable-diffusion-v1-5",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -258,7 +258,7 @@ def parse_args():
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
-        default=1,
+        default=4,
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
@@ -269,7 +269,7 @@ def parse_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-4,
+        default=5e-5,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
@@ -293,7 +293,7 @@ def parse_args():
     parser.add_argument(
         "--conditioning_dropout_prob",
         type=float,
-        default=None,
+        default=0.1,
         help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://huggingface.co/papers/2211.09800.",
     )
     parser.add_argument(
@@ -351,7 +351,7 @@ def parse_args():
     parser.add_argument(
         "--mixed_precision",
         type=str,
-        default=None,
+        default="bf16",
         choices=["no", "fp16", "bf16"],
         help=(
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
@@ -508,18 +508,16 @@ def main():
     # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
     # initialized to zero.
     logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
-    if unet.config.in_channels == 4:
-        in_channels = 8
-        out_channels = unet.conv_in.out_channels
-        unet.register_to_config(in_channels=in_channels)
-
-        with torch.no_grad():
-            new_conv_in = nn.Conv2d(
-                in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
-            )
-            new_conv_in.weight.zero_()
-            new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
-            unet.conv_in = new_conv_in
+    in_channels = 8
+    out_channels = unet.conv_in.out_channels
+    unet.register_to_config(in_channels=in_channels)
+    with torch.no_grad():
+        new_conv_in = nn.Conv2d(
+            in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
+        )
+        new_conv_in.weight.zero_()
+        new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
+        unet.conv_in = new_conv_in
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
