@@ -6,7 +6,7 @@ import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
 
 # Paths
-checkpoint_dir = "model_weights/instruct-pix2pix-model/checkpoint-2500"  # Your checkpoint directory
+checkpoint_dir = "model_weights/instruct-pix2pix-model/checkpoint-19500"  # Your checkpoint directory
 val_dir = "data/MiniGrid/validation"  # Validation directory
 output_dir = "test_outputs"
 os.makedirs(output_dir, exist_ok=True)
@@ -63,7 +63,7 @@ for idx, sample in enumerate(samples):
     generated_img = pipe(
         prompt=edit_prompt,
         image=source_img,
-        num_inference_steps=20,  # Balance speed and quality
+        num_inference_steps=100,  # Balance speed and quality
         image_guidance_scale=1.5,  # Preserve input structure
         guidance_scale=7.5,  # Follow prompt closely
     ).images[0]
