@@ -1,0 +1,10 @@
+name : SimplePickup
+data_collection_allowed_types : [[0,1], [1,0], [4,0], [5,1]]
+agent_training_allowed_types : [[2,0], [3,0], [3,1]]
+test_allowed_types : [[2,1]]
+highlight : false
+tile_size : 16
+max_steps : 50
+agent_view_size : 7
+render_mode : "none"
+size : 10

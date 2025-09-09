@@ -362,7 +362,7 @@ if __name__ == "__main__":
     env = RandomObjectsEnv(max_steps=20, size=8, tile_size=16)
     env = RGBImgPartialObsWrapper(env, tile_size=16)
 
-    total_training_data = 100000
+    total_training_data = 1500
     validation_data = 100
     No_changes = 0
     paired_data = []  # list of dicts: {"frame": , "caption": , "changed_caption": , "changed_frame": }

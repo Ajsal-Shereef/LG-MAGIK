@@ -20,6 +20,7 @@ import argparse
 import logging
 import math
 import os
+import hydra
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
@@ -34,6 +35,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from omegaconf import DictConfig, OmegaConf
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -45,6 +47,9 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
+import sys
+sys.path.append(".")
+from utils.utils import create_dump_directory
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -211,7 +216,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="model_weights/instruct-pix2pix-model",
+        default="model_weights/",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -224,7 +229,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=256,
+        default=112,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
@@ -442,14 +447,16 @@ def main():
                 " use `--variant=non_ema` instead."
             ),
         )
-    logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    output_dir = create_dump_directory(args.output_dir)
+    logging_dir = os.path.join(output_dir, args.logging_dir)
+    accelerator_project_config = ProjectConfiguration(project_dir=output_dir, logging_dir=logging_dir)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+    logger.info(f"Output dir: {output_dir}")
 
     # Disable AMP for MPS.
     if torch.backends.mps.is_available():
@@ -479,12 +486,12 @@ def main():
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
+        if output_dir is not None:
+            os.makedirs(output_dir, exist_ok=True)
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=args.hub_model_id or Path(output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
     # Load scheduler, tokenizer and models.
@@ -822,7 +829,7 @@ def main():
             path = os.path.basename(args.resume_from_checkpoint)
         else:
             # Get the most recent checkpoint
-            dirs = os.listdir(args.output_dir)
+            dirs = os.listdir(output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
@@ -834,7 +841,7 @@ def main():
             args.resume_from_checkpoint = None
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(args.output_dir, path))
+            accelerator.load_state(os.path.join(output_dir, path))
             global_step = int(path.split("-")[1])
 
             resume_global_step = global_step * args.gradient_accumulation_steps
@@ -941,7 +948,7 @@ def main():
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = os.listdir(output_dir)
                             checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
                             checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
@@ -956,10 +963,10 @@ def main():
                                 logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    removing_checkpoint = os.path.join(output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        save_path = os.path.join(output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
@@ -1018,12 +1025,12 @@ def main():
             revision=args.revision,
             variant=args.variant,
         )
-        pipeline.save_pretrained(args.output_dir)
+        pipeline.save_pretrained(output_dir)
 
         if args.push_to_hub:
             upload_folder(
                 repo_id=repo_id,
-                folder_path=args.output_dir,
+                folder_path=output_dir,
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
