@@ -316,52 +316,65 @@ def main(args: DictConfig) -> None:
 
     env.close()
     
+    # --- Dataset Saving Logic (MODIFIED) ---
     if collect_data:
         training_data = paired_data[:total_training_data]
         val_data = paired_data[total_training_data:]
 
-        save_dir = f"data/{env.unwrapped.name}/training"
-        os.makedirs(save_dir, exist_ok=True)
-        images_dir = os.path.join(save_dir, "images")
-        os.makedirs(images_dir, exist_ok=True)
-        metadata_path = os.path.join(save_dir, "metadata.jsonl")
+        # --- Save the training dataset in the required image/text pair format ---
+        # The structure is a single folder containing all the .png and .txt files.
+        # Tools like Kohya's often use a "repeats" number in the folder name, e.g., "10_my_concept"
+        save_dir_train = f"data/{env.unwrapped.name}/training"
+        os.makedirs(save_dir_train, exist_ok=True)
+        
+        for i, data in enumerate(training_data):
+            try:
+                # Create a Pillow Image from the numpy array
+                img = Image.fromarray(data["frame"])
+                
+                # Define the base file path (without extension)
+                base_filename = f"{i:06d}"
+                img_path = os.path.join(save_dir_train, f"{base_filename}.png")
+                txt_path = os.path.join(save_dir_train, f"{base_filename}.txt")
+                
+                # Save the image as a PNG file
+                img.save(img_path)
+                
+                # Save the description into a corresponding TXT file
+                with open(txt_path, "w") as f:
+                    f.write(data["description"])
+            
+            except Exception as e:
+                print(f"Error processing item {i}: {e}")
 
-        with open(metadata_path, "w") as f:
-            for i, data in enumerate(training_data):
-                # Save original image
-                img_orig = Image.fromarray(data["frame"])
-                orig_path = os.path.join(images_dir, f"original_{i:06d}.png")
-                img_orig.save(orig_path)
+        print(f"Saved {len(training_data)} training image-text pairs to {save_dir_train}")
 
-                # Write metadata with _file_name keys for image paths
-                f.write(json.dumps({
-                    "input_image_file_name": f"images/original_{i:06d}.png",
-                    "text": data["description"]
-                }) + "\n")
+        # --- Save the validation dataset in the same image/text pair format ---
+        save_dir_val = f"data/{env.unwrapped.name}/validation"
+        os.makedirs(save_dir_val, exist_ok=True)
 
-        print(f"Saved {len(training_data)} paired training examples to {save_dir}")
+        for i, data in enumerate(val_data):
+            try:
+                # Create a Pillow Image from the numpy array
+                img = Image.fromarray(data["frame"])
+                
+                # Define the base file path (without extension)
+                base_filename = f"{i:06d}"
+                img_path = os.path.join(save_dir_val, f"{base_filename}.png")
+                txt_path = os.path.join(save_dir_val, f"{base_filename}.txt")
 
-        # Save the paired validation dataset in required format
-        save_dir = f"data/{env.unwrapped.name}/validation"
-        os.makedirs(save_dir, exist_ok=True)
-        images_dir = os.path.join(save_dir, "images")
-        os.makedirs(images_dir, exist_ok=True)
-        metadata_path = os.path.join(save_dir, "metadata.jsonl")
+                # Save the image as a PNG file
+                img.save(img_path)
 
-        with open(metadata_path, "w") as f:
-            for i, data in enumerate(val_data):
-                # Save original image
-                img_orig = Image.fromarray(data["frame"])
-                orig_path = os.path.join(images_dir, f"original_{i:06d}.png")
-                img_orig.save(orig_path)
+                # Save the description into a corresponding TXT file
+                with open(txt_path, "w") as f:
+                    f.write(data["description"])
+            
+            except Exception as e:
+                print(f"Error processing item {i} in validation set: {e}")
 
-                # Write metadata with _file_name keys for image paths
-                f.write(json.dumps({
-                    "input_image_file_name": f"images/original_{i:06d}.png",
-                    "text": data["description"]
-                }) + "\n")
+        print(f"Saved {len(val_data)} validation image-text pairs to {save_dir_val}")
 
-        print(f"Saved {len(val_data)} paired validation examples to {save_dir}")
         
 if __name__ == "__main__":
     main()
