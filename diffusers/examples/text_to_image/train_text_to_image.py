@@ -65,7 +65,6 @@ DATASET_NAME_MAPPING = {
     "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
-
 def save_model_card(
     args,
     repo_id: str,
@@ -205,8 +204,7 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
-        required=True,
+        default="CompVis/stable-diffusion-v1-4",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -241,7 +239,7 @@ def parse_args():
     parser.add_argument(
         "--train_data_dir",
         type=str,
-        default=None,
+        default="data/SimplePickup/training",
         help=(
             "A folder containing the training data. Folder contents must follow the structure described in"
             " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"

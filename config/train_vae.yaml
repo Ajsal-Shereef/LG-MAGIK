@@ -1,0 +1,49 @@
+defaults:
+  - _self_
+
+# --- Data Configuration ---
+data:
+  train_dir: "data/SimplePickup/training"
+  image_column: "image"
+  caption_column: "text" # Although not used by VAE, good practice to define
+  resolution: 32
+  batch_size: 128
+  num_workers: 4 # Adjust based on your system's capabilities
+  cache_dir: null # Set to a path to cache the dataset, null means default
+
+# --- VAE Model Architecture ---
+model:
+  in_channels: 3
+  out_channels: 3
+  down_block_types: ["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"]
+  up_block_types: ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"]
+  block_out_channels: [64, 128, 256]
+  layers_per_block: 1
+  latent_channels: 4
+  norm_num_groups: 32
+
+# --- Training Hyperparameters ---
+training:
+  num_epochs: 50 # Increased for more realistic training
+  seed: 42
+  kl_weight: 0.00001
+  logs : "logs"
+  output_dir: "model_weights/vae"
+  experiment_name: "VAE"
+  log_media_interval: 500 # Log images every 500 steps
+  log_values_and_images: True
+
+# --- Optimizer Configuration (AdamW) ---
+optimizer:
+  lr: 1e-4 # A slightly higher learning rate can work well for VAEs
+  betas: [0.9, 0.999]
+  weight_decay: 1e-2
+  eps: 1e-8
+
+# --- Accelerator Configuration ---
+accelerator:
+  mixed_precision: 'no' # Can be 'no', 'fp16', or 'bf16'
+  gradient_accumulation_steps: 1
+  log_with: "wandb" # or "tensorboard", "comet_ml"
+  project_dir: ${training.logs}
+  logging_dir: ${training.logs}/logs

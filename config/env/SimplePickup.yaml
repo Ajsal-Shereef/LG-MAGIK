@@ -8,3 +8,4 @@ max_steps : 50
 agent_view_size : 7
 render_mode : "none"
 size : 10
+n_downsample : 3

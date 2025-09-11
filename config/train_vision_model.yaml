@@ -1,0 +1,14 @@
+defaults:
+  - env : MiniWorld
+  - vision_models: darla #magik, magik+
+  - dae_model: dae
+  - _self_
+data : "data"
+save_freequency : 50
+load_model : False
+load_model_path : ""
+use_wandb : False
+log_every : 100
+result_save_path : "results"
+epochs : 500
+test_images : 10

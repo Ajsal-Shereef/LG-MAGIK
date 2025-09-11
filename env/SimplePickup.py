@@ -266,9 +266,60 @@ class SimplePickup(MiniGridEnv):
                 terminated = True  # Optionally end episode after pickup
 
         return obs, reward, terminated, truncated, info
+    
+def save_dataset_for_diffusers(dataset, save_dir):
+    """
+    Saves a dataset of images and captions in the format expected by diffusers.
+
+    This creates a directory with an 'images' subfolder and a 'metadata.jsonl' file.
+
+    Args:
+        dataset (list): A list of dictionaries, where each dict has "frame" and "description".
+        save_dir (str): The path to the root directory where the dataset will be saved.
+    """
+    if not dataset:
+        print("Warning: No data to save.")
+        return
+        
+    images_dir = os.path.join(save_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    
+    metadata_entries = []
+    
+    print(f"Saving {len(dataset)} items to {save_dir}...")
+    for i, item in enumerate(dataset):
+        try:
+            # Create a Pillow Image from the numpy array
+            img = Image.fromarray(item["frame"])
+            
+            # Define image filename and save it
+            base_filename = f"{i:06d}.png"
+            img_path = os.path.join(images_dir, base_filename)
+            img.save(img_path)
+            
+            # Create metadata entry
+            # The file_name must be relative to the root of the dataset directory
+            metadata_entry = {
+                "file_name": os.path.join("images", base_filename),
+                "text": item["description"]
+            }
+            metadata_entries.append(metadata_entry)
+
+        except Exception as e:
+            print(f"Error processing item {i}: {e}")
+
+    # Write the metadata.jsonl file
+    metadata_path = os.path.join(save_dir, "metadata.jsonl")
+    with open(metadata_path, "w", encoding='utf-8') as f:
+        for entry in metadata_entries:
+            f.write(json.dumps(entry) + '\n')
+
+    print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
+    print(f"Images saved in: {images_dir}")
+    print(f"Metadata saved in: {metadata_path}")
 
         
-@hydra.main(version_base=None, config_path="../configs/env", config_name="SimplePickup")
+@hydra.main(version_base=None, config_path="../config/env", config_name="SimplePickup")
 def main(args: DictConfig) -> None:
     # type_list = [(i, j) for i in range(0, 6) for j in range(0, 2)]
     collect_data = True
@@ -316,64 +367,25 @@ def main(args: DictConfig) -> None:
 
     env.close()
     
-    # --- Dataset Saving Logic (MODIFIED) ---
+    # --- Dataset Saving Logic ---
     if collect_data:
         training_data = paired_data[:total_training_data]
         val_data = paired_data[total_training_data:]
 
         # --- Save the training dataset in the required image/text pair format ---
-        # The structure is a single folder containing all the .png and .txt files.
-        # Tools like Kohya's often use a "repeats" number in the folder name, e.g., "10_my_concept"
         save_dir_train = f"data/{env.unwrapped.name}/training"
         os.makedirs(save_dir_train, exist_ok=True)
         
-        for i, data in enumerate(training_data):
-            try:
-                # Create a Pillow Image from the numpy array
-                img = Image.fromarray(data["frame"])
-                
-                # Define the base file path (without extension)
-                base_filename = f"{i:06d}"
-                img_path = os.path.join(save_dir_train, f"{base_filename}.png")
-                txt_path = os.path.join(save_dir_train, f"{base_filename}.txt")
-                
-                # Save the image as a PNG file
-                img.save(img_path)
-                
-                # Save the description into a corresponding TXT file
-                with open(txt_path, "w") as f:
-                    f.write(data["description"])
-            
-            except Exception as e:
-                print(f"Error processing item {i}: {e}")
+        # Save the training dataset
+        print("\n--- Saving Training Dataset ---")
+        save_dataset_for_diffusers(training_data, save_dir_train)
 
-        print(f"Saved {len(training_data)} training image-text pairs to {save_dir_train}")
-
-        # --- Save the validation dataset in the same image/text pair format ---
         save_dir_val = f"data/{env.unwrapped.name}/validation"
         os.makedirs(save_dir_val, exist_ok=True)
-
-        for i, data in enumerate(val_data):
-            try:
-                # Create a Pillow Image from the numpy array
-                img = Image.fromarray(data["frame"])
-                
-                # Define the base file path (without extension)
-                base_filename = f"{i:06d}"
-                img_path = os.path.join(save_dir_val, f"{base_filename}.png")
-                txt_path = os.path.join(save_dir_val, f"{base_filename}.txt")
-
-                # Save the image as a PNG file
-                img.save(img_path)
-
-                # Save the description into a corresponding TXT file
-                with open(txt_path, "w") as f:
-                    f.write(data["description"])
-            
-            except Exception as e:
-                print(f"Error processing item {i} in validation set: {e}")
-
-        print(f"Saved {len(val_data)} validation image-text pairs to {save_dir_val}")
+        
+        # Save the validation dataset
+        print("\n--- Saving Validation Dataset ---")
+        save_dataset_for_diffusers(val_data, save_dir_val)
 
         
 if __name__ == "__main__":
