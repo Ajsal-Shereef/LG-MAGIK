@@ -48,6 +48,34 @@ class GaussianSample(Stochastic):
         self.log_variance = F.softplus(self.log_var(x))
         self.latent = self.reparametrize(self.mean, self.log_variance)
         return self
+    
+class GaussianSampleSpatial(Stochastic):
+    """
+    Layer that represents a sample from a Gaussian distribution
+    for a spatial latent variable (B, C, H, W).
+    """
+    def __init__(self, in_channels: int, out_channels: int):
+        super(GaussianSampleSpatial, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        # Use 1x1 convolutions to map input channels to output channels
+        # for mu and log_var, preserving H and W dimensions.
+        self.mu_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.log_var_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x: torch.Tensor) -> 'GaussianSampleSpatial':
+        """
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, C_in, H, W)
+        """
+        # x is expected to be a 4D tensor: (batch, channels, height, width)
+        self.mean = self.mu_conv(x)
+        self.log_variance = F.softplus(self.log_var_conv(x))
+        
+        # The reparametrize trick works seamlessly with spatial tensors
+        self.latent = self.reparametrize(self.mean, self.log_variance)
+        return self
 
 
 class GaussianMerge(GaussianSample):

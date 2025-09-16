@@ -190,7 +190,7 @@ class FiLM(nn.Module):
         return gamma * x + beta
     
 class CNNEncoder(nn.Module):
-    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type, h_dim, fc_hidden, fc_input_dim, mlp_act='identity'):
+    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
         super(CNNEncoder, self).__init__()
         self.blocks = nn.ModuleList()
         self.blocks.append(Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type))
@@ -202,21 +202,16 @@ class CNNEncoder(nn.Module):
         self.blocks.append(ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type))
         self.output_dim = dim
 
-        self.fc_input_dim = fc_input_dim
-        self.mlp = MLP(dim * np.prod(fc_input_dim), h_dim, fc_hidden, hidden_activation=mlp_act, output_activation=mlp_act)
-
     def forward(self, x):
         for block in self.blocks:
             x = block(x)
-        return self.mlp(x.view(x.shape[0], -1))
+        return x
 
     def get_all_features(self, x):
         features = []
         for block in self.blocks:
             x = block(x)
             features.append(x)
-        flattened = x.view(x.size(0), -1)
-        features.append(self.mlp(flattened))  # final vector
         return features
     
 class CrossAttention(nn.Module):
@@ -257,9 +252,57 @@ class CrossAttentionFiLM(nn.Module):
 
     def forward(self,x,z,text_feat):
         out = self.norm(self.conv(x))
-        gamma,beta = self.film(z).chunk(2,dim=-1)
-        out = out*(1+gamma.unsqueeze(-1).unsqueeze(-1)) + beta.unsqueeze(-1).unsqueeze(-1)
+        gamma,beta = self.film(z).chunk(2,dim=1)
+        out = out*(1+gamma) + beta
         out = out + self.cross(out,text_feat)
+        return self.act(out)
+    
+# The CrossAttention module can remain exactly the same as it already
+# flattens its primary input `feat` internally.
+
+class CrossAttentionFiLMSpatial(nn.Module):
+    """
+    FiLM and Cross-Attention block adapted for a SPATIAL latent code z.
+    """
+    def __init__(self, channels, latent_channels, text_dim):
+        super().__init__()
+        # Use Adaptive Average Pooling to convert spatial z into a global vector
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # The FiLM layer now takes the number of latent *channels* as input dimension
+        self.film = nn.Linear(latent_channels, 2 * channels)
+        
+        # Standard convolutional and normalization layers
+        self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
+        self.norm = nn.BatchNorm2d(channels)
+        
+        # Cross-attention remains the same
+        self.cross = CrossAttention(channels, text_dim)
+        self.act = nn.GELU()
+
+    def forward(self, x, z, text_feat):
+        """
+        Args:
+            x (torch.Tensor): Main feature map (B, C, H, W)
+            z (torch.Tensor): SPATIAL latent code (B, latent_channels, H_z, W_z)
+            text_feat (torch.Tensor): Text features (B, T, D)
+        """
+        # --- FiLM Modulation with Spatial z ---
+        # 1. Pool z to get a global style vector
+        z_pooled = self.pool(z)  # Shape: (B, latent_channels, 1, 1)
+        z_flat = z_pooled.flatten(1) # Shape: (B, latent_channels)
+
+        # 2. Generate gamma and beta from the global style vector
+        gamma, beta = self.film(z_flat).chunk(2, dim=-1)
+        
+        # 3. Apply FiLM modulation
+        out = self.norm(self.conv(x))
+        # Unsqueeze gamma and beta to match spatial dimensions for broadcasting
+        out = out * (1 + gamma.unsqueeze(-1).unsqueeze(-1)) + beta.unsqueeze(-1).unsqueeze(-1)
+        
+        # --- Cross-Attention ---
+        out = out + self.cross(out, text_feat)
+        
         return self.act(out)
     
 class CNNDecoder(nn.Module):
@@ -304,13 +347,11 @@ class CNNDecoder(nn.Module):
         return features
     
 class CNNTextConditionedDecoder(nn.Module):
-    def __init__(self, n_upsample, dim, output_dim, z_dim, clip_model, fc_input_dim=[10,10]):
+    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
-        self.fc_input = fc_input_dim
-        #fc layers
-        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), [128, 512, 2048])
-        
+        #Conv layer to map latent channel to dim
+        self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
@@ -320,7 +361,7 @@ class CNNTextConditionedDecoder(nn.Module):
         self.ups=nn.ModuleList()
         
         for i in range(n_upsample):
-            self.blocks.append(CrossAttentionFiLM(dim,z_dim,self.text_dim))
+            self.blocks.append(CrossAttentionFiLMSpatial(dim,latent_channel,self.text_dim))
             self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
             dim //= 2
             
@@ -328,8 +369,7 @@ class CNNTextConditionedDecoder(nn.Module):
         
     def forward(self,z,text_tockens):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
-        x = self.mlp(z)
-        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        x = self.mapping_conv(z)
         for blk,up in zip(self.blocks,self.ups):
             x=blk(x,z,self.text_feats)
             x=up(x)

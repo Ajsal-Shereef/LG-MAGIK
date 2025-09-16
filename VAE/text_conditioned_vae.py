@@ -8,7 +8,7 @@ from architectures.mlp import MLP
 from torchvision.utils import make_grid
 from architectures.common_utils import grad_reverse
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
-from architectures.stochastic import GaussianSample
+from architectures.stochastic import GaussianSampleSpatial
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -22,23 +22,17 @@ class TextConditionedVAE(nn.Module):
         norm = kwargs["norm"]
         activ = kwargs["activ"]
         pad_type = kwargs["pad_type"]
-        h_dim = kwargs["h_dim"]
-        z_dim = kwargs["z_dim"]
-        fc_hidden = kwargs["fc_hidden"]
-        fc_input_dim = kwargs["fc_input_dim"]
-        self.latent_dim = z_dim
         output_dim = kwargs["output_dim"]
         clip_model = kwargs["text_encoder"]
+        encoder_final_dim = kwargs["encoder_final_dim"]
         
         self.encoder = CNNEncoder(
-            n_downsample, encoder_n_res, input_dim, dim, norm, activ,
-            pad_type=pad_type, h_dim=h_dim, fc_hidden=fc_hidden, fc_input_dim=fc_input_dim
-        )
+            n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
         
-        self.bottleneck = GaussianSample(h_dim, z_dim)
+        self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, kwargs["latent_channel"])
         
-        self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim , output_dim, z_dim, clip_model, fc_input_dim=fc_input_dim)
-        self.caption_descriminator = MLP(z_dim, self.decoder.text_dim, kwargs["discriminator_fc_hidden"])
+        self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, output_dim, clip_model, kwargs["latent_channel"])
+        self.caption_descriminator = MLP(kwargs["latent_channel"]*np.prod(encoder_final_dim), self.decoder.tokenizer.model_max_length*self.decoder.text_dim, kwargs["discriminator_fc_hidden"])
         
     def forward(self, x: torch.Tensor):
         """
@@ -52,7 +46,7 @@ class TextConditionedVAE(nn.Module):
                 the reconstructed images and the posterior distribution.
         """
         images = x["pixel_values"]
-        text_tockens = x["input_ids"]
+        text_tokens = x["input_ids"]
         # Encode the input to get the posterior distribution
         hidden = self.encoder(images)
         
@@ -62,9 +56,9 @@ class TextConditionedVAE(nn.Module):
         # Decode the latents to reconstruct the image
         # .sample is used to get the mean of the decoded output distribution
         if self.training:
-            reconstructed_x = self.decoder(sampler.latent, text_tockens)
+            reconstructed_x = self.decoder(sampler.latent, text_tokens)
         else:
-            reconstructed_x = self.decoder(sampler.mean, text_tockens)
+            reconstructed_x = self.decoder(sampler.mean, text_tokens)
         
         return {
             "x" : images,
@@ -102,15 +96,17 @@ class TextConditionedVAE(nn.Module):
 
         # KL Divergence Loss
         # This is the standard formula for KL divergence between the posterior and a standard normal prior.
-        kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
+        kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=[1,2,3]).mean()
         
         # Adversarial loss
         z_grl=grad_reverse(posterior.latent, kwargs["adv_lambda"])
-        pred=self.caption_descriminator(z_grl)
-        disc_loss=F.mse_loss(pred, self.decoder.text_feats.mean(1).detach())
-
+        pred=self.caption_descriminator(z_grl.view(z_grl.shape[0], -1))
+        tgt_n = F.normalize(self.decoder.text_feats.detach(), dim=-1)
+        pred_n = F.normalize(pred.view(tgt_n.shape[0], tgt_n.shape[1], -1), dim=-1)
+        disc_loss = 1 - (pred_n * tgt_n).sum(dim=[1,2]).mean()
+        
         # Total Loss
-        total_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_lambda"]*disc_loss
+        total_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"]*disc_loss
 
         return {
             "total_loss": total_loss,
