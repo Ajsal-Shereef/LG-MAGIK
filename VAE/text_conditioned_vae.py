@@ -98,15 +98,35 @@ class TextConditionedVAE(nn.Module):
         # This is the standard formula for KL divergence between the posterior and a standard normal prior.
         kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=[1,2,3]).mean()
         
-        # Adversarial loss
-        z_grl=grad_reverse(posterior.latent, kwargs["adv_lambda"])
-        pred=self.caption_descriminator(z_grl.view(z_grl.shape[0], -1))
-        tgt_n = F.normalize(self.decoder.text_feats.detach(), dim=-1)
-        pred_n = F.normalize(pred.view(tgt_n.shape[0], tgt_n.shape[1], -1), dim=-1)
-        # Compute per-token cosine similarity
-        cos_sim = (pred_n * tgt_n).sum(dim=-1)   # [B, T]
-        # Loss = 1 - mean cosine similarity
-        disc_loss = 1 - cos_sim.mean()
+        # --- Adversarial loss (InfoNCE) ---
+
+        # Gradient reversal so encoder gets adversarial signal
+        z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
+
+        # Pass through discriminator
+        pred = self.caption_descriminator(z_grl.view(z_grl.shape[0], -1))
+
+        # Reshape to [B, T, F] to match text features
+        pred = pred.view_as(self.decoder.text_feats)
+
+        # Normalize embeddings
+        pred_n = F.normalize(pred, dim=-1)       # [B, T, F]
+        tgt_n  = F.normalize(self.decoder.text_feats.detach(), dim=-1)  # [B, T, F]
+
+        # Flatten tokens into batch dimension
+        B, T, Fd = pred_n.shape
+        pred_flat = pred_n.reshape(B * T, Fd)    # [B*T, F]
+        tgt_flat  = tgt_n.reshape(B * T, Fd)     # [B*T, F]
+
+        # Compute similarity logits
+        logits = pred_flat @ tgt_flat.T          # [B*T, B*T]
+        logits /= kwargs.get("temperature", 0.07)
+
+        # Targets are aligned positions
+        labels = torch.arange(B * T, device=logits.device)
+
+        # Cross-entropy InfoNCE loss
+        disc_loss = F.cross_entropy(logits, labels)
         
         # Total Loss
         total_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"]*disc_loss
