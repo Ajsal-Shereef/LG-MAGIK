@@ -5,22 +5,23 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 import torch.nn.functional as F
+
+from hydra.utils import instantiate
+from collections import defaultdict
 from omegaconf import DictConfig, OmegaConf
-from diffusers import AutoencoderKL
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
 from torchvision.utils import make_grid
-from architectures.common_utils import create_dump_directory
-
 from architectures.common_utils import get_dataloader
 
-def train(cfg: DictConfig) -> None:
+def train(args: DictConfig) -> None:
     """
     Main training function for the Variational Autoencoder (VAE).
 
     Args:
         cfg (DictConfig): The Hydra configuration object.
     """
+    cfg = args.models
     # --- 1. Initialization and Setup ---
     if cfg.training.seed is not None:
         set_seed(cfg.training.seed)
@@ -47,24 +48,14 @@ def train(cfg: DictConfig) -> None:
     if accelerator.is_main_process and log_values_and_images:
         accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(cfg, resolve=True))
 
-
-    # --- 2. Load Data ---
+    # --- 2. Define Model ---
+    accelerator.print("Initializing VAE model...")
+    vae = instantiate(cfg.model)
+    
+    # --- 3. Load Data ---
     accelerator.print("Loading dataset...")
     dataloader = get_dataloader(cfg)
-
-    # --- 3. Define Model ---
-    accelerator.print("Initializing VAE model...")
-    vae = AutoencoderKL(
-        in_channels=cfg.model.in_channels,
-        out_channels=cfg.model.out_channels,
-        down_block_types=tuple(cfg.model.down_block_types),
-        up_block_types=tuple(cfg.model.up_block_types),
-        block_out_channels=tuple(cfg.model.block_out_channels),
-        latent_channels=cfg.model.latent_channels,
-        layers_per_block=cfg.model.layers_per_block,
-        norm_num_groups=cfg.model.norm_num_groups,
-    )
-
+    
     # --- 4. Define Optimizer ---
     optimizer = optim.AdamW(
         vae.parameters(),
@@ -82,55 +73,48 @@ def train(cfg: DictConfig) -> None:
     global_step = 0
     for epoch in range(cfg.training.num_epochs):
         vae.train()
-        total_loss, total_recon_loss, total_kl_loss = 0, 0, 0
-        
+        # Use a defaultdict to dynamically store running totals for any loss component
+        epoch_losses = defaultdict(float)
         for step, batch in enumerate(dataloader):
             with accelerator.accumulate(vae):
-                images = batch["pixel_values"]
-                
+            
                 # Forward pass
-                posterior = vae.encode(images).latent_dist
-                latents = posterior.sample()
-                reconstructed = vae.decode(latents).sample
+                output = vae(batch)
                 
                 # Calculate losses
-                recon_loss = F.mse_loss(reconstructed, images, reduction="none")
-                recon_loss = recon_loss.view(recon_loss.size(0), -1).sum(dim=1).mean()
-
-                kl_loss = -0.5 * torch.sum(1 + posterior.logvar - posterior.mean.pow(2) - posterior.logvar.exp(), dim=[1, 2, 3]).mean()
-                
-                loss = recon_loss + cfg.training.kl_weight * kl_loss
+                losses = vae.loss_function(batch, output, **cfg.training)
                 
                 # Backward pass and optimization
-                accelerator.backward(loss)
+                accelerator.backward(losses["total_loss"])
                 optimizer.step()
                 optimizer.zero_grad()
                 
-                # Reduce / average losses across processes reliably
-                reduced_loss = accelerator.reduce(loss.detach(), reduction="mean").item()
-                reduced_recon_loss = accelerator.reduce(recon_loss.detach(), reduction="mean").item()
-                reduced_kl_loss = accelerator.reduce(kl_loss.detach(), reduction="mean").item()
+                # Reduce all loss components across processes and convert to scalar
+                reduced_losses = {
+                    key: accelerator.reduce(value.detach(), reduction="mean").item()
+                    for key, value in losses.items()
+                }
 
-                total_loss += reduced_loss
-                total_recon_loss += reduced_recon_loss
-                total_kl_loss += reduced_kl_loss
+                # Update the running totals for the epoch
+                for key, value in reduced_losses.items():
+                    epoch_losses[key] += value
 
-                # Logging
+                # --- DYNAMIC LOGGING ---
                 if accelerator.is_main_process and log_values_and_images:
-                    accelerator.log({
-                        "loss": reduced_loss,
-                        "recon_loss": reduced_recon_loss,
-                        "kl_loss": reduced_kl_loss,
+                    # Create the log payload, including dynamic losses and static values
+                    log_payload = {
+                        **reduced_losses,
                         "epoch": epoch,
                         "step": global_step,
-                    }, step=global_step)
+                    }
+                    accelerator.log(log_payload, step=global_step)
 
                     # Log images at regular intervals based on config
                     if global_step > 0 and global_step % cfg.training.log_media_interval == 0:
-                        num_images_to_log = min(images.shape[0], 8)
+                        num_images_to_log = min(batch["pixel_values"].shape[0], 8)
                         
-                        img_to_log = (images[:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
-                        recon_to_log = (reconstructed[:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                        img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                        recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
 
                         # Create a single grid for comparison
                         comparison_tensor = torch.cat([img_to_log, recon_to_log])
@@ -140,14 +124,23 @@ def train(cfg: DictConfig) -> None:
                         tracker.log({
                             "Original vs. Reconstructed": wandb.Image(comparison_grid)
                         }, step=global_step)
-                
+                        
+                        #Generate sample images
+                        if global_step % cfg.training.generate_interval == 0:
+                            validation_prompts = cfg.training.get("validation_prompts", [])
+                            generated_images = vae.generate(batch["pixel_values"].shape[-1], cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
+                            generated_images = generated_images.clamp(0, 1)
+                            comparison_grid = make_grid(generated_images.detach(), nrow=len(generated_images))
+                            tracker.log({
+                            "Generated": wandb.Image(comparison_grid)
+                        }, step=global_step)
                 global_step += 1
 
         # Print epoch summary
-        avg_epoch_loss = total_loss / len(dataloader)
-        avg_epoch_recon_loss = total_recon_loss / len(dataloader)
-        avg_epoch_kl_loss = total_kl_loss / len(dataloader)
-        accelerator.print(f"Epoch {epoch+1}/{cfg.training.num_epochs} | Loss: {avg_epoch_loss:.4f} | Recon Loss: {avg_epoch_recon_loss:.4f} | KL Loss: {avg_epoch_kl_loss:.4f}")
+        avg_epoch_losses = {key: value / len(dataloader) for key, value in epoch_losses.items()}
+        # Create a dynamic string for printing the epoch summary
+        loss_summary_str = " | ".join([f"{key}: {value:.4f}" for key, value in avg_epoch_losses.items()])
+        accelerator.print(f"Epoch {epoch+1}/{cfg.training.num_epochs} | {loss_summary_str}")
 
     accelerator.wait_for_everyone()
 

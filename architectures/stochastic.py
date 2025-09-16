@@ -44,10 +44,10 @@ class GaussianSample(Stochastic):
 
     def forward(self, x):
         # x = x*self.attention(x)
-        mu = self.mu(x)
-        log_var = F.softplus(self.log_var(x))
-
-        return self.reparametrize(mu, log_var), mu, log_var
+        self.mean = self.mu(x)
+        self.log_variance = F.softplus(self.log_var(x))
+        self.latent = self.reparametrize(self.mean, self.log_variance)
+        return self
 
 
 class GaussianMerge(GaussianSample):

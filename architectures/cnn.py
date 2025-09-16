@@ -8,6 +8,7 @@ import numpy as np
 from architectures.common_utils import identity, get_activation
 from architectures.mlp import MLP, GaussianDist, CategoricalDistParams, TanhGaussianDistParams
 import torch.nn.functional as F
+from transformers import CLIPTokenizer, CLIPTextModel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -189,7 +190,7 @@ class FiLM(nn.Module):
         return gamma * x + beta
     
 class CNNEncoder(nn.Module):
-    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
+    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type, h_dim, fc_hidden, fc_input_dim, mlp_act='identity'):
         super(CNNEncoder, self).__init__()
         self.blocks = nn.ModuleList()
         self.blocks.append(Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type))
@@ -201,22 +202,73 @@ class CNNEncoder(nn.Module):
         self.blocks.append(ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type))
         self.output_dim = dim
 
+        self.fc_input_dim = fc_input_dim
+        self.mlp = MLP(dim * np.prod(fc_input_dim), h_dim, fc_hidden, hidden_activation=mlp_act, output_activation=mlp_act)
+
     def forward(self, x):
         for block in self.blocks:
             x = block(x)
-        return x
+        return self.mlp(x.view(x.shape[0], -1))
 
     def get_all_features(self, x):
         features = []
         for block in self.blocks:
             x = block(x)
             features.append(x)
+        flattened = x.view(x.size(0), -1)
+        features.append(self.mlp(flattened))  # final vector
         return features
     
+class CrossAttention(nn.Module):
+    def __init__(self, dim_q, dim_k, heads=4, dim_head=64):
+        super().__init__()
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+        inner = heads * dim_head
+        self.to_q = nn.Linear(dim_q, inner, bias=False)
+        self.to_k = nn.Linear(dim_k, inner, bias=False)
+        self.to_v = nn.Linear(dim_k, inner, bias=False)
+        self.to_out = nn.Linear(inner, dim_q)
+
+    def forward(self, feat, text_feat):
+        # feat: (B,C,H,W), text_feat: (B,T,D)
+        b,c,h,w = feat.shape
+        q = feat.flatten(2).transpose(1,2)  # (B,HW,C)
+        k,v = text_feat,text_feat
+        q = self.to_q(q); k = self.to_k(k); v = self.to_v(v)
+
+        def reshape(x): return x.view(b,-1,self.heads,q.size(-1)//self.heads).transpose(1,2)
+        qh,kh,vh = map(reshape,(q,k,v))
+        attn = (qh @ kh.transpose(-2,-1))*self.scale
+        attn = attn.softmax(-1)
+        out = attn @ vh
+        out = out.transpose(1,2).contiguous().view(b,-1,q.size(-1))
+        out = self.to_out(out).transpose(1,2).view(b,c,h,w)
+        return out
+    
+class CrossAttentionFiLM(nn.Module):
+    def __init__(self, channels, film_dim, text_dim):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, 3,1,1)
+        self.norm = nn.BatchNorm2d(channels)
+        self.film = nn.Linear(film_dim, 2*channels)
+        self.cross = CrossAttention(channels, text_dim)
+        self.act = nn.GELU()
+
+    def forward(self,x,z,text_feat):
+        out = self.norm(self.conv(x))
+        gamma,beta = self.film(z).chunk(2,dim=-1)
+        out = out*(1+gamma.unsqueeze(-1).unsqueeze(-1)) + beta.unsqueeze(-1).unsqueeze(-1)
+        out = out + self.cross(out,text_feat)
+        return self.act(out)
+    
 class CNNDecoder(nn.Module):
-    def __init__(self, n_upsample, n_res, dim, output_dim, res_norm='adain', activ='relu', pad_type='zero'):
+    def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10], fc_hidden_dim = [512], mlp_act='identity'):
         super(CNNDecoder, self).__init__()
         self.dim = dim
+        self.fc_input = fc_input_dim
+        #fc layers
+        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), fc_hidden_dim, hidden_activation=mlp_act, output_activation=mlp_act)
         # AdaIN residual blocks
         self.res_layers = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
         # upsampling blocks
@@ -226,15 +278,21 @@ class CNNDecoder(nn.Module):
             self.upsample_layers.add_module("Conv2dBlock_{}".format(i), Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type))
             dim //= 2
         # use reflection padding in the last conv layer
-        self.upsample_layers.add_module("Conv2dBlock_{}".format(i+1), Conv2dBlock(dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type))
+        self.upsample_layers.add_module("Conv2dBlock_{}".format(i+1), Conv2dBlock(dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type)) # Earlier 7,1,3
 
     def forward(self, x):
+        x = self.mlp(x)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
         x = self.res_layers(x)
         x = self.upsample_layers(x)
         return (torch.tanh(x) + 1) / 2 #using tanh activation + scalling
     
     def get_all_features(self, x):
         features = []
+        x = self.mlp(x)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        features.append(x)
+
         x = self.res_layers(x)
         features.append(x)
 
@@ -244,6 +302,38 @@ class CNNDecoder(nn.Module):
 
         features.append(x)
         return features
+    
+class CNNTextConditionedDecoder(nn.Module):
+    def __init__(self, n_upsample, dim, output_dim, z_dim, clip_model, fc_input_dim=[10,10]):
+        super(CNNTextConditionedDecoder, self).__init__()
+        self.dim = dim
+        self.fc_input = fc_input_dim
+        #fc layers
+        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), [128, 512, 2048])
+        
+        #Text encoder and tockenizer
+        self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
+        self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
+        self.text_dim=self.text_encoder.config.hidden_size
+        
+        self.blocks=nn.ModuleList()
+        self.ups=nn.ModuleList()
+        
+        for i in range(n_upsample):
+            self.blocks.append(CrossAttentionFiLM(dim,z_dim,self.text_dim))
+            self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
+            dim //= 2
+            
+        self.final=nn.Conv2d(dim,output_dim,3,1,1)
+        
+    def forward(self,z,text_tockens):
+        self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
+        x = self.mlp(z)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        for blk,up in zip(self.blocks,self.ups):
+            x=blk(x,z,self.text_feats)
+            x=up(x)
+        return torch.tanh(self.final(x))
     
 class CNNTwoLatentDecoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, y_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10]):

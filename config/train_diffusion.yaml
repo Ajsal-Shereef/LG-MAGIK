@@ -1,0 +1,86 @@
+# --- Defaults ---
+defaults:
+  - _self_
+
+# --- General Project Settings ---
+project_name: "TextToImageDiffusion"
+seed: 42
+
+# --- Data Configuration ---
+data:
+  # Path to your custom dataset (only used if dataset_name is "imagefolder")
+  train_dir: "data/SimplePickup/training"
+  cache_dir : null
+  resolution: 112
+  batch_size: 128
+  num_workers: 4
+  image_column: "image"
+  caption_column: "text"
+
+
+# --- Model Paths and Configurations ---
+model:
+  # Path to your custom VAE trained in the previous step
+  vae_path: "model_weights/VAE" # Can also be a Hugging Face model repo
+  # Standard scaling factor for SD-style VAEs
+  vae_scaling_factor: 0.18215
+  # Path to the frozen text encoder
+  text_encoder_path: "openai/clip-vit-base-patch32"
+
+  # UNet configuration (the model we are training)
+  # Using hydra's instantiation feature for flexibility
+  unet:
+    _target_: diffusers.UNet2DConditionModel
+    sample_size: 14 # Corrected: data.resolution // 8 = 112 // 8 = 14
+    in_channels: 4
+    out_channels: 4
+    layers_per_block: 2
+    block_out_channels: [128, 256, 512, 512]
+    down_block_types: ["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"]
+    cross_attention_dim: 512 # CLIP-ViT/B-32 hidden size
+
+# --- Training Loop Settings ---
+training:
+  output_dir: "outputs/diffusion"
+  experiment_name: "Diffusion"
+  num_epochs: 100
+  # --- Logging ---
+  log_values_and_images: true
+  log_metrics_interval: 500
+  log_media_interval: 100 # Log validation images every N steps
+  lr_scheduler : "cosine"
+  lr_warmup_steps: 500  # Number of warmup steps for LR scheduler (adjust as needed)
+  snr_gamma: 5.0  # SNR gamma for loss weighting; set to null to disable
+  max_grad_norm : 1.0
+
+# --- Validation Settings for Image Generation ---
+validation:
+  prompts:
+    - "Agent is in a room surrounded by grey walls. Agent sees a red ball and a blue ball. Agent is nearest to blue ball"
+    - "Agent is in a room surrounded by grey walls. Agent sees a blue ball and a red ball. Agent is equidistant to both blue ball and red ball."
+    - "Agent is in a room surrounded by blue walls."
+    - "Agent is in a room surrounded by blue walls. Agent sees a yellow ball and a green ball. Agent is equidistant to both yellow ball and green ball."
+  num_inference_steps: 50
+  guidance_scale: 7.5
+
+# --- Noise Scheduler Configuration ---
+noise_scheduler:
+  _target_: diffusers.DDPMScheduler
+  num_train_timesteps: 1000
+  beta_schedule: "squaredcos_cap_v2" # A common choice for high-quality generation
+
+# --- Optimizer Settings ---
+optimizer:
+  lr: 1e-05
+  betas: [0.9, 0.999]
+  weight_decay: 1e-2
+  eps: 1e-08
+
+# --- Accelerator Configuration ---
+accelerator:
+  project_dir: ${training.output_dir} # Use the same output directory
+  logging_dir: ${training.output_dir}/logs
+  mixed_precision: "bf16" # 'no', 'fp16', 'bf16'
+  gradient_accumulation_steps: 1
+  log_with: "wandb"

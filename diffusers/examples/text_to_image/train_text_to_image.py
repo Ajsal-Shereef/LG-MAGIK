@@ -267,14 +267,17 @@ def parse_args():
     parser.add_argument(
         "--validation_prompts",
         type=str,
-        default=None,
+        default= ["Agent is in a room surrounded by grey walls. Agent sees a red ball and a blue ball. Agent is nearest to blue ball",
+                  "Agent is in a room surrounded by grey walls. Agent sees a blue ball and a red ball. Agent is equidistant to both blue ball and red ball.",
+                 "Agent is in a room surrounded by blue walls.",
+                 "Agent is in a room surrounded by blue walls. Agent sees a yellow ball and a green ball. Agent is equidistant to both yellow ball and green ball."],
         nargs="+",
         help=("A set of prompts evaluated every `--validation_epochs` and logged to `--report_to`."),
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sd-model-finetuned",
+        default="model_weights/diffusion_lib",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -287,7 +290,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=512,
+        default=112,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
@@ -308,7 +311,7 @@ def parse_args():
         help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size", type=int, default=32, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -447,7 +450,7 @@ def parse_args():
     parser.add_argument(
         "--report_to",
         type=str,
-        default="tensorboard",
+        default="wandb",
         help=(
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
@@ -491,7 +494,7 @@ def parse_args():
     parser.add_argument(
         "--tracker_project_name",
         type=str,
-        default="text2image-fine-tune",
+        default="Diffusion",
         help=(
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
@@ -1058,7 +1061,7 @@ def main():
                         ema_unet.to(device="cpu", non_blocking=True)
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log({"train_loss": train_loss, "epoch":epoch}, step=global_step)
                 train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:

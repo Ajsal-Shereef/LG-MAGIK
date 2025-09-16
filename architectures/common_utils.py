@@ -20,6 +20,7 @@ from collections.abc import Iterable
 from torchvision.utils import make_grid
 from datasets import load_dataset
 from omegaconf import DictConfig
+from transformers import CLIPTokenizer
 from torch.utils.data import Dataset, DataLoader
 from torchvision.models import vgg16, VGG16_Weights
 
@@ -33,6 +34,23 @@ def identity(x, dim=0):
     :return: torch.Tensor
     """
     return x
+
+def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
+    captions = []
+    for caption in examples[caption_column]:
+        if isinstance(caption, str):
+            captions.append(caption)
+        elif isinstance(caption, (list, np.ndarray)):
+            # take a random caption if there are multiple
+            captions.append(random.choice(caption) if is_train else caption[0])
+        else:
+            raise ValueError(
+                f"Caption column `{caption_column}` should contain either strings or lists of strings."
+            )
+    inputs = tokenizer(
+        captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    )
+    return inputs.input_ids
 
 def get_dataloader(cfg: DictConfig) -> DataLoader:
     """
@@ -55,6 +73,9 @@ def get_dataloader(cfg: DictConfig) -> DataLoader:
         """Applies transformations to a batch of examples."""
         images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
+        if cfg.data.caption_column:
+            tockeniser = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
+            examples["input_ids"] = tokenize_captions(tockeniser, examples, cfg.data.caption_column)
         return examples
 
     # Load dataset from the specified image folder
@@ -79,6 +100,9 @@ def get_dataloader(cfg: DictConfig) -> DataLoader:
         """Collates preprocessed examples into a batch tensor."""
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+        if cfg.data.caption_column:
+            input_ids = torch.stack([example["input_ids"] for example in examples])
+            return {"pixel_values": pixel_values, "input_ids": input_ids}
         return {"pixel_values": pixel_values}
 
     # Create and return the DataLoader
@@ -92,6 +116,19 @@ def get_dataloader(cfg: DictConfig) -> DataLoader:
     )
 
     return dataloader
+
+# ---------- Gradient Reversal ----------
+class GradReverse(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, lambd=1.0):
+        ctx.lambd = lambd
+        return x.view_as(x)
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -ctx.lambd * grad_output, None
+
+def grad_reverse(x, lambd=1.0):
+    return GradReverse.apply(x, lambd)
 
 def load_images_from_directory(directory_path):
     """
