@@ -128,12 +128,8 @@ def train(args: DictConfig) -> None:
                         #Generate sample images
                         if global_step % cfg.training.generate_interval == 0:
                             validation_prompts = cfg.training.get("validation_prompts", [])
-                            generated_images = vae.generate(batch["pixel_values"].shape[-1], cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
-                            generated_images = generated_images.clamp(0, 1)
-                            comparison_grid = make_grid(generated_images.detach(), nrow=len(generated_images))
-                            tracker.log({
-                            "Generated": wandb.Image(comparison_grid)
-                        }, step=global_step)
+                            generated_images = vae.generate(output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
+                            tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
 
         # Print epoch summary

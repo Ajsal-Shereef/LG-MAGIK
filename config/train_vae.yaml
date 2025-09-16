@@ -1,5 +1,2 @@
 defaults:
   - models : text_conditioned_vae #text_conditioned_vae
-
-
-

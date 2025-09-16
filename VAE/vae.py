@@ -90,7 +90,7 @@ class VAE(AutoencoderKL):
             "kl_loss": kl_loss,
         }
 
-    def generate(self, img_size, num_samples: int, device: torch.device, *args) -> torch.Tensor:
+    def generate(self, sampler, num_samples: int, device: torch.device, *args) -> torch.Tensor:
         """
         Generates new images by sampling from the latent space.
         
@@ -103,22 +103,23 @@ class VAE(AutoencoderKL):
         Returns:
             torch.Tensor: A tensor of generated images.
         """
+        return None
         # The latent space dimensions are determined by the model's architecture.
         # It's (batch_size, latent_channels, height/downsample_factor, width/downsample_factor)
-        latent_height = img_size // (2*(len(self.config.block_out_channels)-1))
-        latent_width = latent_height
+        # latent_height = img_size // (2*(len(self.config.block_out_channels)-1))
+        # latent_width = latent_height
 
-        # Sample random noise from a standard normal distribution
-        z = torch.randn(
-            num_samples, 
-            self.config.latent_channels, 
-            latent_height, 
-            latent_width
-        ).to(device)
+        # # Sample random noise from a standard normal distribution
+        # z = torch.randn(
+        #     num_samples, 
+        #     self.config.latent_channels, 
+        #     latent_height, 
+        #     latent_width
+        # ).to(device)
         
-        # Decode the random noise to generate images
-        generated_images = self.decode(z).sample
+        # # Decode the random noise to generate images
+        # generated_images = self.decode(z).sample
         
-        generated_images = generated_images*0.5 + 0.5
+        # generated_images = generated_images*0.5 + 0.5
         
-        return generated_images
+        # return generated_images
