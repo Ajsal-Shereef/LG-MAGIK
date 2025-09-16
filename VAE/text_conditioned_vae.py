@@ -92,7 +92,7 @@ class TextConditionedVAE(nn.Module):
         # Reconstruction Loss (MSE)
         # We flatten the image dimensions and sum over them, then take the mean over the batch.
         recon_loss = F.mse_loss(reconstructed_x, original_x, reduction="none")
-        recon_loss = recon_loss.view(recon_loss.size(0), -1).sum(dim=1).mean()
+        recon_loss = recon_loss.sum(dim=[1,2,3]).mean()
 
         # KL Divergence Loss
         # This is the standard formula for KL divergence between the posterior and a standard normal prior.

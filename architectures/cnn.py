@@ -241,6 +241,32 @@ class CrossAttention(nn.Module):
         out = self.to_out(out).transpose(1,2).view(b,c,h,w)
         return out
     
+class TransformerCrossAttention(nn.Module):
+    def __init__(self, channels, text_dim, n_heads=8):
+        super().__init__()
+        self.query_proj = nn.Linear(channels, channels)
+        self.key_proj   = nn.Linear(text_dim, channels)
+        self.value_proj = nn.Linear(text_dim, channels)
+        self.out_proj   = nn.Linear(channels, channels)
+        self.n_heads = n_heads
+
+    def forward(self, img_feat, text_feat):
+        """
+        img_feat: [B, H*W, C]
+        text_feat: [B, T, D]
+        """
+        B, N, C = img_feat.shape
+        H = self.n_heads
+        q = self.query_proj(img_feat).view(B, N, H, C // H).transpose(1, 2)  # [B,H,N,d]
+        k = self.key_proj(text_feat).view(B, -1, H, C // H).transpose(1, 2)  # [B,H,T,d]
+        v = self.value_proj(text_feat).view(B, -1, H, C // H).transpose(1, 2)
+
+        attn = (q @ k.transpose(-2, -1)) / (C ** 0.5)
+        attn = attn.softmax(dim=-1)
+        out = attn @ v  # [B,H,N,d]
+        out = out.transpose(1, 2).contiguous().view(B, N, C)
+        return self.out_proj(out)
+
 class CrossAttentionFiLM(nn.Module):
     def __init__(self, channels, film_dim, text_dim):
         super().__init__()
@@ -270,14 +296,14 @@ class CrossAttentionFiLMSpatial(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         
         # The FiLM layer now takes the number of latent *channels* as input dimension
-        self.film = nn.Linear(latent_channels, 2 * channels)
+        self.film = nn.Linear(2*latent_channels, 2 * channels)
         
         # Standard convolutional and normalization layers
         self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
         self.norm = nn.BatchNorm2d(channels)
         
         # Cross-attention remains the same
-        self.cross = CrossAttention(channels, text_dim)
+        self.cross = TransformerCrossAttention(channels, text_dim)
         self.act = nn.GELU()
 
     def forward(self, x, z, text_feat):
@@ -291,7 +317,6 @@ class CrossAttentionFiLMSpatial(nn.Module):
         # 1. Pool z to get a global style vector
         z_pooled = self.pool(z)  # Shape: (B, latent_channels, 1, 1)
         z_flat = z_pooled.flatten(1) # Shape: (B, latent_channels)
-
         # 2. Generate gamma and beta from the global style vector
         gamma, beta = self.film(z_flat).chunk(2, dim=-1)
         
@@ -301,7 +326,15 @@ class CrossAttentionFiLMSpatial(nn.Module):
         out = out * (1 + gamma.unsqueeze(-1).unsqueeze(-1)) + beta.unsqueeze(-1).unsqueeze(-1)
         
         # --- Cross-Attention ---
-        out = out + self.cross(out, text_feat)
+        B, C, H, W = out.shape
+        # Flatten spatial dims: [B, C, H, W] -> [B, H*W, C]
+        out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # [B, N=H*W, C]
+        
+        # Apply transformer-style cross-attention
+        attn_out = self.cross(out_flat, text_feat)       # [B, N, C]
+        
+        # Reshape back to [B, C, H, W]
+        out = attn_out.permute(0, 2, 1).view(B, C, H, W)
         
         return self.act(out)
     
@@ -351,11 +384,13 @@ class CNNTextConditionedDecoder(nn.Module):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         #Conv layer to map latent channel to dim
-        self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
+        self.mapping_conv = nn.Conv2d(2*latent_channel, dim, 1)
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
         self.text_dim=self.text_encoder.config.hidden_size
+        
+        self.text_to_latent = nn.Linear(self.text_dim, latent_channel)
         
         self.blocks=nn.ModuleList()
         self.ups=nn.ModuleList()
@@ -369,6 +404,12 @@ class CNNTextConditionedDecoder(nn.Module):
         
     def forward(self,z,text_tockens):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
+        # Expand text_feat to spatial (broadcast over H_z, W_z)
+        text_global = self.text_feats.mean(dim=1)  # [B, D]
+        text_proj = self.text_to_latent(text_global).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1]
+        text_proj = text_proj.expand(-1, -1, z.size(2), z.size(3))  # match z spatial size
+
+        z = torch.cat([z, text_proj], dim=1)  # concat along channel
         x = self.mapping_conv(z)
         for blk,up in zip(self.blocks,self.ups):
             x=blk(x,z,self.text_feats)
