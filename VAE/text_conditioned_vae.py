@@ -103,7 +103,10 @@ class TextConditionedVAE(nn.Module):
         pred=self.caption_descriminator(z_grl.view(z_grl.shape[0], -1))
         tgt_n = F.normalize(self.decoder.text_feats.detach(), dim=-1)
         pred_n = F.normalize(pred.view(tgt_n.shape[0], tgt_n.shape[1], -1), dim=-1)
-        disc_loss = 1 - (pred_n * tgt_n).sum(dim=[1,2]).mean()
+        # Compute per-token cosine similarity
+        cos_sim = (pred_n * tgt_n).sum(dim=-1)   # [B, T]
+        # Loss = 1 - mean cosine similarity
+        disc_loss = 1 - cos_sim.mean()
         
         # Total Loss
         total_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"]*disc_loss
