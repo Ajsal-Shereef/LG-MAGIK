@@ -9,9 +9,9 @@ import numpy as np
 
 from PIL import Image
 from gymnasium import spaces
-from collections import Counter
 from omegaconf import DictConfig
 from minigrid.core.grid import Grid
+from collections import Counter, defaultdict
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import WorldObj
@@ -147,14 +147,24 @@ class SimplePickup(MiniGridEnv):
         """Generate short, instruction-like natural captions for the observation."""
         image = observation['image']
         view_size = image.shape[0]
-        agent_position = (view_size // 2, view_size - 1)
+        agent_x = view_size // 2
+        agent_y = view_size - 1
+        agent_position = (agent_x, agent_y)
 
-        descriptions, distances = [], []
+        descriptions = []
         saw_wall = False
 
-        for i in range(view_size):
-            for j in range(view_size):
-                obj_type, obj_color, obj_state = image[i, j]
+        directions_map = {
+            "top_left": [],
+            "bottom_left": [],
+            "front": [],
+            "top_right": [],
+            "bottom_right": []
+        }
+
+        for x in range(view_size):  # left to right (formerly i)
+            for y in range(view_size):  # far to near (formerly j)
+                obj_type, obj_color, obj_state = image[x, y]
                 if obj_type == OBJECT_TO_IDX['empty']:
                     continue
                 desc = self.get_object_name(obj_type, obj_color, obj_state)
@@ -163,62 +173,73 @@ class SimplePickup(MiniGridEnv):
                     saw_wall = True
                     continue  # skip walls in detailed listing
 
-                # Manhattan distance
-                distance = abs(i - agent_position[0]) + abs(j - agent_position[1])
-                descriptions.append(desc)
-                distances.append((distance, desc))
+                # Determine direction
+                dx = x - agent_x
+                if dx == 0:
+                    direction = "front"
+                else:
+                    mid_y = view_size // 2
+                    is_top = y < mid_y
+                    prefix = "top" if is_top else "bottom"
+                    suffix = "left" if dx < 0 else "right"
+                    direction = prefix + "_" + suffix
 
-        Initial_description = ""
+                # Manhattan distance
+                dist = abs(dx) + abs(y - agent_y)
+                if dist == 0:  # skip agent itself if present
+                    continue
+
+                descriptions.append(desc)
+                directions_map[direction].append((dist, desc, x, y))
+
+        initial_description = ""
         if self.layout == 0 and saw_wall:
-            Initial_description = "Agent is in a room surrounded by blue walls."
+            initial_description = "Agent is in a room surrounded by blue walls."
         elif self.layout == 1 and saw_wall:
-            Initial_description = "Agent is in a room surrounded by grey walls."
-        
+            initial_description = "Agent is in a room surrounded by grey walls."
+
         # Case 1: only walls in view
         if not descriptions and saw_wall:
-            return Initial_description
+            return initial_description + " No other objects can be seen."
 
         # Case 2: no walls, no objects (just floor)
         if not descriptions and not saw_wall:
-            return Initial_description + " Agent sees nothing."
+            return initial_description + " Agent sees nothing."
 
-        # Case 3: objects visible
-        obj_counts = Counter(descriptions)
-        seen_list = []
-        for desc, count in obj_counts.items():
-            parts = desc.split()
-            if count == 1:
-                seen_list.append(f"a {desc}")
+        # Build directional phrases
+        dir_phrases = []
+        for dir_key, prefix in [
+            ("top_left", "to the top left"),
+            ("top_right", "to the top right"),
+            ("front", "in front"),
+            ("bottom_left", "to the bottom left"),
+            ("bottom_right", "to the bottom right")
+        ]:
+            obj_list = directions_map[dir_key]
+            if not obj_list:
+                continue
+            # Sort by distance
+            obj_list.sort(key=lambda t: t[0])
+
+            sub_phrases = []
+            for dist, desc, x, y in obj_list:
+                unit_str = "unit" if dist == 1 else "units"
+                sub_phrases.append(f"a {desc} which is {dist} {unit_str} apart at ({x},{y})")
+
+            if len(sub_phrases) == 1:
+                phrase = f"{prefix}, {sub_phrases[0]}"
             else:
-                if len(parts) == 2:  # color + object
-                    color, obj = parts
-                    plural = 'boxes' if obj == 'box' else 'keys' if obj == 'key' else obj + 's'
-                    seen_list.append(f"{count} {color} {plural}")
-                else:
-                    seen_list.append(f"{count} {desc}s")
+                phrase = f"{prefix}, " + ", ".join(sub_phrases[:-1]) + " and " + sub_phrases[-1]
 
-        # Make phrase more natural
-        if len(seen_list) == 1:
-            object_phrase = seen_list[0]
+            dir_phrases.append(phrase)
+
+        # Construct main description
+        if len(dir_phrases) == 1:
+            sees_part = f"Agent sees {dir_phrases[0]}."
         else:
-            object_phrase = ", ".join(seen_list[:-1]) + " and " + seen_list[-1]
+            sees_part = f"Agent sees {', '.join(dir_phrases[:-1])} and {dir_phrases[-1]}."
 
-        # --- Closest object(s) logic ---
-        distances.sort(key=lambda x: x[0])  # sort by distance
-        min_dist = distances[0][0]
-        closest_objs = [desc for d, desc in distances if d == min_dist]
-
-        if len(seen_list) > 1:
-            final_desc = Initial_description + f" Agent sees {object_phrase}."
-        else:
-            final_desc = Initial_description + f" Agent sees only {object_phrase}."
-
-        unique_objs = list(dict.fromkeys(closest_objs))
-        
-        if len(unique_objs) > 1:
-            final_desc += f" Agent is equidistant to both {', '.join(unique_objs[:-1])} and {unique_objs[-1]}."
-        elif len(seen_list) > 1:
-            final_desc += f" Agent is nearest to {unique_objs[-1]}"
+        final_desc = initial_description + (" " if initial_description else "") + sees_part
 
         return final_desc
 
@@ -354,7 +375,7 @@ def main(args: DictConfig) -> None:
         return steps
 
     # Total number of timesteps to collect
-    total_training_data = 100000
+    total_training_data = 150000
     validation_data = 100
     total_collected = 0
     episode = 0

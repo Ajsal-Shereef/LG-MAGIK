@@ -329,10 +329,10 @@ class CrossAttentionFiLMSpatial(nn.Module):
         B, C, H, W = out.shape
         # Flatten spatial dims: [B, C, H, W] -> [B, H*W, C]
         out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # [B, N=H*W, C]
-        
+
         # Apply transformer-style cross-attention
         attn_out = self.cross(out_flat, text_feat)       # [B, N, C]
-        
+
         # Reshape back to [B, C, H, W]
         out = attn_out.permute(0, 2, 1).view(B, C, H, W)
         
@@ -379,6 +379,17 @@ class CNNDecoder(nn.Module):
         features.append(x)
         return features
     
+class FinalTextConditionedOutput(nn.Module):
+    def __init__(self, in_channels, out_channels, text_dim):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels + text_dim, out_channels, 3, 1, 1)
+
+    def forward(self, x, text_feat):
+        text_global = text_feat.mean(dim=1)  # [B, D]
+        text_map = text_global.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, x.size(2), x.size(3))
+        x = torch.cat([x, text_map], dim=1)
+        return torch.tanh(self.conv(x))
+    
 class CNNTextConditionedDecoder(nn.Module):
     def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel):
         super(CNNTextConditionedDecoder, self).__init__()
@@ -400,7 +411,7 @@ class CNNTextConditionedDecoder(nn.Module):
             self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
             dim //= 2
             
-        self.final=nn.Conv2d(dim,output_dim,3,1,1)
+        self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
     def forward(self,z,text_tockens):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
@@ -414,7 +425,7 @@ class CNNTextConditionedDecoder(nn.Module):
         for blk,up in zip(self.blocks,self.ups):
             x=blk(x,z,self.text_feats)
             x=up(x)
-        return torch.tanh(self.final(x))
+        return self.final(x, self.text_feats)
     
 class CNNTwoLatentDecoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, y_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10]):
