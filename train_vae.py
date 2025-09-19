@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
 from torchvision.utils import make_grid
-from architectures.common_utils import get_dataloader
+from architectures.common_utils import get_dataloader, create_dump_directory
 
 def train(args: DictConfig) -> None:
     """
@@ -22,6 +22,8 @@ def train(args: DictConfig) -> None:
         cfg (DictConfig): The Hydra configuration object.
     """
     cfg = args.models
+    # Creating the directory to save the model weights and configs
+    save_dir = create_dump_directory(os.path.join(args.save_path, args.models.project_name))
     # --- 1. Initialization and Setup ---
     if cfg.training.seed is not None:
         set_seed(cfg.training.seed)
@@ -55,6 +57,8 @@ def train(args: DictConfig) -> None:
     # --- 3. Load Data ---
     accelerator.print("Loading dataset...")
     dataloader = get_dataloader(cfg)
+    config_path = os.path.join(save_dir, "config.yaml")
+    OmegaConf.save(config=args, f=config_path)
     
     # --- 4. Define Optimizer ---
     optimizer = optim.AdamW(
@@ -131,6 +135,9 @@ def train(args: DictConfig) -> None:
                             generated_images = vae.generate(output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
                             tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
+        if epoch % args.models.training.save_weight_freequency == 0:
+            vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")       
+        
 
         # Print epoch summary
         avg_epoch_losses = {key: value / len(dataloader) for key, value in epoch_losses.items()}

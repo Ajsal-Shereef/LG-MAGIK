@@ -12,6 +12,9 @@ from gymnasium import spaces
 from omegaconf import DictConfig
 from minigrid.core.grid import Grid
 from collections import Counter, defaultdict
+import sys
+sys.path.append(".")
+from architectures.common_utils import rollout, collect_data
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import WorldObj
@@ -343,53 +346,20 @@ def save_dataset_for_diffusers(dataset, save_dir):
 @hydra.main(version_base=None, config_path="../config/env", config_name="SimplePickup")
 def main(args: DictConfig) -> None:
     # type_list = [(i, j) for i in range(0, 6) for j in range(0, 2)]
-    collect_data = True
+    is_collect_data = True
     env = SimplePickup(args, mode="collect_data")
-    if collect_data:
+    if is_collect_data:
         env = RGBImgPartialObsWrapper(env, tile_size=args.tile_size)
         
     paired_data = []
-
-    def rollout(env, remaining_steps, delay=0.0, collect_data=False):
-        obs, info = env.reset()
-        paired_data.append({"frame" : obs["image"], "description" : info["description"]})
-        if not collect_data:
-            env.render()
-
-        steps = 0
-        while steps < remaining_steps:
-            action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(action)
-            
-            if collect_data:
-                paired_data.append({"frame" : obs["image"], "description" : info["description"]})
-            else:
-                env.render()
-
-            time.sleep(delay)
-            steps += 1
-
-            if terminated or truncated:
-                break
-
-        return steps
-
     # Total number of timesteps to collect
     total_training_data = 150000
     validation_data = 100
-    total_collected = 0
-    episode = 0
-
-    while total_collected < total_training_data + validation_data:
-        print(f"Collecting from episode {episode} (steps so far: {total_collected})")
-        steps = rollout(env, remaining_steps=total_training_data + validation_data - total_collected, collect_data=True)
-        total_collected += steps
-        episode += 1
-
+    paired_data, episode = collect_data(env, total_training_data + validation_data)
     env.close()
     
     # --- Dataset Saving Logic ---
-    if collect_data:
+    if is_collect_data:
         training_data = paired_data[:total_training_data]
         val_data = paired_data[total_training_data:]
 

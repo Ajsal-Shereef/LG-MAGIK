@@ -1,4 +1,5 @@
 import os
+import re
 import cv2
 import random
 import string
@@ -35,6 +36,99 @@ def identity(x, dim=0):
     """
     return x
 
+def get_env(config):
+    if config.name ==  "SimplePickup":
+        from env.SimplePickup import SimplePickup
+        from minigrid.wrappers import RGBImgPartialObsWrapper
+        env = RGBImgPartialObsWrapper(SimplePickup(config), config.tile_size)
+    else:
+        raise NotImplementedError("The environment is not implemented yet")
+    return env
+
+def rollout(env, remaining_steps, collect_data=False):
+    paired_data = []
+    obs, info = env.reset()
+    paired_data.append({"frame" : obs["image"], "description" : info["description"]})
+    if not collect_data:
+        env.render()
+    steps = 0
+    while steps < remaining_steps:
+        action = env.action_space.sample()
+        obs, reward, terminated, truncated, info = env.step(action)
+        if collect_data:
+            paired_data.append({"frame" : obs["image"], "description" : info["description"]})
+        else:
+            env.render()
+        steps += 1
+        if terminated or truncated:
+            break
+    return steps, paired_data
+    
+def collect_data(env, total_data):
+    paired_data = []
+    episode = 0
+    total_collected = 1
+    while total_collected < total_data:
+        print(f"Collecting from episode {episode} (steps so far: {total_collected})")
+        steps, data = rollout(env, remaining_steps=total_data - total_collected, collect_data=True)
+        paired_data += data
+        total_collected += steps
+        episode += 1
+    return paired_data, episode
+
+def change_descriptions(data):
+    """
+    Generates 10 new descriptions for each description in the input data and
+    returns them as a nested list of strings.
+
+    Args:
+      data (list): A list of dictionaries, where each dictionary has a
+                   'description' key.
+
+    Returns:
+      list: A nested list where each inner list contains 10 string
+            variations of an original description.
+    """
+    nested_list = []
+    wall_colors = ["grey", "blue"]
+    ball_colors = ["red", "blue", "yellow", "green"]
+
+    # Pre-compile regex patterns for efficiency
+    wall_pattern = re.compile(r'(surrounded by )(\w+)( walls)')
+    ball_pattern = re.compile(r'\b(red|blue|yellow|green)(?= ball\b)')
+
+    # Loop through each dictionary in the input data
+    for item in data:
+        variations_for_item = []
+        original_description = item['description']
+
+        # Create 10 different versions
+        for _ in range(10):
+            # --- 1. Change Wall Color ---
+            new_wall_color = random.choice(wall_colors)
+            temp_description = wall_pattern.sub(r'\1' + new_wall_color + r'\3', original_description)
+
+            # --- 2. Change Ball Colors ---
+            new_description = ""
+            last_end = 0
+            # Find every ball color and replace it one by one
+            for match in ball_pattern.finditer(temp_description):
+                start, end = match.span()
+                new_ball_color = random.choice(ball_colors)
+                # Append the text before the match, then the new color
+                new_description += temp_description[last_end:start] + new_ball_color
+                last_end = end
+            # Append any remaining text after the last ball
+            new_description += temp_description[last_end:]
+
+            # Add the final string to the inner list
+            variations_for_item.append(new_description)
+
+        # Add the list of variations to the main nested list
+        nested_list.append(variations_for_item)
+
+    return nested_list
+    
 def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
     captions = []
     for caption in examples[caption_column]:
@@ -318,6 +412,8 @@ def get_activation(activation):
         return nn.SELU(inplace=True)
     elif activation == 'elu':
         return nn.ELU()
+    elif activation == 'gelu':
+        return nn.GELU()
     elif activation == 'tanh':
         return nn.Tanh()
     elif activation == 'identity':
@@ -328,6 +424,45 @@ def get_activation(activation):
         return None
     else:
         assert 0, "Unsupported activation: {}".format(activation)
+        
+def get_normalisation_2d(norm, norm_dim):
+    if norm == 'bn':
+        return nn.BatchNorm2d(norm_dim)
+    elif norm == 'in':
+        return nn.InstanceNorm2d(norm_dim)
+    elif norm == 'ln':
+        from architectures.cnn import LayerNorm
+        return LayerNorm(norm_dim)
+    elif norm == 'adain':
+        from architectures.cnn import AdaptiveInstanceNorm2d
+        return AdaptiveInstanceNorm2d(norm_dim)
+    elif norm == 'group':
+        return nn.GroupNorm(8, norm_dim)
+    elif norm == 'none':
+        return None
+    else:
+        assert 0, "Unsupported normalization: {}".format(norm)
+        
+def get_normalisation_1d(norm, norm_dim):
+    if norm == 'bn':
+        return nn.BatchNorm1d(norm_dim)
+    elif norm == 'in':
+        return nn.InstanceNorm1d(norm_dim)
+    elif norm == 'ln':
+        return nn.LayerNorm(norm_dim)
+    elif norm == 'group':
+        # GroupNorm requires norm_dim to be divisible by the number of groups.
+        # Using 8 as a default, which might need adjustment.
+        num_groups = 8 
+        if norm_dim % num_groups != 0:
+            # Find the largest divisor of norm_dim <= num_groups if 8 is not suitable
+            # For simplicity, we'll assert here, but you could add smarter logic.
+            raise ValueError(f"norm_dim {norm_dim} must be divisible by num_groups {num_groups}")
+        return nn.GroupNorm(num_groups, norm_dim)
+    elif norm == 'none':
+        return None
+    else:
+        raise ValueError(f"Unsupported normalization: {norm}")
         
 def get_scheduler(sched_cfg, optimizer, lr):
     sched_type = sched_cfg.get("type", "").lower()

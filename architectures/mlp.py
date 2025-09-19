@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from architectures.common_utils import identity, get_activation
+from architectures.common_utils import identity, get_activation, get_normalisation_1d
 from architectures.math_utils import TanhNormal
 
 
@@ -64,6 +64,7 @@ class MLP(nn.Module):
         hidden_activation="relu",
         output_activation="identity",
         linear_layer=nn.Linear,
+        norm = "bn",
         use_output_layer=True,
         n_category=-1,
         init_fn=init_layer_orthogonal,
@@ -99,7 +100,7 @@ class MLP(nn.Module):
         in_size = self.input_size
         self.hidden_layers = nn.Sequential()
         for i, next_size in enumerate(hidden_sizes):
-            fc = Linear(in_size, next_size, post_activation = self.hidden_activation, dropout_prob = dropout_prob)
+            fc = Linear(in_size, next_size, post_activation = self.hidden_activation, dropout_prob = dropout_prob, norm = norm)
             in_size = next_size
             self.hidden_layers.add_module("hidden_fc_{}".format(i),fc)
 
@@ -175,11 +176,12 @@ class Linear(nn.Module):
         out_dim,
         post_activation = identity,
         dropout_prob = 0,
+        norm = "bn",
         ):
         super(Linear, self).__init__()
 
         self.linear_layer = nn.Linear(in_dim, out_dim)
-        self.batch_norm = nn.BatchNorm1d(out_dim)
+        self.batch_norm = get_normalisation_1d(norm, out_dim)
         nn.init.orthogonal_(self.linear_layer.weight)
         self.dropout_layer = nn.Dropout(dropout_prob)
         self.post_activation = post_activation

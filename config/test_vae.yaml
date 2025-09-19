@@ -1,4 +1,7 @@
 defaults:
   - models : text_conditioned_vae #text_conditioned_vae
   - env : SimplePickup
+
 save_path : model_weights
+num_data : 10
+result_dir : result

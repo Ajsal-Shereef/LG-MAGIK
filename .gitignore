@@ -7,7 +7,7 @@ logs
 outputs
 videos
 model_weights
-results
+result
 *__pycache__
 *.pyc
 *.pth

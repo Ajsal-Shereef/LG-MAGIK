@@ -1,14 +1,19 @@
+import os
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F
 
 from typing import Dict
-import torch.nn.functional as F
+from itertools import chain
 from architectures.mlp import MLP
+from torchvision import transforms
 from torchvision.utils import make_grid
+from torchvision.utils import save_image
 from architectures.common_utils import grad_reverse
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
 from architectures.stochastic import GaussianSampleSpatial
+from architectures.common_utils import tokenize_captions
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,7 +37,7 @@ class TextConditionedVAE(nn.Module):
         self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, kwargs["latent_channel"])
         
         self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, output_dim, clip_model, kwargs["latent_channel"])
-        self.caption_descriminator = MLP(kwargs["latent_channel"]*np.prod(encoder_final_dim), self.decoder.tokenizer.model_max_length*self.decoder.text_dim, kwargs["discriminator_fc_hidden"])
+        self.caption_discriminator = MLP(kwargs["latent_channel"]*np.prod(encoder_final_dim), self.decoder.tokenizer.model_max_length*self.decoder.text_dim, kwargs["discriminator_fc_hidden"])
         
     def forward(self, x: torch.Tensor):
         """
@@ -104,7 +109,7 @@ class TextConditionedVAE(nn.Module):
         z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
 
         # Pass through discriminator
-        pred = self.caption_descriminator(z_grl.view(z_grl.shape[0], -1))
+        pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
 
         # Reshape to [B, T, F] to match text features
         pred = pred.view_as(self.decoder.text_feats)
@@ -210,4 +215,99 @@ class TextConditionedVAE(nn.Module):
         grid = make_grid(final_image_tensor, nrow=(2 + num_prompts))
 
         return grid
+    
+    def test(self, data, changed_captions, save_dir):
+        states = []
+        descriptions = []
+        for item in data:
+            states.append(np.transpose(item["frame"], (2,0,1)))
+            descriptions.append(item["description"])
+        if not isinstance(states, torch.Tensor):
+            states = torch.tensor(states).to(device)
+        
+        # Normalising the datapoint to match the training datapoint
+        normalize = transforms.Normalize([0.5], [0.5])
+        states = normalize((states/255).float())
+        tokeniser = self.decoder.tokenizer
+        captions_tokenised = tokenize_captions(tokeniser, {"text" : descriptions}, "text").to(device)
+        
+        changed_captions_list = list(chain.from_iterable(
+            [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
+        ))
+        changed_captions_tokenised_list = tokenize_captions(tokeniser, {"text" : changed_captions_list}, "text").to(device)
+        # Reshape tokenized changed captions to group them by the original image
+        # The result is a list where each element is a tensor of shape [10, seq_len]
+        changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
+        
+        # This list will hold all reconstructed images in the correct order for the grid
+        all_reconstructions = []
+
+        # Disable gradient computation for inference, saving memory and speeding up the process
+        with torch.no_grad():
+            # 1. ENCODE: Get latent representations for all input images in a single batch
+            hidden = self.encoder(states)
+            sampler = self.bottleneck(hidden)
+            # For stable generation, use the mean of the latent distribution
+            latents = sampler.mean
+
+            # Iterate through each image's latent code and its corresponding set of captions
+            for i in range(len(states)):
+                # Isolate the latent code for the current image and add a batch dimension
+                latent_z = latents[i].unsqueeze(0)  # Shape becomes [1, C, H, W]
+
+                # 2. DECODE (Original Caption): Reconstruct the image using its original description
+                original_tokens = captions_tokenised[i].unsqueeze(0)  # Shape: [1, seq_len]
+                recon_original = self.decoder(latent_z, original_tokens)
+                # Add the single reconstructed image to our list for the grid
+                all_reconstructions.append(recon_original.squeeze(0))
+
+                # 3. DECODE (Changed Captions): Reconstruct using the list of modified captions
+                changed_tokens = changed_captions_tokenised[i]  # Shape: [10, seq_len]
+                # To generate 10 images from one latent code, we repeat the latent vector 10 times
+                latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
+
+                # Generate all 10 reconstructions in a single forward pass
+                recons_changed = self.decoder(latent_z_expanded, changed_tokens)
+                # Extend our list with the 10 newly generated images
+                all_reconstructions.extend(list(recons_changed))
+
+        # 4. CREATE AND SAVE GRID: Assemble the final image grid
+        # Stack the collected image tensors into a single batch tensor for the grid function
+        final_image_tensor = torch.stack(all_reconstructions)
+        
+        # Normalize pixel values from the model's output range [-1, 1] to the image range [0, 1]
+        final_image_tensor = (final_image_tensor * 0.5 + 0.5).clamp(0, 1)
+
+        # The grid will have 11 columns: 1 for the original reconstruction + 10 for changed captions
+        num_columns = 1 + len(changed_captions)
+        grid = make_grid(final_image_tensor, nrow=num_columns)
+
+        # Save the generated grid to the specified directory, creating it if it doesn't exist
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, 'reconstruction_grid.png')
+        save_image(grid, save_path)
+        print(f"[INFO] Saved reconstruction grid to {save_path}")
+
+    def load_params(self, path):
+        """Load model and optimizer parameters."""
+        params = torch.load(path, map_location=device)
+        self.encoder.load_state_dict(params["encoder"])
+        self.bottleneck.load_state_dict(params["bottleneck"])
+        self.decoder.load_state_dict(params["decoder"])
+        self.caption_discriminator.load_state_dict(params["caption_discriminator"])
+        print("[INFO] loaded the Text Conditioned VAE model", path)
+
+    def save(self, dump_dir, save_name):
+        """Save model and optimizer parameters."""
+        params = {
+                "encoder": self.encoder.state_dict(),
+                "bottleneck" : self.bottleneck.state_dict(),
+                "decoder" : self.decoder.state_dict(),
+                "caption_discriminator" : self.caption_discriminator.state_dict()
+                }
+        save_dir = dump_dir
+        os.makedirs(save_dir, exist_ok=True)
+        checkpoint_path = save_dir + save_name + '.tar'
+        torch.save(params, checkpoint_path)
+        print("[INFO] Text Conditioned VAE model saved to: ", checkpoint_path)
         
