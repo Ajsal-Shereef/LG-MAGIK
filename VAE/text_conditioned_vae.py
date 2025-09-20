@@ -4,6 +4,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
+from PIL import Image
 from typing import Dict
 from itertools import chain
 from architectures.mlp import MLP
@@ -220,14 +221,16 @@ class TextConditionedVAE(nn.Module):
         states = []
         descriptions = []
         for item in data:
-            states.append(np.transpose(item["frame"], (2,0,1)))
+            states.append(Image.fromarray(item["frame"]))
             descriptions.append(item["description"])
-        if not isinstance(states, torch.Tensor):
-            states = torch.tensor(states).to(device)
-        
+
         # Normalising the datapoint to match the training datapoint
-        normalize = transforms.Normalize([0.5], [0.5])
-        states = normalize((states/255).float())
+        train_transforms = transforms.Compose([
+                            transforms.ToTensor(),
+                            transforms.Normalize([0.5], [0.5]),
+                        ])
+        images = [image.convert("RGB") for image in states]
+        states = [train_transforms(image) for image in images]
         tokeniser = self.decoder.tokenizer
         captions_tokenised = tokenize_captions(tokeniser, {"text" : descriptions}, "text").to(device)
         
@@ -245,7 +248,7 @@ class TextConditionedVAE(nn.Module):
         # Disable gradient computation for inference, saving memory and speeding up the process
         with torch.no_grad():
             # 1. ENCODE: Get latent representations for all input images in a single batch
-            hidden = self.encoder(states)
+            hidden = self.encoder(torch.stack(states).to(device))
             sampler = self.bottleneck(hidden)
             # For stable generation, use the mean of the latent distribution
             latents = sampler.mean

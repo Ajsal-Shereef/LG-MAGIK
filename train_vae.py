@@ -156,6 +156,9 @@ def train(args: DictConfig) -> None:
         unwrapped_vae.save_pretrained(pipeline_save_path)
         accelerator.print(f"VAE model saved for pipeline integration at: {pipeline_save_path}")
 
+    #Saving the final model
+    vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")
+    
     # Conditionally end training
     if log_values_and_images:
         accelerator.end_training()

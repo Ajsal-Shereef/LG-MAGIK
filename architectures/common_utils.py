@@ -158,7 +158,6 @@ def get_dataloader(cfg: DictConfig) -> DataLoader:
     """
     # Define data transformations
     train_transforms = transforms.Compose([
-        transforms.Resize((cfg.data.resolution, cfg.data.resolution)),
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5]),
     ])
