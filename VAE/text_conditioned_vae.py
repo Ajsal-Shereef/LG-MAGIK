@@ -218,19 +218,26 @@ class TextConditionedVAE(nn.Module):
         return grid
     
     def test(self, data, changed_captions, save_dir):
+        # --- Imports needed for drawing on the image ---
+        from PIL import Image, ImageDraw, ImageFont
+        import torchvision.transforms as transforms
+        from torchvision.utils import save_image, make_grid
+        
         states = []
         descriptions = []
         for item in data:
+            # The frame is already a numpy array, convert directly to PIL
             states.append(Image.fromarray(item["frame"]))
             descriptions.append(item["description"])
 
         # Normalising the datapoint to match the training datapoint
         train_transforms = transforms.Compose([
-                            transforms.ToTensor(),
-                            transforms.Normalize([0.5], [0.5]),
-                        ])
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ])
         images = [image.convert("RGB") for image in states]
-        states = [train_transforms(image) for image in images]
+        states_tensors = [train_transforms(image) for image in images]
+        
         tokeniser = self.decoder.tokenizer
         captions_tokenised = tokenize_captions(tokeniser, {"text" : descriptions}, "text").to(device)
         
@@ -238,58 +245,80 @@ class TextConditionedVAE(nn.Module):
             [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
         ))
         changed_captions_tokenised_list = tokenize_captions(tokeniser, {"text" : changed_captions_list}, "text").to(device)
-        # Reshape tokenized changed captions to group them by the original image
-        # The result is a list where each element is a tensor of shape [10, seq_len]
         changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
         
-        # This list will hold all reconstructed images in the correct order for the grid
         all_reconstructions = []
 
-        # Disable gradient computation for inference, saving memory and speeding up the process
         with torch.no_grad():
-            # 1. ENCODE: Get latent representations for all input images in a single batch
-            hidden = self.encoder(torch.stack(states).to(device))
+            hidden = self.encoder(torch.stack(states_tensors).to(device))
             sampler = self.bottleneck(hidden)
-            # For stable generation, use the mean of the latent distribution
             latents = sampler.mean
 
-            # Iterate through each image's latent code and its corresponding set of captions
-            for i in range(len(states)):
-                # Isolate the latent code for the current image and add a batch dimension
-                latent_z = latents[i].unsqueeze(0)  # Shape becomes [1, C, H, W]
-
-                # 2. DECODE (Original Caption): Reconstruct the image using its original description
-                original_tokens = captions_tokenised[i].unsqueeze(0)  # Shape: [1, seq_len]
+            for i in range(len(states_tensors)):
+                latent_z = latents[i].unsqueeze(0)
+                original_tokens = captions_tokenised[i].unsqueeze(0)
                 recon_original = self.decoder(latent_z, original_tokens)
-                # Add the single reconstructed image to our list for the grid
                 all_reconstructions.append(recon_original.squeeze(0))
 
-                # 3. DECODE (Changed Captions): Reconstruct using the list of modified captions
-                changed_tokens = changed_captions_tokenised[i]  # Shape: [10, seq_len]
-                # To generate 10 images from one latent code, we repeat the latent vector 10 times
+                changed_tokens = changed_captions_tokenised[i]
                 latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
-
-                # Generate all 10 reconstructions in a single forward pass
                 recons_changed = self.decoder(latent_z_expanded, changed_tokens)
-                # Extend our list with the 10 newly generated images
                 all_reconstructions.extend(list(recons_changed))
 
-        # 4. CREATE AND SAVE GRID: Assemble the final image grid
-        # Stack the collected image tensors into a single batch tensor for the grid function
+        # --- 4. CREATE GRID, ADD NUMBERS, AND SAVE ---
         final_image_tensor = torch.stack(all_reconstructions)
-        
-        # Normalize pixel values from the model's output range [-1, 1] to the image range [0, 1]
         final_image_tensor = (final_image_tensor * 0.5 + 0.5).clamp(0, 1)
 
-        # The grid will have 11 columns: 1 for the original reconstruction + 10 for changed captions
         num_columns = 1 + len(changed_captions)
-        grid = make_grid(final_image_tensor, nrow=num_columns)
+        # The number of rows is the number of original images
+        num_rows = len(states)
+        
+        # Create the grid as a tensor first
+        grid_tensor = make_grid(final_image_tensor, nrow=num_columns, padding=2)
 
-        # Save the generated grid to the specified directory, creating it if it doesn't exist
+        # Convert tensor grid to a PIL Image
+        grid_pil = transforms.ToPILImage()(grid_tensor)
+
+        # Define margins and new canvas size
+        top_margin, left_margin = 30, 30
+        new_width = grid_pil.width + left_margin
+        new_height = grid_pil.height + top_margin
+        
+        # Create a new white canvas
+        final_image = Image.new('RGB', (new_width, new_height), 'white')
+        # Paste the image grid onto the canvas
+        final_image.paste(grid_pil, (left_margin, top_margin))
+
+        # Prepare to draw text
+        draw = ImageDraw.Draw(final_image)
+        try:
+            # Use a slightly larger default font if possible
+            font = ImageFont.load_default(size=16)
+        except AttributeError:
+            # Fallback for older Pillow versions
+            font = ImageFont.load_default()
+
+        # Get individual image tile dimensions (including padding)
+        tile_width = states[0].width + 2  # 2 is the default padding
+        tile_height = states[0].height + 2
+
+        # Draw column numbers (j)
+        for j in range(num_columns):
+            x = left_margin + (j * tile_width) + (tile_width // 2)
+            y = 10 # Position within the top margin
+            draw.text((x, y), str(j), fill="black", font=font, anchor="mt")
+
+        # Draw row numbers (i)
+        for i in range(num_rows):
+            x = 15 # Position within the left margin
+            y = top_margin + (i * tile_height) + (tile_height // 2)
+            draw.text((x, y), str(i), fill="black", font=font, anchor="lm")
+            
+        # Save the final image with numbers
         os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, 'reconstruction_grid.png')
-        save_image(grid, save_path)
-        print(f"[INFO] Saved reconstruction grid to {save_path}")
+        save_path = os.path.join(save_dir, 'reconstruction_grid_with_numbers.png')
+        final_image.save(save_path)
+        print(f"[INFO] Saved reconstruction grid with numbers to {save_path}")
 
     def load_params(self, path):
         """Load model and optimizer parameters."""

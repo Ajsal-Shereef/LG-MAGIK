@@ -8,6 +8,7 @@ import numpy as np
 import torchvision.utils as vutils
 
 from tqdm import tqdm
+from wcwidth import wcswidth
 from hydra.utils import instantiate
 from accelerate import Accelerator
 from architectures.common_utils import *
@@ -19,35 +20,88 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def save_descriptions_to_disk(descriptions_list, output_directory="result"):
     """
-    Saves a nested list of text descriptions into individual .txt files.
-
-    Args:
-        descriptions_list (list): A nested list of strings.
-        output_directory (str): The name of the directory to save files in.
+    Processes descriptions and saves them as a visually aligned grid,
+    ensuring header and data columns have the same width.
     """
-    # Create the target directory if it doesn't already exist
+
+    COLOUR_MAP = {
+        'grey': '⚫', 'white': '⚪', 'red': '🔴', 'blue': '🔵',
+        'yellow': '🟡', 'green': '🟢', 'brown': '🟤', 'N/A': '➖'
+    }
+    DEFAULT_EMOJI = '❓'
+
+    # --- Helper function for correct visual padding ---
+    def pad_center(text, width):
+        """Pads text to a specific visual width."""
+        visual_width = wcswidth(text)
+        if visual_width >= width:
+            return text
+        padding = width - visual_width
+        left_pad = padding // 2
+        right_pad = padding - left_pad
+        return (' ' * left_pad) + text + (' ' * right_pad)
+
+    # --- Data Processing (no changes needed here) ---
+    processed_data = []
+    max_cols = 0
+    for sublist in descriptions_list:
+        row_data = []
+        max_cols = max(max_cols, len(sublist))
+        for description in sublist:
+            wall_match = re.search(r'(\w+) walls', description)
+            wall_colour = wall_match.group(1) if wall_match else "N/A"
+            ball_colours = re.findall(r'a (\w+) ball', description)
+            ball1_colour = ball_colours[0] if len(ball_colours) > 0 else "N/A"
+            ball2_colour = ball_colours[1] if len(ball_colours) > 1 else "N/A"
+            
+            emojis = (
+                COLOUR_MAP.get(wall_colour, DEFAULT_EMOJI),
+                COLOUR_MAP.get(ball1_colour, DEFAULT_EMOJI),
+                COLOUR_MAP.get(ball2_colour, DEFAULT_EMOJI)
+            )
+            row_data.append(emojis)
+        processed_data.append(row_data)
+    
+    # --- File Writing with Consistent Padding ---
     os.makedirs(output_directory, exist_ok=True)
-    print(f"Directory '{output_directory}' is ready. 📂")
+    output_filepath = os.path.join(output_directory, "descriptions_emoji_grid.txt")
 
-    file_count = 0
-    # Iterate through the outer list with an index (e.g., group_idx)
-    for group_idx, sublist in enumerate(descriptions_list):
-        # Iterate through the inner list of descriptions with an index (e.g., desc_idx)
-        for desc_idx, description in enumerate(sublist):
-            # Create a unique filename based on the indices
-            filename = f"description_{group_idx}_{desc_idx}.txt"
-            filepath = os.path.join(output_directory, filename)
+    # Define a single visual width for all cells
+    cell_width = 12
 
-            # Open the file in write mode and save the description
-            try:
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(description)
-                file_count += 1
-            except IOError as e:
-                print(f"Error writing file {filepath}: {e}")
+    try:
+        with open(output_filepath, 'w', encoding='utf-8') as f:
+            # Header Row: Use the helper function for padding
+            header_cells = [pad_center(f"j={j}", cell_width) for j in range(max_cols)]
+            f.write("".ljust(6) + "|" + "|".join(header_cells) + "|\n")
 
-    print(f"\nSuccess! ✨ Saved a total of {file_count} files in the '{output_directory}' directory.")
+            # Separator Row: Matches the visual width
+            separator = "+".join(["-" * cell_width for _ in range(max_cols)])
+            f.write("".ljust(5, '-') + "+" + separator + "+\n")
 
+            # Data Rows
+            for i, row in enumerate(processed_data):
+                row_header = f"i={i}".ljust(5)
+                data_cells = []
+                for j in range(max_cols):
+                    if j < len(row):
+                        wall, ball1, ball2 = row[j]
+                        content = f"{wall} {ball1} {ball2}"
+                        # Data Cells: Use the same helper function for padding
+                        padded_content = pad_center(content, cell_width)
+                        data_cells.append(padded_content)
+                    else:
+                        data_cells.append(" " * cell_width) # Empty cell
+                
+                f.write(f"{row_header} |" + "|".join(data_cells) + "|\n")
+
+    except IOError as e:
+        print(f"Error writing to file {output_filepath}: {e}")
+        return
+
+    print(f"✅ Success! Saved the descriptions as an emoji grid to '{output_filepath}'")
+
+    
 @hydra.main(version_base=None, config_path="config", config_name="test_vae")
 def train(args: DictConfig) -> None:
     cfg = args.models

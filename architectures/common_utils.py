@@ -48,7 +48,6 @@ def get_env(config):
 def rollout(env, remaining_steps, collect_data=False):
     paired_data = []
     obs, info = env.reset()
-    paired_data.append({"frame" : obs["image"], "description" : info["description"]})
     if not collect_data:
         env.render()
     steps = 0
@@ -67,7 +66,7 @@ def rollout(env, remaining_steps, collect_data=False):
 def collect_data(env, total_data):
     paired_data = []
     episode = 0
-    total_collected = 1
+    total_collected = 0
     while total_collected < total_data:
         print(f"Collecting from episode {episode} (steps so far: {total_collected})")
         steps, data = rollout(env, remaining_steps=total_data - total_collected, collect_data=True)
@@ -78,16 +77,16 @@ def collect_data(env, total_data):
 
 def change_descriptions(data):
     """
-    Generates 10 new descriptions for each description in the input data and
-    returns them as a nested list of strings.
+    Generates 10 new descriptions for each description in the input data,
+    ensuring that if multiple balls are present, their colours are unique.
 
     Args:
-      data (list): A list of dictionaries, where each dictionary has a
-                   'description' key.
+        data (list): A list of dictionaries, where each dictionary has a
+                     'description' key.
 
     Returns:
-      list: A nested list where each inner list contains 10 string
-            variations of an original description.
+        list: A nested list where each inner list contains 10 string
+              variations of an original description.
     """
     nested_list = []
     wall_colors = ["grey", "blue"]
@@ -97,34 +96,44 @@ def change_descriptions(data):
     wall_pattern = re.compile(r'(surrounded by )(\w+)( walls)')
     ball_pattern = re.compile(r'\b(red|blue|yellow|green)(?= ball\b)')
 
-    # Loop through each dictionary in the input data
     for item in data:
         variations_for_item = []
         original_description = item['description']
 
-        # Create 10 different versions
         for _ in range(10):
-            # --- 1. Change Wall Color ---
+            # --- 1. Change Wall Color (No change in this logic) ---
             new_wall_color = random.choice(wall_colors)
             temp_description = wall_pattern.sub(r'\1' + new_wall_color + r'\3', original_description)
 
-            # --- 2. Change Ball Colors ---
-            new_description = ""
-            last_end = 0
-            # Find every ball color and replace it one by one
-            for match in ball_pattern.finditer(temp_description):
-                start, end = match.span()
-                new_ball_color = random.choice(ball_colors)
-                # Append the text before the match, then the new color
-                new_description += temp_description[last_end:start] + new_ball_color
-                last_end = end
-            # Append any remaining text after the last ball
-            new_description += temp_description[last_end:]
+            # --- 2. Change Ball Colors with Uniqueness Constraint ---
+            
+            # First, find all ball colours to determine how many there are
+            matches = list(ball_pattern.finditer(temp_description))
+            num_balls = len(matches)
 
-            # Add the final string to the inner list
+            if num_balls > 0:
+                # Select a unique sample of colours, one for each ball
+                # e.g., if num_balls is 2, this might return ['yellow', 'red']
+                new_unique_colors = random.sample(ball_colors, k=num_balls)
+
+                new_description = ""
+                last_end = 0
+                # Iterate through the matches and the new unique colours simultaneously
+                for i, match in enumerate(matches):
+                    start, end = match.span()
+                    # Assign the pre-selected unique colour from our list
+                    new_ball_color = new_unique_colors[i]
+                    
+                    new_description += temp_description[last_end:start] + new_ball_color
+                    last_end = end
+                
+                new_description += temp_description[last_end:]
+            else:
+                # If there are no balls, the description is unchanged
+                new_description = temp_description
+
             variations_for_item.append(new_description)
 
-        # Add the list of variations to the main nested list
         nested_list.append(variations_for_item)
 
     return nested_list
