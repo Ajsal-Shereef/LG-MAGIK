@@ -250,22 +250,34 @@ class TransformerCrossAttention(nn.Module):
         self.out_proj   = nn.Linear(channels, channels)
         self.n_heads = n_heads
 
-    def forward(self, img_feat, text_feat):
+    def forward(self, img_feat, text_feat, attention_mask=None):
         """
-        img_feat: [B, H*W, C]
+        img_feat: [B, N, C]
         text_feat: [B, T, D]
+        attention_mask: [B, T] (1 = keep, 0 = mask)
         """
         B, N, C = img_feat.shape
         H = self.n_heads
-        q = self.query_proj(img_feat).view(B, N, H, C // H).transpose(1, 2)  # [B,H,N,d]
-        k = self.key_proj(text_feat).view(B, -1, H, C // H).transpose(1, 2)  # [B,H,T,d]
-        v = self.value_proj(text_feat).view(B, -1, H, C // H).transpose(1, 2)
+        d = C // H
 
-        attn = (q @ k.transpose(-2, -1)) / (C ** 0.5)
+        q = self.query_proj(img_feat).view(B, N, H, d).transpose(1, 2)  # [B,H,N,d]
+        k = self.key_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
+        v = self.value_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
+
+        # Attention scores
+        attn = (q @ k.transpose(-2, -1)) / (d ** 0.5)  # [B,H,N,T]
+
+        if attention_mask is not None:
+            # expand mask: [B,T] -> [B,1,1,T]
+            mask = attention_mask[:, None, None, :].to(attn.dtype)
+            attn = attn.masked_fill(mask == 0, float('-inf'))
+
         attn = attn.softmax(dim=-1)
+
         out = attn @ v  # [B,H,N,d]
         out = out.transpose(1, 2).contiguous().view(B, N, C)
         return self.out_proj(out)
+
 
 class CrossAttentionFiLM(nn.Module):
     def __init__(self, channels, film_dim, text_dim):
@@ -314,7 +326,7 @@ class CrossAttentionFiLMSpatial(nn.Module):
         # Activation function (GELU)
         self.act = nn.GELU()
 
-    def forward(self, x, z, text_feat):
+    def forward(self, x, z, text_feat, attention):
         """
         Args:
             x (torch.Tensor): Main feature map (B, C, H, W)
@@ -349,7 +361,7 @@ class CrossAttentionFiLMSpatial(nn.Module):
         out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # [B, N=H*W, C]
 
         # Apply transformer-style cross-attention
-        attn_out = self.cross(out_flat, text_feat)  # [B, N, C]
+        attn_out = self.cross(out_flat, text_feat, attention)  # [B, N, C]
 
         # Reshape back to [B, C, H, W]
         out = attn_out.permute(0, 2, 1).view(B, C, H, W)
@@ -404,7 +416,7 @@ class FinalTextConditionedOutput(nn.Module):
         self.cross_attention = TransformerCrossAttention(in_channels, text_dim, n_heads)
         self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
 
-    def forward(self, x, text_feat):
+    def forward(self, x, text_feat, attention_mask):
         """
         x: [B, C, H, W] - Image feature map
         text_feat: [B, T, D] - Text feature (from the text encoder)
@@ -415,7 +427,7 @@ class FinalTextConditionedOutput(nn.Module):
         img_feat = x.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
 
         # Apply the cross-attention to refine the image feature map using text
-        refined_feat = self.cross_attention(img_feat, text_feat)  # Shape: [B, H*W, C]
+        refined_feat = self.cross_attention(img_feat, text_feat, attention_mask)  # Shape: [B, H*W, C]
 
         # Reshape it back to the image spatial dimensions [B, C, H, W]
         refined_feat = refined_feat.view(B, C, H, W)
@@ -460,10 +472,10 @@ class CNNTextConditionedDecoder(nn.Module):
 
         z = torch.cat([z, text_proj], dim=1)  # concat along channel
         x = self.mapping_conv(z)
-        for blk,up in zip(self.blocks,self.ups):
-            x=blk(x,z,self.text_feats)
+        for blk,up in zip(self.blocks,self.ups, ):
+            x=blk(x,z,self.text_feats, attention_mask)
             x=up(x)
-        return self.final(x, self.text_feats)
+        return self.final(x, self.text_feats, attention_mask)
     
 class CNNTwoLatentDecoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, y_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10]):

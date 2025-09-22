@@ -150,10 +150,10 @@ def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
             raise ValueError(
                 f"Caption column `{caption_column}` should contain either strings or lists of strings."
             )
-    token_lengths = [len(tokenizer.encode(caption, add_special_tokens=True)) for caption in captions]
-    max_token_length = max(token_lengths)
+    # token_lengths = [len(tokenizer.encode(caption, add_special_tokens=True)) for caption in captions]
+    # max_token_length = max(token_lengths)
     inputs = tokenizer(
-        captions, max_length=max_token_length, padding="max_length", truncation=True, return_tensors="pt"
+        captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
     )
     return inputs.input_ids, inputs.attention_mask
 

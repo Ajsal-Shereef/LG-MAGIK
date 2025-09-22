@@ -50,15 +50,15 @@ def train(args: DictConfig) -> None:
     if accelerator.is_main_process and log_values_and_images:
         accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(cfg, resolve=True))
 
-    # --- 2. Define Model ---
-    accelerator.print("Initializing VAE model...")
-    vae = instantiate(cfg.model)
-    
-    # --- 3. Load Data ---
+    # --- 2. Load Data ---
     accelerator.print("Loading dataset...")
     dataloader = get_dataloader(cfg)
     config_path = os.path.join(save_dir, "config.yaml")
     OmegaConf.save(config=args, f=config_path)
+    
+    # --- 3. Define Model ---
+    accelerator.print("Initializing VAE model...")
+    vae = instantiate(cfg.model)
     
     # --- 4. Define Optimizer ---
     optimizer = optim.AdamW(

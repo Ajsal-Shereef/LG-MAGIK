@@ -187,16 +187,17 @@ class TextConditionedVAE(nn.Module):
             truncation=True, return_tensors="pt"
         )
         input_ids = tokenised_text["input_ids"].to(device)
+        attention_mask = tokenised_text["attention_mask"].to(device)
 
         # Expand latents and embeddings to create all (z, prompt) pairs
         z_expanded = latents.repeat_interleave(num_prompts, dim=0)
         text_embeddings_expanded = input_ids.repeat(num_samples, 1)
+        attention_mask_expanded = attention_mask.repeat(num_samples, 1)
 
         # Decode the pairs to generate new images
-        generated_images = self.decoder(z_expanded, text_embeddings_expanded)
+        generated_images = self.decoder(z_expanded, text_embeddings_expanded, attention_mask_expanded)
         # Normalize generated images for visualization
         generated_images = (generated_images.detach() * 0.5 + 0.5).clamp(0, 1)
-
         # --- 4. ASSEMBLE THE GRID ---
         # Create a list to hold all images in the correct order for the grid
         grid_images = []
@@ -239,13 +240,17 @@ class TextConditionedVAE(nn.Module):
         states_tensors = [train_transforms(image) for image in images]
         
         tokeniser = self.decoder.tokenizer
-        captions_tokenised = tokenize_captions(tokeniser, {"text" : descriptions}, "text").to(device)
-        
+        captions_tokenised, attention_mask = tokenize_captions(tokeniser, {"text" : descriptions}, "text")
+        captions_tokenised = captions_tokenised.to(device)
+        attention_mask = attention_mask.to(device)
         changed_captions_list = list(chain.from_iterable(
             [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
         ))
-        changed_captions_tokenised_list = tokenize_captions(tokeniser, {"text" : changed_captions_list}, "text").to(device)
+        changed_captions_tokenised_list, changed_caption_attention_mask = tokenize_captions(tokeniser, {"text" : changed_captions_list}, "text")
+        changed_captions_tokenised_list = changed_captions_tokenised_list.to(device)
+        changed_caption_attention_mask = changed_caption_attention_mask.to(device)
         changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
+        changed_caption_attention_mask = [changed_caption_attention_mask[i:i+len(changed_captions)] for i in range(0, len(changed_caption_attention_mask), len(changed_captions))]
         
         # This list will hold all images for the grid in the new order
         grid_images = []
@@ -264,13 +269,15 @@ class TextConditionedVAE(nn.Module):
                 
                 # 2. ADD RECONSTRUCTION
                 original_tokens = captions_tokenised[i].unsqueeze(0)
-                recon_original = self.decoder(latent_z, original_tokens)
+                original_mask = attention_mask[i].unsqueeze(0)
+                recon_original = self.decoder(latent_z, original_tokens, original_mask)
                 grid_images.append(recon_original.squeeze(0).cpu())
 
                 # 3. ADD GENERATED IMAGES
                 changed_tokens = changed_captions_tokenised[i]
+                changed_captions_mask = changed_caption_attention_mask[i]
                 latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
-                recons_changed = self.decoder(latent_z_expanded, changed_tokens)
+                recons_changed = self.decoder(latent_z_expanded, changed_tokens, changed_captions_mask)
                 grid_images.extend(list(recons_changed.cpu()))
 
         # --- 4. CREATE GRID, ADD NUMBERS, AND SAVE ---
