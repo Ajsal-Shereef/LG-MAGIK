@@ -241,6 +241,47 @@ class CrossAttention(nn.Module):
         out = self.to_out(out).transpose(1,2).view(b,c,h,w)
         return out
     
+class CNNDecoder(nn.Module):
+    def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10], fc_hidden_dim = [512], mlp_act='identity'):
+        super(CNNDecoder, self).__init__()
+        self.dim = dim
+        self.fc_input = fc_input_dim
+        #fc layers
+        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), fc_hidden_dim, hidden_activation=mlp_act, output_activation=mlp_act)
+        # AdaIN residual blocks
+        self.res_layers = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
+        # upsampling blocks
+        self.upsample_layers = nn.Sequential()
+        for i in range(n_upsample):
+            self.upsample_layers.add_module("UpSampling_{}".format(i), nn.Upsample(scale_factor=2))
+            self.upsample_layers.add_module("Conv2dBlock_{}".format(i), Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type))
+            dim //= 2
+        # use reflection padding in the last conv layer
+        self.upsample_layers.add_module("Conv2dBlock_{}".format(i+1), Conv2dBlock(dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type)) # Earlier 7,1,3
+
+    def forward(self, x):
+        x = self.mlp(x)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        x = self.res_layers(x)
+        x = self.upsample_layers(x)
+        return (torch.tanh(x) + 1) / 2 #using tanh activation + scalling
+    
+    def get_all_features(self, x):
+        features = []
+        x = self.mlp(x)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        features.append(x)
+
+        x = self.res_layers(x)
+        features.append(x)
+
+        for block in self.upsample_layers:
+            x = block(x)
+            features.append(x)
+
+        features.append(x)
+        return features
+    
 class TransformerCrossAttention(nn.Module):
     def __init__(self, channels, text_dim, n_heads=8):
         super().__init__()
@@ -367,48 +408,6 @@ class CrossAttentionFiLMSpatial(nn.Module):
         out = attn_out.permute(0, 2, 1).view(B, C, H, W)
         
         return self.act(out)
-
-
-class CNNDecoder(nn.Module):
-    def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10], fc_hidden_dim = [512], mlp_act='identity'):
-        super(CNNDecoder, self).__init__()
-        self.dim = dim
-        self.fc_input = fc_input_dim
-        #fc layers
-        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), fc_hidden_dim, hidden_activation=mlp_act, output_activation=mlp_act)
-        # AdaIN residual blocks
-        self.res_layers = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
-        # upsampling blocks
-        self.upsample_layers = nn.Sequential()
-        for i in range(n_upsample):
-            self.upsample_layers.add_module("UpSampling_{}".format(i), nn.Upsample(scale_factor=2))
-            self.upsample_layers.add_module("Conv2dBlock_{}".format(i), Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type))
-            dim //= 2
-        # use reflection padding in the last conv layer
-        self.upsample_layers.add_module("Conv2dBlock_{}".format(i+1), Conv2dBlock(dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type)) # Earlier 7,1,3
-
-    def forward(self, x):
-        x = self.mlp(x)
-        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
-        x = self.res_layers(x)
-        x = self.upsample_layers(x)
-        return (torch.tanh(x) + 1) / 2 #using tanh activation + scalling
-    
-    def get_all_features(self, x):
-        features = []
-        x = self.mlp(x)
-        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
-        features.append(x)
-
-        x = self.res_layers(x)
-        features.append(x)
-
-        for block in self.upsample_layers:
-            x = block(x)
-            features.append(x)
-
-        features.append(x)
-        return features
     
 class FinalTextConditionedOutput(nn.Module):
     def __init__(self, in_channels, out_channels, text_dim, n_heads=8):
