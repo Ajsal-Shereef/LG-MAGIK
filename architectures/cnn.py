@@ -440,7 +440,7 @@ class CNNTextConditionedDecoder(nn.Module):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         #Conv layer to map latent channel to dim
-        self.mapping_conv = nn.Conv2d(2*latent_channel, dim, 1)
+        self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
@@ -450,13 +450,13 @@ class CNNTextConditionedDecoder(nn.Module):
         self.text_encoder.eval()
         self.text_dim=self.text_encoder.config.hidden_size
         self.text_adapter = MLP(self.text_dim, self.text_dim, [64, 256], hidden_activation = 'gelu', norm='ln')
-        self.text_to_latent = nn.Linear(self.text_dim, latent_channel)
+        self.attention = TransformerCrossAttention(latent_channel, self.text_dim, n_heads=2)
         
         self.blocks=nn.ModuleList()
         self.ups=nn.ModuleList()
         
         for i in range(n_upsample):
-            self.blocks.append(CrossAttentionFiLMSpatial(dim,2*latent_channel,self.text_dim, i))
+            self.blocks.append(CrossAttentionFiLMSpatial(dim,latent_channel,self.text_dim, i))
             self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
             dim //= 2
             
@@ -465,14 +465,13 @@ class CNNTextConditionedDecoder(nn.Module):
     def forward(self,z,text_tockens, attention_mask):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
-        # Expand text_feat to spatial (broadcast over H_z, W_z)
-        text_global = self.text_feats.mean(dim=1)  # [B, D]
-        text_proj = self.text_to_latent(text_global).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1]
-        text_proj = text_proj.expand(-1, -1, z.size(2), z.size(3))  # match z spatial size
-
-        z = torch.cat([z, text_proj], dim=1)  # concat along channel
+        B, C, H, W = z.shape
+        # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
+        z = z.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
+        # Reshape it back to the image spatial dimensions [B, C, H, W]
+        z = self.attention(z, self.text_feats).view(B, C, H, W)
         x = self.mapping_conv(z)
-        for blk,up in zip(self.blocks,self.ups, ):
+        for blk,up in zip(self.blocks,self.ups):
             x=blk(x,z,self.text_feats, attention_mask)
             x=up(x)
         return self.final(x, self.text_feats, attention_mask)
