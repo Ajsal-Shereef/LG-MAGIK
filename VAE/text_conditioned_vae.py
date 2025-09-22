@@ -53,6 +53,7 @@ class TextConditionedVAE(nn.Module):
         """
         images = x["pixel_values"]
         text_tokens = x["input_ids"]
+        attention_mask = x["attention_masks"]
         # Encode the input to get the posterior distribution
         hidden = self.encoder(images)
         
@@ -62,9 +63,9 @@ class TextConditionedVAE(nn.Module):
         # Decode the latents to reconstruct the image
         # .sample is used to get the mean of the decoded output distribution
         if self.training:
-            reconstructed_x = self.decoder(sampler.latent, text_tokens)
+            reconstructed_x = self.decoder(sampler.latent, text_tokens, attention_mask)
         else:
-            reconstructed_x = self.decoder(sampler.mean, text_tokens)
+            reconstructed_x = self.decoder(sampler.mean, text_tokens, attention_mask)
         
         return {
             "x" : images,
@@ -226,7 +227,6 @@ class TextConditionedVAE(nn.Module):
         states = []
         descriptions = []
         for item in data:
-            # The frame is already a numpy array, convert directly to PIL
             states.append(Image.fromarray(item["frame"]))
             descriptions.append(item["description"])
 
@@ -247,7 +247,8 @@ class TextConditionedVAE(nn.Module):
         changed_captions_tokenised_list = tokenize_captions(tokeniser, {"text" : changed_captions_list}, "text").to(device)
         changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
         
-        all_reconstructions = []
+        # This list will hold all images for the grid in the new order
+        grid_images = []
 
         with torch.no_grad():
             hidden = self.encoder(torch.stack(states_tensors).to(device))
@@ -255,25 +256,31 @@ class TextConditionedVAE(nn.Module):
             latents = sampler.mean
 
             for i in range(len(states_tensors)):
+                # 1. ADD ORIGINAL IMAGE
+                # The original, ground-truth image tensor
+                grid_images.append(states_tensors[i])
+
                 latent_z = latents[i].unsqueeze(0)
+                
+                # 2. ADD RECONSTRUCTION
                 original_tokens = captions_tokenised[i].unsqueeze(0)
                 recon_original = self.decoder(latent_z, original_tokens)
-                all_reconstructions.append(recon_original.squeeze(0))
+                grid_images.append(recon_original.squeeze(0).cpu())
 
+                # 3. ADD GENERATED IMAGES
                 changed_tokens = changed_captions_tokenised[i]
                 latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
                 recons_changed = self.decoder(latent_z_expanded, changed_tokens)
-                all_reconstructions.extend(list(recons_changed))
+                grid_images.extend(list(recons_changed.cpu()))
 
         # --- 4. CREATE GRID, ADD NUMBERS, AND SAVE ---
-        final_image_tensor = torch.stack(all_reconstructions)
+        final_image_tensor = torch.stack(grid_images)
         final_image_tensor = (final_image_tensor * 0.5 + 0.5).clamp(0, 1)
 
-        num_columns = 1 + len(changed_captions)
-        # The number of rows is the number of original images
+        # The grid now has 1 (Original) + 1 (Recon) + 10 (Generated) = 12 columns
+        num_columns = 1 + 1 + len(changed_captions)
         num_rows = len(states)
         
-        # Create the grid as a tensor first
         grid_tensor = make_grid(final_image_tensor, nrow=num_columns, padding=2)
 
         # Convert tensor grid to a PIL Image
@@ -284,41 +291,39 @@ class TextConditionedVAE(nn.Module):
         new_width = grid_pil.width + left_margin
         new_height = grid_pil.height + top_margin
         
-        # Create a new white canvas
         final_image = Image.new('RGB', (new_width, new_height), 'white')
-        # Paste the image grid onto the canvas
         final_image.paste(grid_pil, (left_margin, top_margin))
 
-        # Prepare to draw text
         draw = ImageDraw.Draw(final_image)
         try:
-            # Use a slightly larger default font if possible
             font = ImageFont.load_default(size=16)
         except AttributeError:
-            # Fallback for older Pillow versions
             font = ImageFont.load_default()
 
         # Get individual image tile dimensions (including padding)
-        tile_width = states[0].width + 2  # 2 is the default padding
+        tile_width = states[0].width + 2
         tile_height = states[0].height + 2
 
-        # Draw column numbers (j)
-        for j in range(num_columns):
-            x = left_margin + (j * tile_width) + (tile_width // 2)
-            y = 10 # Position within the top margin
+        # Draw column numbers (0-9), starting from the 3rd column
+        num_generated_images = len(changed_captions)
+        for j in range(num_generated_images):
+            # The number 'j' (0-9) corresponds to the (j+2)-th column in the grid
+            column_index_in_grid = j + 2 
+            x = left_margin + (column_index_in_grid * tile_width) + (tile_width // 2)
+            y = 10
             draw.text((x, y), str(j), fill="black", font=font, anchor="mt")
 
         # Draw row numbers (i)
         for i in range(num_rows):
-            x = 15 # Position within the left margin
+            x = 15
             y = top_margin + (i * tile_height) + (tile_height // 2)
             draw.text((x, y), str(i), fill="black", font=font, anchor="lm")
             
-        # Save the final image with numbers
+        # Save the final image with the new layout and numbering
         os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, 'reconstruction_grid_with_numbers.png')
+        save_path = os.path.join(save_dir, 'reconstruction_grid_final.png')
         final_image.save(save_path)
-        print(f"[INFO] Saved reconstruction grid with numbers to {save_path}")
+        print(f"[INFO] Saved final reconstruction grid to {save_path}")
 
     def load_params(self, path):
         """Load model and optimizer parameters."""

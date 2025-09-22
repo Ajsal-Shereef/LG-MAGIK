@@ -353,7 +353,7 @@ def main(args: DictConfig) -> None:
         
     paired_data = []
     # Total number of timesteps to collect
-    total_training_data = 150000
+    total_training_data = 160000
     validation_data = 100
     paired_data, episode = collect_data(env, total_training_data + validation_data)
     env.close()

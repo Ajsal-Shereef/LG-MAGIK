@@ -450,7 +450,7 @@ class CNNTextConditionedDecoder(nn.Module):
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
-    def forward(self,z,text_tockens):
+    def forward(self,z,text_tockens, attention_mask):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)

@@ -150,10 +150,12 @@ def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
             raise ValueError(
                 f"Caption column `{caption_column}` should contain either strings or lists of strings."
             )
+    token_lengths = [len(tokenizer.encode(caption, add_special_tokens=True)) for caption in captions]
+    max_token_length = max(token_lengths)
     inputs = tokenizer(
-        captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        captions, max_length=max_token_length, padding="max_length", truncation=True, return_tensors="pt"
     )
-    return inputs.input_ids
+    return inputs.input_ids, inputs.attention_mask
 
 def get_dataloader(cfg: DictConfig) -> DataLoader:
     """
@@ -177,7 +179,9 @@ def get_dataloader(cfg: DictConfig) -> DataLoader:
         examples["pixel_values"] = [train_transforms(image) for image in images]
         if cfg.data.caption_column:
             tockeniser = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
-            examples["input_ids"] = tokenize_captions(tockeniser, examples, cfg.data.caption_column)
+            input_ids, attention_mask = tokenize_captions(tockeniser, examples, cfg.data.caption_column)
+            examples["input_ids"] = input_ids
+            examples["attention_mask"] = attention_mask
         return examples
 
     # Load dataset from the specified image folder
@@ -202,9 +206,11 @@ def get_dataloader(cfg: DictConfig) -> DataLoader:
         """Collates preprocessed examples into a batch tensor."""
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+        attention_masks = torch.stack([example["attention_mask"] for example in examples])
+        attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
         if cfg.data.caption_column:
             input_ids = torch.stack([example["input_ids"] for example in examples])
-            return {"pixel_values": pixel_values, "input_ids": input_ids}
+            return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_masks" : attention_masks}
         return {"pixel_values": pixel_values}
 
     # Create and return the DataLoader
