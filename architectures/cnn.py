@@ -136,33 +136,35 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
 
 class LayerNorm(nn.Module):
-    def __init__(self, num_features, eps=1e-5, affine=True):
-        super(LayerNorm, self).__init__()
-        self.num_features = num_features
-        self.affine = affine
+    def __init__(self, num_channels, eps=1e-6, affine=True):
+        """
+        LayerNorm over channels for 2D feature maps (B, C, H, W).
+        Args:
+            num_channels: number of channels (C).
+            eps: small constant for numerical stability.
+            affine: whether to include learnable scale & bias.
+        """
+        super().__init__()
         self.eps = eps
-
-        if self.affine:
-            self.gamma = nn.Parameter(torch.Tensor(num_features).uniform_())
-            self.beta = nn.Parameter(torch.zeros(num_features))
+        self.affine = affine
+        if affine:
+            self.gamma = nn.Parameter(torch.ones(1, num_channels, 1, 1))
+            self.beta = nn.Parameter(torch.zeros(1, num_channels, 1, 1))
+        else:
+            self.register_parameter("gamma", None)
+            self.register_parameter("beta", None)
 
     def forward(self, x):
-        shape = [-1] + [1] * (x.dim() - 1)
-        # print(x.size())
-        if x.size(0) == 1:
-            # These two lines run much faster in pytorch 0.4 than the two lines listed below.
-            mean = x.view(-1).mean().view(*shape)
-            std = x.view(-1).std().view(*shape)
-        else:
-            mean = x.view(x.size(0), -1).mean(1).view(*shape)
-            std = x.view(x.size(0), -1).std(1).view(*shape)
+        # mean/var over channel dimension only
+        mean = x.mean(dim=1, keepdim=True)
+        var = x.var(dim=1, unbiased=False, keepdim=True)
 
-        x = (x - mean) / (std + self.eps)
+        x_norm = (x - mean) / torch.sqrt(var + self.eps)
 
         if self.affine:
-            shape = [1, -1] + [1] * (x.dim() - 2)
-            x = x * self.gamma.view(*shape) + self.beta.view(*shape)
-        return x
+            x_norm = x_norm * self.gamma + self.beta
+
+        return x_norm
     
 class FiLM(nn.Module):
     def __init__(self, num_features, cond_dim):
@@ -241,47 +243,6 @@ class CrossAttention(nn.Module):
         out = self.to_out(out).transpose(1,2).view(b,c,h,w)
         return out
     
-class CNNDecoder(nn.Module):
-    def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10], fc_hidden_dim = [512], mlp_act='identity'):
-        super(CNNDecoder, self).__init__()
-        self.dim = dim
-        self.fc_input = fc_input_dim
-        #fc layers
-        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), fc_hidden_dim, hidden_activation=mlp_act, output_activation=mlp_act)
-        # AdaIN residual blocks
-        self.res_layers = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
-        # upsampling blocks
-        self.upsample_layers = nn.Sequential()
-        for i in range(n_upsample):
-            self.upsample_layers.add_module("UpSampling_{}".format(i), nn.Upsample(scale_factor=2))
-            self.upsample_layers.add_module("Conv2dBlock_{}".format(i), Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type))
-            dim //= 2
-        # use reflection padding in the last conv layer
-        self.upsample_layers.add_module("Conv2dBlock_{}".format(i+1), Conv2dBlock(dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type)) # Earlier 7,1,3
-
-    def forward(self, x):
-        x = self.mlp(x)
-        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
-        x = self.res_layers(x)
-        x = self.upsample_layers(x)
-        return (torch.tanh(x) + 1) / 2 #using tanh activation + scalling
-    
-    def get_all_features(self, x):
-        features = []
-        x = self.mlp(x)
-        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
-        features.append(x)
-
-        x = self.res_layers(x)
-        features.append(x)
-
-        for block in self.upsample_layers:
-            x = block(x)
-            features.append(x)
-
-        features.append(x)
-        return features
-    
 class TransformerCrossAttention(nn.Module):
     def __init__(self, channels, text_dim, n_heads=8):
         super().__init__()
@@ -335,34 +296,74 @@ class CrossAttentionFiLM(nn.Module):
         out = out*(1+gamma) + beta
         out = out + self.cross(out,text_feat)
         return self.act(out)
+
+class CNNDecoder(nn.Module):
+    def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10], fc_hidden_dim = [512], mlp_act='identity'):
+        super(CNNDecoder, self).__init__()
+        self.dim = dim
+        self.fc_input = fc_input_dim
+        #fc layers
+        self.mlp = MLP(z_dim, dim*np.prod(fc_input_dim), fc_hidden_dim, hidden_activation=mlp_act, output_activation=mlp_act)
+        # AdaIN residual blocks
+        self.res_layers = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
+        # upsampling blocks
+        self.upsample_layers = nn.Sequential()
+        for i in range(n_upsample):
+            self.upsample_layers.add_module("UpSampling_{}".format(i), nn.Upsample(scale_factor=2))
+            self.upsample_layers.add_module("Conv2dBlock_{}".format(i), Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type))
+            dim //= 2
+        # use reflection padding in the last conv layer
+        self.upsample_layers.add_module("Conv2dBlock_{}".format(i+1), Conv2dBlock(dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type)) # Earlier 7,1,3
+
+    def forward(self, x):
+        x = self.mlp(x)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        x = self.res_layers(x)
+        x = self.upsample_layers(x)
+        return (torch.tanh(x) + 1) / 2 #using tanh activation + scalling
+    
+    def get_all_features(self, x):
+        features = []
+        x = self.mlp(x)
+        x = x.view(x.shape[0], self.dim, self.fc_input[0], self.fc_input[1])
+        features.append(x)
+
+        x = self.res_layers(x)
+        features.append(x)
+
+        for block in self.upsample_layers:
+            x = block(x)
+            features.append(x)
+
+        features.append(x)
+        return features
     
 class CrossAttentionFiLMSpatial(nn.Module):
     """
     FiLM and Cross-Attention block adapted for a SPATIAL latent code z.
     """
-    def __init__(self, channels, latent_channels, text_dim, layer_idx):
+    def __init__(self, channels, latent_channels, text_dim, layer_idx, norm = "ln"):
         super().__init__()
 
         # 1x1 Convolution to match latent channels to feature map channels
         self.z_conv = nn.Conv2d(latent_channels, channels, 1)
         
-        # Dynamically set kernel size, stride, padding based on layer index (layer_idx)
-        kernel_size = 2 ** (layer_idx)  # 2^(i) for the kernel size
-        stride = 2 ** (layer_idx)      # 2^(i) for stride
-        padding = 0                    # No padding
-
-        # Define deconvolution layer with dynamic parameters
-        self.z_deconv = nn.ConvTranspose2d(channels, channels, kernel_size=kernel_size, stride=stride, padding=padding)
+        # safer upsampling: bilinear + conv
+        self.upsample = nn.Sequential(
+            nn.Upsample(scale_factor=2**layer_idx, mode="bilinear", align_corners=False),
+            nn.Conv2d(channels, channels, 3, 1, 1)
+        )
         
         # FiLM: Linear layer to generate gamma and beta
         self.film = nn.Linear(channels, 2 * channels)
         
-        # Standard convolution and batch normalization
+        # Standard convolution and normalization
         self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-        self.norm = nn.BatchNorm2d(channels)
+        self.norm = get_normalisation_2d(norm, channels)
         
         # Cross-attention layer
         self.cross = TransformerCrossAttention(channels, text_dim)
+        self.cross_norm = get_normalisation_2d(norm, channels)
         
         # Activation function (GELU)
         self.act = nn.GELU()
@@ -375,45 +376,42 @@ class CrossAttentionFiLMSpatial(nn.Module):
             text_feat (torch.Tensor): Text features (B, T, D)
         """
         B, C, H, W = x.shape  # Feature map size
-        _, _, H_z, W_z = z.shape  # Latent code size
 
-        # Step 1: Apply convolution to the latent code z to match the channels of x
-        z_proj = self.z_conv(z)  # (B, C, H_z, W_z)
-        z_proj = self.z_deconv(z_proj)  # Upscale z_proj to match x spatial dimensions
-        # Step 3: Compute FiLM modulation parameters (gamma, beta)
-        z_flat = z_proj.flatten(2).permute(0, 2, 1)  # Shape: (B, H*W, C)
-        
-        # Generate gamma and beta from the latent code
-        gamma, beta = self.film(z_flat).chunk(2, dim=-1)  # Shape: (B, H*W, C)
-        
-        # Step 4: Apply FiLM modulation to the feature map
-        out = self.norm(self.conv(x))
-        
-        # Unsqueeze gamma and beta to match spatial dimensions for broadcasting
-        gamma = gamma.view(B, H, W, C).permute(0, 3, 1, 2)  # (B, C, H, W)
-        beta = beta.view(B, H, W, C).permute(0, 3, 1, 2)  # (B, C, H, W)
-        
-        # Apply FiLM modulation: out = out * (1 + gamma) + beta
+        # --- latent projection & upsample ---
+        z_proj = self.z_conv(z)          # (B, C, H_z, W_z)
+        z_proj = self.upsample(z_proj)   # -> match x spatial size
+
+        # --- FiLM ---
+        z_flat = z_proj.flatten(2).permute(0, 2, 1)  # (B, H*W, C)
+        gamma, beta = self.film(z_flat).chunk(2, dim=-1)
+
+        out = self.conv(x)
+        out = self.norm(out)
+
+        gamma = gamma.view(B, H, W, C).permute(0, 3, 1, 2)
+        beta = beta.view(B, H, W, C).permute(0, 3, 1, 2)
+
         out = out * (1 + gamma) + beta
-        
-        # --- Cross-Attention ---
-        B, C, H, W = out.shape
-        # Flatten spatial dims: [B, C, H, W] -> [B, H*W, C]
-        out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # [B, N=H*W, C]
 
-        # Apply transformer-style cross-attention
-        attn_out = self.cross(out_flat, text_feat, attention)  # [B, N, C]
+        out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # (B, N, C)
+        out_flat = out_flat + self.cross(out_flat, text_feat, attention)
+        out_flat = self.cross_norm(out_flat.permute(0, 2, 1).view(B, C, H, W)) 
 
-        # Reshape back to [B, C, H, W]
-        out = attn_out.permute(0, 2, 1).view(B, C, H, W)
-        
         return self.act(out)
     
 class FinalTextConditionedOutput(nn.Module):
     def __init__(self, in_channels, out_channels, text_dim, n_heads=8):
         super().__init__()
         self.cross_attention = TransformerCrossAttention(in_channels, text_dim, n_heads)
-        self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        self.cross_norm = nn.LayerNorm(in_channels)
+
+        # stronger head: residual conv stack
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, 3, 1, 1),
+            nn.GroupNorm(8, in_channels),
+            nn.GELU(),
+            nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        )
 
     def forward(self, x, text_feat, attention_mask):
         """
@@ -425,21 +423,19 @@ class FinalTextConditionedOutput(nn.Module):
         # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
         img_feat = x.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
 
-        # Apply the cross-attention to refine the image feature map using text
-        refined_feat = self.cross_attention(img_feat, text_feat, attention_mask)  # Shape: [B, H*W, C]
-
-        # Reshape it back to the image spatial dimensions [B, C, H, W]
-        refined_feat = refined_feat.view(B, C, H, W)
+        # cross-attn with residual
+        refined = self.cross_norm(img_feat + self.cross_attention(img_feat, text_feat, attention_mask))
+        refined = refined.transpose(1, 2).view(B, C, H, W)
 
         # Pass the refined features through the final convolution
-        return torch.tanh(self.conv(refined_feat))
+        return torch.tanh(self.conv(refined))
     
 class CNNTextConditionedDecoder(nn.Module):
     def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         #Conv layer to map latent channel to dim
-        self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
+        self.mapping_conv = nn.Conv2d(2*latent_channel, dim, 1)
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
@@ -449,13 +445,13 @@ class CNNTextConditionedDecoder(nn.Module):
         self.text_encoder.eval()
         self.text_dim=self.text_encoder.config.hidden_size
         self.text_adapter = MLP(self.text_dim, self.text_dim, [64, 256], hidden_activation = 'gelu', norm='ln')
-        self.attention = TransformerCrossAttention(latent_channel, self.text_dim, n_heads=2)
+        self.text_to_latent = nn.Linear(self.text_dim, latent_channel)
         
         self.blocks=nn.ModuleList()
         self.ups=nn.ModuleList()
         
         for i in range(n_upsample):
-            self.blocks.append(CrossAttentionFiLMSpatial(dim,latent_channel,self.text_dim, i))
+            self.blocks.append(CrossAttentionFiLMSpatial(dim,2*latent_channel,self.text_dim, i))
             self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
             dim //= 2
             
@@ -464,13 +460,14 @@ class CNNTextConditionedDecoder(nn.Module):
     def forward(self,z,text_tockens, attention_mask):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
-        B, C, H, W = z.shape
-        # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
-        z = z.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
-        # Reshape it back to the image spatial dimensions [B, C, H, W]
-        z = self.attention(z, self.text_feats).view(B, C, H, W)
+        # Expand text_feat to spatial (broadcast over H_z, W_z)
+        text_global = self.text_feats.mean(dim=1)  # [B, D]
+        text_proj = self.text_to_latent(text_global).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1]
+        text_proj = text_proj.expand(-1, -1, z.size(2), z.size(3))  # match z spatial size
+
+        z = torch.cat([z, text_proj], dim=1)  # concat along channel
         x = self.mapping_conv(z)
-        for blk,up in zip(self.blocks,self.ups):
+        for blk,up in zip(self.blocks,self.ups, ):
             x=blk(x,z,self.text_feats, attention_mask)
             x=up(x)
         return self.final(x, self.text_feats, attention_mask)
