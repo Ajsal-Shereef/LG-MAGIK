@@ -394,7 +394,7 @@ class CrossAttentionFiLMSpatial(nn.Module):
         out = out * (1 + gamma) + beta
 
         out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # (B, N, C)
-        out_flat = out_flat + self.cross(out_flat, text_feat, attention)
+        out_flat = self.cross(out_flat, text_feat, attention)
         out_flat = self.cross_norm(out_flat.permute(0, 2, 1).view(B, C, H, W)) 
 
         return self.act(out)
@@ -424,7 +424,7 @@ class FinalTextConditionedOutput(nn.Module):
         img_feat = x.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
 
         # cross-attn with residual
-        refined = self.cross_norm(img_feat + self.cross_attention(img_feat, text_feat, attention_mask))
+        refined = self.cross_norm(self.cross_attention(img_feat, text_feat, attention_mask))
         refined = refined.transpose(1, 2).view(B, C, H, W)
 
         # Pass the refined features through the final convolution
@@ -435,7 +435,7 @@ class CNNTextConditionedDecoder(nn.Module):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         #Conv layer to map latent channel to dim
-        self.mapping_conv = nn.Conv2d(2*latent_channel, dim, 1)
+        self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
@@ -449,10 +449,12 @@ class CNNTextConditionedDecoder(nn.Module):
         
         self.blocks=nn.ModuleList()
         self.ups=nn.ModuleList()
-        
+        self.conv = nn.ModuleList()
+
         for i in range(n_upsample):
-            self.blocks.append(CrossAttentionFiLMSpatial(dim,2*latent_channel,self.text_dim, i))
-            self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
+            self.blocks.append(CrossAttentionFiLMSpatial(dim,latent_channel,self.text_dim, i))
+            self.ups.append(nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False))
+            self.conv.append(nn.Conv2d(dim, dim//2, 3, 1, 1))
             dim //= 2
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
@@ -461,15 +463,16 @@ class CNNTextConditionedDecoder(nn.Module):
         self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)
-        text_global = self.text_feats.mean(dim=1)  # [B, D]
-        text_proj = self.text_to_latent(text_global).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1]
-        text_proj = text_proj.expand(-1, -1, z.size(2), z.size(3))  # match z spatial size
+        # text_global = self.text_feats.mean(dim=1)  # [B, D]
+        # text_proj = self.text_to_latent(text_global).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1]
+        # text_proj = text_proj.expand(-1, -1, z.size(2), z.size(3))  # match z spatial size
 
-        z = torch.cat([z, text_proj], dim=1)  # concat along channel
+        # z = torch.cat([z, text_proj], dim=1)  # concat along channel
         x = self.mapping_conv(z)
-        for blk,up in zip(self.blocks,self.ups, ):
+        for blk,up,conv in zip(self.blocks,self.ups,self.conv):
             x=blk(x,z,self.text_feats, attention_mask)
             x=up(x)
+            x=conv(x)
         return self.final(x, self.text_feats, attention_mask)
     
 class CNNTwoLatentDecoder(nn.Module):
