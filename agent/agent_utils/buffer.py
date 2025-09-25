@@ -160,10 +160,10 @@ class PrioritizedReplayBuffer:
         is_weights /= is_weights.max()
         
         # Convert to tensors
-        states = torch.from_numpy(np.stack([e[0] for e in batch])).float().to(self.device)
+        states = torch.stack([e[0] for e in batch]).to(self.device)
         actions = torch.from_numpy(np.vstack([e[1] for e in batch])).long().to(self.device)
         rewards = torch.from_numpy(np.vstack([e[2] for e in batch])).float().to(self.device)
-        next_states = torch.from_numpy(np.stack([e[3] for e in batch])).float().to(self.device)
+        next_states = torch.stack([e[3] for e in batch]).to(self.device)
         truncated = torch.from_numpy(np.vstack([e[4] for e in batch]).astype(np.uint8)).float().to(self.device)
         terminated = torch.from_numpy(np.vstack([e[5] for e in batch]).astype(np.uint8)).float().to(self.device)
         

@@ -14,7 +14,7 @@ network:
   paddings: [0, 1, 1]
   cnn_activ: relu
   use_maxpool: true
-  fc_input_size : 100
+  fc_input_size : 800
   fc_hidden_sizes: [100, 100]
   fc_hidden_activation: relu
   fc_output_activation: identity
@@ -41,7 +41,7 @@ training:
   tau: 5.0e-3
   target_update_frequency: 1000
   initial_random_samples: 4000
-  learn_after: 10000
+  learn_after: 5000
   epsilon_start: 1.0
   epsilon_end: 0.01
   epsilon_decay: 20000

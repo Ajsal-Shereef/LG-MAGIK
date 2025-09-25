@@ -26,6 +26,8 @@ class DQN(nn.Module):
         self.critic = CNNCritic(**kwargs).to(device)
         self.critic_target = CNNCritic(**kwargs).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
+        
+        self.action_size = kwargs["action_dim"]
 
     def initialise_buffer(self, config):
         #Buffer for storing the experience
@@ -67,7 +69,7 @@ class DQN(nn.Module):
                 state = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 self.critic.eval()
-                q = self.critic(state)
+                q = self.critic(state)[0]
                 self.critic.train()
             return q.argmax().item()
     
@@ -88,17 +90,17 @@ class DQN(nn.Module):
         # ---------------------------- Critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
         with torch.no_grad():
-            Q_next = self.critic(next_states)
+            Q_next = self.critic(next_states)[0]
             next_actions = Q_next.argmax(dim=1, keepdim=True)
             
-            Q_target_next = self.critic_target(next_states)
+            Q_target_next = self.critic_target(next_states)[0]
             Q_target_next = Q_target_next.gather(1, next_actions)
 
             # Compute Q targets for current states (y_i)
             Q_targets = rewards + (self.gamma * (1 - done) * Q_target_next) 
 
         # Compute critic loss
-        q = self.critic(states)
+        q = self.critic(states)[0]
         action_q_values = q.gather(1, actions.long())
         if self.use_per:
             critic_loss = (is_weights.unsqueeze(1) * F.smooth_l1_loss(action_q_values, Q_targets, reduction="none")).mean()

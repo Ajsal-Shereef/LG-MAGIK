@@ -343,7 +343,7 @@ class CrossAttentionFiLMSpatial(nn.Module):
     """
     FiLM and Cross-Attention block adapted for a SPATIAL latent code z.
     """
-    def __init__(self, channels, latent_channels, text_dim, layer_idx, norm = "ln"):
+    def __init__(self, channels, latent_channels, text_dim, layer_idx, norm = "bn"):
         super().__init__()
 
         # 1x1 Convolution to match latent channels to feature map channels

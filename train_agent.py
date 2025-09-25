@@ -28,7 +28,7 @@ def train(args: DictConfig) -> None:
         raise NotImplementedError("The environment is not implemented yet")
     
     if args.use_wandb:
-        wandb.init(project="LG-MAGIK", name=f"{args.agent.Network.name}_{args.env.name}", config=OmegaConf.to_container(args, resolve=True))
+        wandb.init(project="LG-MAGIK", name=f"{args.agent.name}_{args.env.name}", config=OmegaConf.to_container(args, resolve=True))
 
     print("[INFO] Agent name: ", args.agent.name)
     print("[INFO] Env:", args.env.name)
@@ -49,23 +49,31 @@ def train(args: DictConfig) -> None:
     # Initialise the optimizer
     agent.set_optimizer(args.agent.hyperparameters)
     
-    # model_dir = create_dump_directory(f"model_weights/{args.agent.Network.name}")
-    # print("[INFO] Dump dir: ", model_dir)
+    model_dir = create_dump_directory(f"model_weights/{args.agent.name}")
+    print("[INFO] Dump dir: ", model_dir)
     
-    #Dumping the training config files
-    # config_path = os.path.join(model_dir, "config.yaml")
-    # OmegaConf.save(config=args, f=config_path)
+    # Dumping the training config files
+    config_path = os.path.join(model_dir, "config.yaml")
+    OmegaConf.save(config=args, f=config_path)
+    
+    train_transforms = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5]),
+        transforms.Lambda(lambda x: x.to(device))
+    ])
     
     env_total_steps = 0
     env_episode_steps = 0
     env_episodes = 0
     agent.do_pre_task_proceessing()   
     state, info = env.reset()
+    state = train_transforms(state)
     cumulative_reward = 0
     average_episodic_return = deque(maxlen=10)
     for i in range(1, args.env.total_timestep+1):
         action = agent.get_action(state, env_total_steps)
         next_state, reward, terminated, truncated, info = env.step(action)
+        next_state = train_transforms(next_state)
         done = terminated or truncated
         agent.add_transition_to_buffer((state, action, reward, next_state, terminated, truncated))
         metric = agent.learn(env_total_steps)
@@ -81,6 +89,7 @@ def train(args: DictConfig) -> None:
         metric["Buffer size"] = agent.buffer.__len__()
         if done:
             state, info = env.reset()
+            state = train_transforms(state)
             env_episodes += 1
             average_episodic_return.append(cumulative_reward)
             env_episode_steps = 0
