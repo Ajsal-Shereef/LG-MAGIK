@@ -1,0 +1,52 @@
+# General agent and path configuration
+_target_: agents.dqn.DQN
+video_save_path: results
+name: DQN
+
+# Network architecture parameters
+network:
+  _target_: agent.dqn.DQN
+  input_dim: ??? # Must be specified
+  action_dim: ??? # Must be specified
+  channels: [32, 32, 32]
+  kernel_sizes: [8, 4, 3]
+  strides: [4, 2, 1]
+  paddings: [0, 1, 1]
+  cnn_activ: relu
+  use_maxpool: true
+  fc_input_size : 100
+  fc_hidden_sizes: [100, 100]
+  fc_hidden_activation: relu
+  fc_output_activation: identity
+  norm : ln
+  dropout_prob: 0
+
+# Core learning hyperparameters
+hyperparameters:
+  lr: 1.0e-4
+  batch_size: 100
+  buffer_size: 100000
+  clip_grad_param: 10
+  use_per: true # Prioritized Experience Replay
+  betas:
+  - 0.9
+  - 0.999
+  weight_decay: 0.01
+  eps: 1.0e-08
+
+# Training and exploration strategy
+training:
+  hard_update: true
+  gamma: 0.99
+  tau: 5.0e-3
+  target_update_frequency: 1000
+  initial_random_samples: 4000
+  learn_after: 10000
+  epsilon_start: 1.0
+  epsilon_end: 0.01
+  epsilon_decay: 20000
+
+# Testing and evaluation settings
+evaluation:
+  test_episodes: 10
+  checkpoint: model_weights/DQN/2025-09-10_11-14-12_4ZNOLK/
