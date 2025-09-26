@@ -341,65 +341,65 @@ class CrossAttentionFiLM(nn.Module):
     
 class CrossAttentionFiLMSpatial(nn.Module):
     """
-    FiLM and Cross-Attention block adapted for a SPATIAL latent code z.
+    FiLM + Residual Cross-Attention block with learnable gate,
+    adapted for SPATIAL latent code z.
     """
-    def __init__(self, channels, latent_channels, text_dim, layer_idx, norm = "bn"):
+    def __init__(self, channels, latent_channels, text_dim, layer_idx, norm="ln"):
         super().__init__()
 
-        # 1x1 Convolution to match latent channels to feature map channels
+        # Project latent z to same channel size
         self.z_conv = nn.Conv2d(latent_channels, channels, 1)
-        
-        # Dynamically set kernel size, stride, padding based on layer index (layer_idx)
-        kernel_size = 2 ** (layer_idx)  # 2^(i) for the kernel size
-        stride = 2 ** (layer_idx)      # 2^(i) for stride
-        padding = 0                    # No padding
 
-        # Define deconvolution layer with dynamic parameters
-        self.z_deconv = nn.ConvTranspose2d(channels, channels, kernel_size=kernel_size, stride=stride, padding=padding)
-        
-        # FiLM: Linear layer to generate gamma and beta
+        # safer upsampling: bilinear + conv
+        self.upsample = nn.Sequential(
+            nn.Upsample(scale_factor=2**layer_idx, mode="bilinear", align_corners=False),
+            nn.Conv2d(channels, channels, 3, 1, 1)
+        )
+
+        # FiLM: gamma, beta from latent
         self.film = nn.Linear(channels, 2 * channels)
-        
-        # Standard convolution and normalization
+
+        # Local conv processing
         self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
         self.norm = get_normalisation_2d(norm, channels)
-        
-        # Cross-attention layer
+
+        # Cross-attention
         self.cross = TransformerCrossAttention(channels, text_dim)
-        
-        # Activation function (GELU)
+        self.cross_norm = get_normalisation_2d(norm, channels)
+
+        # Activation
         self.act = nn.GELU()
 
     def forward(self, x, z, text_feat, attention):
-        """
-        Args:
-            x (torch.Tensor): Main feature map (B, C, H, W)
-            z (torch.Tensor): SPATIAL latent code (B, latent_channels, H_z, W_z)
-            text_feat (torch.Tensor): Text features (B, T, D)
-        """
-        B, C, H, W = x.shape  # Feature map size
+        B, C, H, W = x.shape
 
         # --- latent projection & upsample ---
-        z_proj = self.z_conv(z)          # (B, C, H_z, W_z)
-        z_proj = self.z_deconv(z_proj)   # -> match x spatial size
+        z_proj = self.z_conv(z)                
+        z_proj = self.upsample(z_proj)          # -> match x spatial size
+        assert z_proj.shape[2:] == (H, W), f"z_proj {z_proj.shape}, x {x.shape}"
 
-        # --- FiLM ---
-        z_flat = z_proj.flatten(2).permute(0, 2, 1)  # (B, H*W, C)
+        # --- FiLM modulation ---
+        z_flat = z_proj.flatten(2).permute(0, 2, 1)    # (B, N, C)
         gamma, beta = self.film(z_flat).chunk(2, dim=-1)
 
         out = self.conv(x)
         out = self.norm(out)
 
         gamma = gamma.view(B, H, W, C).permute(0, 3, 1, 2)
-        beta = beta.view(B, H, W, C).permute(0, 3, 1, 2)
+        beta  = beta.view(B, H, W, C).permute(0, 3, 1, 2)
 
         out = out * (1 + gamma) + beta
 
-        out_flat = out.view(B, C, H*W).permute(0, 2, 1)  # (B, N, C)
-        out_flat = self.cross(out_flat, text_feat, attention)
+        # --- Cross-attention residual ---
+        out_flat = out.view(B, C, H*W).permute(0, 2, 1)   # (B, N, C)
+        attn_out = self.cross(out_flat, text_feat, attention)  # (B, N, C)
+        attn_out = attn_out.permute(0, 2, 1).contiguous().view(B, C, H, W)
+
+        #residual connection
+        out = out + self.cross_norm(attn_out)
 
         return self.act(out)
-    
+
 class FinalTextConditionedOutput(nn.Module):
     def __init__(self, in_channels, out_channels, text_dim, n_heads=8):
         super().__init__()
@@ -450,9 +450,11 @@ class CNNTextConditionedDecoder(nn.Module):
         
         self.blocks=nn.ModuleList()
         self.ups=nn.ModuleList()
+        self.conv = nn.ModuleList()
         for i in range(n_upsample):
             self.blocks.append(CrossAttentionFiLMSpatial(dim,2*latent_channel,self.text_dim, i))
-            self.ups.append(nn.ConvTranspose2d(dim, dim//2,4,2,1))
+            self.ups.append(nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False))
+            self.conv.append(nn.Conv2d(dim, dim//2, 3, 1, 1))
             dim //= 2
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
@@ -471,9 +473,10 @@ class CNNTextConditionedDecoder(nn.Module):
         # # Reshape it back to the image spatial dimensions [B, C, H, W]
         # z = self.attention(z, self.text_feats).transpose(1, 2).view(B, C, H, W)
         x = self.mapping_conv(z)
-        for blk,up in zip(self.blocks, self.ups):
+        for blk,up,conv in zip(self.blocks, self.ups, self.conv):
             x=blk(x,z,self.text_feats, attention_mask)
             x=up(x)
+            x=conv(x)
         return self.final(x, self.text_feats, attention_mask)
     
 class CNNTwoLatentDecoder(nn.Module):
