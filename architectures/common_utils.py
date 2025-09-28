@@ -45,6 +45,14 @@ def get_env(config):
         raise NotImplementedError("The environment is not implemented yet")
     return env
 
+def get_train_transform():
+    train_transforms = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5]),
+        transforms.Lambda(lambda x: x.to(device))
+    ])
+    return train_transforms
+
 def rollout(env, remaining_steps, collect_data=False):
     paired_data = []
     obs, info = env.reset()
@@ -971,7 +979,7 @@ def zip_strict(*iterables: Iterable) -> Iterable:
             raise ValueError("Iterables have different lengths")
         yield combo
     
-def save_gif(frames, episode, dump_dir, duration=100):
+def save_gif(frames, episode, dump_dir, fps):
     os.makedirs(dump_dir, exist_ok=True)
     gif_path = os.path.join(dump_dir, f'{episode}.gif')
     
@@ -980,7 +988,7 @@ def save_gif(frames, episode, dump_dir, duration=100):
         gif_path,
         save_all=True,
         append_images=pil_frames[1:],
-        duration=duration,
+        duration=int(1000 / fps),
         loop=0
     )
 

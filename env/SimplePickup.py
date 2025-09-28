@@ -74,7 +74,7 @@ class SimplePickup(MiniGridEnv):
 
     @staticmethod
     def _gen_mission():
-        return "Fetch the Red and Green balls and avoid others"
+        return "Fetch the Red ball"
 
     def reset(self, *, seed=None, options=None):
         self.current_type = random.choice(self.allowed_types)
@@ -115,7 +115,11 @@ class SimplePickup(MiniGridEnv):
         ball_index, layout_id = self.current_type
         ball_ids = self.ball_combinations[ball_index]
         ball_colors = [self.all_colors[i] for i in ball_ids]
-    
+        
+        if 'red' in ball_colors:
+            self.mission = "Fetch the Red ball"
+        if 'green' in ball_colors:
+            self.mission = "Fetch the Green ball"
         # Define gate position based on layout
         gate_pos = None
         # gate_pos = (width // 2, height // 2)  # vertical wall with gate
@@ -130,8 +134,6 @@ class SimplePickup(MiniGridEnv):
                 Ball(color),
                 reject_fn=lambda _, pos: self.grid.get(*pos) is not None or pos == gate_pos
             )
-    
-        self.mission = self._gen_mission()
         
     def get_object_name(self, obj_type, obj_color, obj_state):
         """Returns a string description of an object based on its type, color, and state."""

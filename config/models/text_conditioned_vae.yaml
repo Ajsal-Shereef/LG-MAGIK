@@ -68,4 +68,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/TextConditionedVAE/2025-09-25_19-36-53_KFWNRG
+  model_dir: model_weights/TextConditionedVAE/2025-09-26_19-25-12_7W466E

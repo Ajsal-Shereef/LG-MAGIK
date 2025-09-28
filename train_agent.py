@@ -19,7 +19,7 @@ def train(args: DictConfig) -> None:
     
     if args.env.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
-        env = SimplePickup(args.env)
+        env = SimplePickup(args.env, mode="Test")
         from minigrid.wrappers import RGBImgPartialObsWrapper
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
@@ -56,11 +56,7 @@ def train(args: DictConfig) -> None:
     config_path = os.path.join(model_dir, "config.yaml")
     OmegaConf.save(config=args, f=config_path)
     
-    train_transforms = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5]),
-        transforms.Lambda(lambda x: x.to(device))
-    ])
+    train_transforms = get_train_transform()
     
     env_total_steps = 0
     env_episode_steps = 0
@@ -99,11 +95,12 @@ def train(args: DictConfig) -> None:
         if args.use_wandb and env_total_steps%args.log_every==0:
             wandb.log(metric)
         if i % args.save_every == 0:
-            agent.save(f"{model_dir}/", save_name=f"{args.agent.Network.name}")
+            agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
     agent.eval()
-    agent.test(env, args.env.fps)
+    dump_dir = args.agent.video_save_path + f"/{args.agent.name}"
+    agent.test(env, args.env.fps, dump_dir)
     #Saving the model
-    agent.save(f"{model_dir}/", save_name=f"{args.agent.Network.name}")
+    agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
     
 if __name__ == "__main__":
     train()

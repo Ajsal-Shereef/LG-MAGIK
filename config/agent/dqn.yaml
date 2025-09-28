@@ -1,6 +1,6 @@
 # General agent and path configuration
 _target_: agents.dqn.DQN
-video_save_path: results
+video_save_path: result
 name: DQN
 
 # Network architecture parameters

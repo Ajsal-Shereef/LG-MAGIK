@@ -11,7 +11,7 @@ from PIL import Image
 from torch.nn.utils import clip_grad_norm_
 from agent.agent_utils.networks import CNNCritic
 from agent.agent_utils.buffer import ReplayBuffer, PrioritizedReplayBuffer
-from architectures.common_utils import save_gif, zip_strict
+from architectures.common_utils import save_gif, zip_strict, get_train_transform
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -158,21 +158,21 @@ class DQN(nn.Module):
     def do_post_task_processing(self):
         self.buffer.clear()
         
-    def test(self, env, fps):
+    def test(self, env, fps, dump_dir, test_episodes=10):
         """Test the agent in the environment."""
-        dump_dir = f"{self.video_dir}/{env.name}/{self.agent_name}"
         epsilon = self.epsilon
         self.epsilon = 0
-        for episode in range(self.test_episodes):
+        train_transform = get_train_transform()
+        for episode in range(test_episodes):
             frame_array = []
             state, info = env.reset()
-            frame_array.append(env.get_frame())
+            frame_array.append(state)
             cumulative_reward = 0
             done = False
             while not done:
-                action = self.get_action(state, self.initial_random_samples+1)
+                action = self.get_action(train_transform(state), self.initial_random_samples+1)
                 next_state, reward, truncated, terminated, _ = env.step(action)
-                frame_array.append(env.get_frame())
+                frame_array.append(next_state)
                 done = truncated + terminated
                 cumulative_reward += reward
                 state = next_state
@@ -185,14 +185,14 @@ class DQN(nn.Module):
         params = torch.load(path + "DQN.tar", map_location=device, weights_only=True)
         self.critic.load_state_dict(params["critic"])
         self.critic_target.load_state_dict(self.critic.state_dict())
-        self.critic_optimizer.load_state_dict(params["critic_optim"])
+        self.critic.load_state_dict(params["critic_optim"])
         print("[INFO] loaded the DQN model", path)
 
     def save(self, dump_dir, save_name):
         """Save model and optimizer parameters."""
         params = {
                 "critic": self.critic.state_dict(),
-                "critic_optim" : self.critic_optimizer.state_dict(),
+                "critic_optim" : self.critic.state_dict(),
                 }
         save_dir = dump_dir
         if not os.path.exists(save_dir):
