@@ -3,7 +3,9 @@ import pickle
 import numpy as np
 import random
 import torch
+from PIL import Image
 from collections import deque, namedtuple
+from architectures.common_utils import get_train_transform
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
@@ -20,6 +22,7 @@ class ReplayBuffer:
         self.memory = deque(maxlen=buffer_size)  
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "truncated", "terminated"])
+        self.train_transform = get_train_transform()
     
     def add(self, transition):
         """Add a new experience to memory."""
@@ -40,16 +43,13 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
 
-        if isinstance(experiences[0].state, np.ndarray):
-            states = torch.from_numpy(np.stack([e.state for e in experiences if e is not None])).float().to(self.device)
-            next_states = torch.from_numpy(np.stack([e.next_state for e in experiences if e is not None])).float().to(self.device)
-        else:
-            states = torch.stack([e.state for e in experiences if e is not None]).float().squeeze().to(self.device)
-            next_states = torch.stack([e.next_state for e in experiences if e is not None]).squeeze().float().to(self.device)
-        actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).float().to(self.device)
-        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(self.device)
-        truncated = torch.from_numpy(np.vstack([e.truncated for e in experiences if e is not None]).astype(np.uint8)).float().to(self.device)
-        terminated = torch.from_numpy(np.vstack([e.terminated for e in experiences if e is not None]).astype(np.uint8)).float().to(self.device)
+        # Convert to tensors
+        states = torch.stack([self.train_transform(e[0]) for e in experiences]).to(self.device)
+        actions = torch.from_numpy(np.vstack([e[1] for e in experiences])).long().to(self.device)
+        rewards = torch.from_numpy(np.vstack([e[2] for e in experiences])).float().to(self.device)
+        next_states = torch.stack([self.train_transform(e[3]) for e in experiences]).to(self.device)
+        truncated = torch.from_numpy(np.vstack([e[4] for e in experiences]).astype(np.uint8)).float().to(self.device)
+        terminated = torch.from_numpy(np.vstack([e[5] for e in experiences]).astype(np.uint8)).float().to(self.device)
         
         return (states, actions, rewards, next_states, truncated, terminated)
     
@@ -132,6 +132,7 @@ class PrioritizedReplayBuffer:
         self.frame = 1
         
         self.eps = 1e-5  # small value to avoid zero priority
+        self.train_transform = get_train_transform()
 
     def add(self, transition, priority=1.0):
         max_priority = np.max(self.tree.tree[-self.tree.capacity:])
@@ -160,10 +161,10 @@ class PrioritizedReplayBuffer:
         is_weights /= is_weights.max()
         
         # Convert to tensors
-        states = torch.stack([e[0] for e in batch]).to(self.device)
+        states = torch.stack([self.train_transform(e[0]) for e in batch]).to(self.device)
         actions = torch.from_numpy(np.vstack([e[1] for e in batch])).long().to(self.device)
         rewards = torch.from_numpy(np.vstack([e[2] for e in batch])).float().to(self.device)
-        next_states = torch.stack([e[3] for e in batch]).to(self.device)
+        next_states = torch.stack([self.train_transform(e[3]) for e in batch]).to(self.device)
         truncated = torch.from_numpy(np.vstack([e[4] for e in batch]).astype(np.uint8)).float().to(self.device)
         terminated = torch.from_numpy(np.vstack([e[5] for e in batch]).astype(np.uint8)).float().to(self.device)
         

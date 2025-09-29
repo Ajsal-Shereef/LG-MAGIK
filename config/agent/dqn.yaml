@@ -39,11 +39,11 @@ training:
   hard_update: true
   gamma: 0.99
   tau: 5.0e-3
-  target_update_frequency: 1000
-  initial_random_samples: 4000
+  target_update_frequency: 4000
+  initial_random_samples: 10000
   learn_after: 5000
   epsilon_start: 1.0
-  epsilon_end: 0.01
+  epsilon_end: 0.1
   epsilon_decay: 20000
 
 # Testing and evaluation settings

@@ -979,9 +979,9 @@ def zip_strict(*iterables: Iterable) -> Iterable:
             raise ValueError("Iterables have different lengths")
         yield combo
     
-def save_gif(frames, episode, dump_dir, fps):
+def save_gif(frames, episode, dump_dir, fps, save_name=""):
     os.makedirs(dump_dir, exist_ok=True)
-    gif_path = os.path.join(dump_dir, f'{episode}.gif')
+    gif_path = os.path.join(dump_dir, f'{episode}{save_name}.gif')
     
     pil_frames = [Image.fromarray(frame) for frame in frames]
     pil_frames[0].save(

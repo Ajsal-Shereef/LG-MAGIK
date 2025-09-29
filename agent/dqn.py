@@ -26,13 +26,15 @@ class DQN(nn.Module):
         self.critic = CNNCritic(**kwargs).to(device)
         self.critic_target = CNNCritic(**kwargs).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
+        for params in self.critic_target.parameters():
+            params.requires_grad = False
         
         self.action_size = kwargs["action_dim"]
 
     def initialise_buffer(self, config):
         #Buffer for storing the experience
         self.use_per = config.use_per
-        self.batch_size = config.buffer_size
+        self.batch_size = config.batch_size
         if self.use_per:
             self.buffer = PrioritizedReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device)
         else:
@@ -53,7 +55,7 @@ class DQN(nn.Module):
         
     def set_optimizer(self, cfg):
         self.optimizer = optim.AdamW(
-                                        self.parameters(),
+                                        self.critic.parameters(),
                                         lr=cfg.lr,
                                         betas=tuple(cfg.betas),
                                         weight_decay=cfg.weight_decay,
@@ -66,6 +68,7 @@ class DQN(nn.Module):
             return random.randrange(self.action_size)
         else:
             if isinstance(state, np.ndarray):
+                raise ValueError("Not implemented")
                 state = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 self.critic.eval()
@@ -78,7 +81,7 @@ class DQN(nn.Module):
         DQN update rule
         """
         
-        if len(self.buffer) < self.batch_size and timstep < self.learn_after:
+        if len(self.buffer) < self.batch_size or timstep < self.learn_after:
             return {}
         
         if self.use_per:
@@ -164,20 +167,24 @@ class DQN(nn.Module):
         self.epsilon = 0
         train_transform = get_train_transform()
         for episode in range(test_episodes):
-            frame_array = []
+            frame_array_partial = []
+            frame_array_full = []
             state, info = env.reset()
-            frame_array.append(state)
+            frame_array_partial.append(state)
+            frame_array_full.append(env.unwrapped.get_frame())
             cumulative_reward = 0
             done = False
             while not done:
                 action = self.get_action(train_transform(state), self.initial_random_samples+1)
                 next_state, reward, truncated, terminated, _ = env.step(action)
-                frame_array.append(next_state)
+                frame_array_partial.append(next_state)
+                frame_array_full.append(env.unwrapped.get_frame())
                 done = truncated + terminated
                 cumulative_reward += reward
                 state = next_state
             # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
-            save_gif(frame_array, episode, dump_dir, fps=fps)
+            save_gif(frame_array_partial, episode, dump_dir, fps=fps, save_name= " partial")
+            save_gif(frame_array_full, episode, dump_dir, fps=fps, save_name= " full")
         self.epsilon = epsilon
         
     def load_params(self, path):
