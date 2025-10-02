@@ -1,0 +1,22 @@
+name : "PickEnv"
+width : 128
+height : 128
+max_steps : 200
+ssaa_scale : 3          # 1 disables supersampling; 2–3 recommended
+render_scale : 2        # window scale for human view (e.g., 2x)
+agent_shape : "triangle" # "triangle" or "disk"
+light_weight_threshold : 3
+heavy_weight_threshold : 6
+approach_force_penalty : 0.01
+approach_reward_coeff : 0.1
+force_penalty_coeff : 2
+verbose : false
+
+# New key for mode control
+mode: "collect_data"  # or "train/collect_data"
+total_timestep : 1000000
+validation_prompts :
+  - Agent sees nothing.
+  - Agent sees a light circle at bearing 161 degrees which is 14.7 units apart.
+  - Agent sees a heavy square at bearing -91 degrees which is 15.5 units apart.
+  - Agent sees a light square at bearing -78 degrees which is 20.8 units apart.

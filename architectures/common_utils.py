@@ -5,6 +5,7 @@ import random
 import string
 import numpy as np
 import torch
+import requests
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
@@ -63,7 +64,7 @@ def rollout(env, remaining_steps, collect_data=False):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
         if collect_data:
-            paired_data.append({"frame" : obs["image"], "description" : info["description"]})
+            paired_data.append({"frame" : obs, "description" : info["description"]})
         else:
             env.render()
         steps += 1
@@ -961,6 +962,60 @@ def write_video(frames, episode, dump_dir, frameSize=(224, 224)):
     for img in frames:
         video.write(img)
     video.release()
+    
+def query_openrouter(system: str, prompt: str, api_key: str) -> str:
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "x-ai/grok-4-fast:free",
+        "temperature": 0.2,        # make output more precise, less random
+        "max_tokens": 500,
+        "messages": [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": prompt + "\n\nLet’s think step by step before the final answer."
+            },
+        ],
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code == 200:
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    else:
+        raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
+    
+    
+# def query_openrouter(system: str, prompt: str, api_key: str) -> str:
+#     """
+#     Sends a prompt to the OpenRouter API and returns the assistant's response.
+#     """
+#     url = "https://openrouter.ai/api/v1/chat/completions"
+#     headers = {
+#         "Authorization": f"Bearer {api_key}",
+#         "Content-Type": "application/json",
+#     }
+#     payload = {
+#         "model": "x-ai/grok-4-fast:free",
+#         "messages": [
+#             {
+#                 "role": "system",
+#                 "content": system,
+#             },
+#             {"role": "user", "content": prompt},
+#         ],
+#     }
+
+#     response = requests.post(url, headers=headers, json=payload)
+#     if response.status_code == 200:
+#         result = response.json()
+#         return result["choices"][0]["message"]["content"]
+#     else:
+#         raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
     
 def zip_strict(*iterables: Iterable) -> Iterable:
     r"""

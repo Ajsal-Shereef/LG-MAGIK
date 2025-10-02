@@ -15,13 +15,13 @@ from architectures.common_utils import save_gif, zip_strict, get_train_transform
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-class DQN(nn.Module):
+class SoftDQN(nn.Module):
     """Interacts with and learns from the environment."""
     
     def __init__(self, **kwargs):
         """Initialize an Agent object.
         """
-        super(DQN, self).__init__()
+        super(SoftDQN, self).__init__()
         
         self.critic = CNNCritic(**kwargs).to(device)
         self.critic_target = CNNCritic(**kwargs).to(device)
@@ -43,6 +43,7 @@ class DQN(nn.Module):
     def set_training_params(self, config):
         self.hard_update = config.hard_update
         self.gamma = config.gamma
+        self.alpha = config.alpha
         if not self.hard_update:
             self.tau = config.tau
         else:
@@ -69,20 +70,23 @@ class DQN(nn.Module):
             return random.randrange(self.action_size)
         else:
             if isinstance(state, np.ndarray):
-                raise ValueError("Not implemented")
                 state = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 self.critic.eval()
                 q = self.critic(state)[0]
                 self.critic.train()
-            return q.argmax().item()
+            if self.epsilon < 1e-6:
+                return q.argmax().item()
+            else:
+                probs = F.softmax(q / self.alpha, dim=0)
+                return torch.multinomial(probs, 1).item()
     
-    def learn(self, timstep):
+    def learn(self, timestep):
         """
-        DQN update rule
+        Soft DQN update rule
         """
         
-        if len(self.buffer) < self.batch_size or timstep < self.learn_after:
+        if len(self.buffer) < self.batch_size or timestep < self.learn_after:
             return {}
         
         if self.use_per:
@@ -92,16 +96,13 @@ class DQN(nn.Module):
         done = truncated + terminated
         #Compute losses--------------------------------------------------
         # ---------------------------- Critic ---------------------------- #
-        # Get predicted next-state actions and Q values from target models
+        # Get predicted next-state Q values from target model
         with torch.no_grad():
-            Q_next = self.critic(next_states)[0]
-            next_actions = Q_next.argmax(dim=1, keepdim=True)
-            
             Q_target_next = self.critic_target(next_states)[0]
-            Q_target_next = Q_target_next.gather(1, next_actions)
-
-            # Compute Q targets for current states (y_i)
-            Q_targets = rewards + (self.gamma * (1 - done) * Q_target_next) 
+            
+            # Compute V targets for current states (y_i)
+            V_target_next = self.alpha * torch.logsumexp(Q_target_next / self.alpha, dim=1, keepdim=True)
+            Q_targets = rewards + (self.gamma * (1 - done) * V_target_next) 
 
         # Compute critic loss
         q = self.critic(states)[0]
@@ -117,7 +118,7 @@ class DQN(nn.Module):
         self.optimizer.step()
         
         if self.use_per:
-            td_errors = Q_targets - action_q_values
+            td_errors = (Q_targets - action_q_values).detach()
             #Update the priorities
             self.buffer.update_priorities(idxs, td_errors.squeeze())
         
@@ -125,7 +126,7 @@ class DQN(nn.Module):
         if not self.hard_update:
             self.soft_update(self.critic, self.critic_target)
         else:
-            if timstep % self.target_update_freequency == 0:
+            if timestep % self.target_update_freequency == 0:
                 self.critic_target.load_state_dict(self.critic.state_dict())
         
         metric = {"Critic loss": critic_loss.item(), 
@@ -190,18 +191,18 @@ class DQN(nn.Module):
         params = torch.load(path + "SoftDQN.tar", map_location=device, weights_only=True)
         self.critic.load_state_dict(params["critic"])
         self.critic_target.load_state_dict(self.critic.state_dict())
-        self.critic.load_state_dict(params["critic_optim"])
-        print("[INFO] loaded the DQN model", path)
+        self.optimizer.load_state_dict(params["critic_optim"])
+        print("[INFO] loaded the SoftDQN model", path)
 
     def save(self, dump_dir, save_name):
         """Save model and optimizer parameters."""
         params = {
                 "critic": self.critic.state_dict(),
-                "critic_optim" : self.critic.state_dict(),
+                "critic_optim" : self.optimizer.state_dict(),
                 }
         save_dir = dump_dir
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
         checkpoint_path = save_dir + save_name + '.tar'
         torch.save(params, checkpoint_path)
-        print("[INFO] DQN model saved to: ", checkpoint_path)
+        print("[INFO] SoftDQN model saved to: ", checkpoint_path)

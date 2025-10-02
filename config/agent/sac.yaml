@@ -1,0 +1,52 @@
+# General agent and path configuration
+_target_: agents.sac.SAC
+video_save_path: result
+name: SAC
+
+# Network architecture parameters
+network:
+  _target_: agent.sac.SAC
+  input_dim: ??? # Must be specified
+  action_dim: ??? # Must be specified
+  channels: [32, 64, 64, 64]
+  kernel_sizes: [8, 4, 3, 3]
+  strides: [4, 2, 2, 2]
+  paddings: [0, 0, 1, 1]
+  cnn_activ: relu
+  use_maxpool: true
+  fc_input_size: 256
+  fc_hidden_sizes: [128]
+  fc_hidden_activation: relu
+  fc_output_actor: 64  # Output size before mu and log_std layers in actor
+  fc_output_critic: 64  # Feature dim before Q layer in critic
+  dropout_prob: 0
+  norm: ln
+
+# Core learning hyperparameters
+hyperparameters:
+  actor_lr: 3.0e-4
+  critic_lr: 3.0e-4
+  batch_size: 256
+  buffer_size: 200000
+  clip_grad_param: 0.5
+  use_per: false  # Typically not used in SAC, but optional
+  betas:
+  - 0.9
+  - 0.999
+  weight_decay: 0.01
+  eps: 1.0e-08
+  alpha: "auto"  # Entropy regularization coefficient (or 'auto' for automatic tuning)
+
+# Training and exploration strategy
+training:
+  hard_update: false  # SAC typically uses soft updates
+  gamma: 0.99
+  tau: 5.0e-3
+  initial_random_samples: 50000  # Reduced for SAC as exploration is built-in
+  learn_after: 50000
+  mission: ???
+
+# Testing and evaluation settings
+evaluation:
+  test_episodes: 10
+  checkpoint: model_weights/SAC/2025-10-01_10-00-00_EXAMPLE/

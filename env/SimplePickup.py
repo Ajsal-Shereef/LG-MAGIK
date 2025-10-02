@@ -19,7 +19,7 @@ from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import WorldObj
 from minigrid.core.world_object import  Ball, Wall
-from minigrid.wrappers import RGBImgPartialObsWrapper
+from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
 from minigrid.utils.rendering import fill_coords, point_in_rect
 from minigrid.core.constants import OBJECT_TO_IDX, COLORS, COLOR_TO_IDX, STATE_TO_IDX
 
@@ -352,7 +352,7 @@ def main(args: DictConfig) -> None:
     env = SimplePickup(args, mode="collect_data")
     if is_collect_data:
         env = RGBImgPartialObsWrapper(env, tile_size=args.tile_size)
-        
+        env = ImgObsWrapper(env)
     paired_data = []
     # Total number of timesteps to collect
     total_training_data = 160000

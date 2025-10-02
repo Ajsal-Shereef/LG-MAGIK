@@ -14,7 +14,7 @@ from torchvision.utils import save_image
 from architectures.common_utils import grad_reverse
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
 from architectures.stochastic import GaussianSampleSpatial
-from architectures.common_utils import tokenize_captions
+from architectures.common_utils import tokenize_captions, get_train_transform
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -145,6 +145,20 @@ class TextConditionedVAE(nn.Module):
             "advesarial_loss" : disc_loss,
         }
         
+    def imagine(self, state, description):
+        train_transforms = get_train_transform()
+        images = [Image.fromarray(image).convert("RGB") for image in np.expand_dims(state, axis=0)]
+        state_tensor = torch.stack([train_transforms(image) for image in images])
+        tokeniser = self.decoder.tokenizer
+        captions_tokenised, attention_mask = tokenize_captions(tokeniser, {"text" : [description]}, "text")
+        captions_tokenised = captions_tokenised.to(device)
+        attention_mask = attention_mask.to(device)
+        out = self({"pixel_values" : state_tensor,
+                    "input_ids" : captions_tokenised,
+                    "attention_masks" : attention_mask})
+        imagined_state = ((out["reconstructed_x"].squeeze().detach().cpu().numpy()*0.5+0.5).transpose(1,2,0)* 255).astype(np.uint8)
+        return out["reconstructed_x"], imagined_state
+        
     def generate(self, output: dict, num_samples: int, device, *prompts) -> torch.Tensor:
         """
         Generates a comparison grid to visualize disentanglement.
@@ -223,7 +237,7 @@ class TextConditionedVAE(nn.Module):
         # --- Imports needed for drawing on the image ---
         from PIL import Image, ImageDraw, ImageFont
         import torchvision.transforms as transforms
-        from torchvision.utils import save_image, make_grid
+        from torchvision.utils import make_grid
         
         states = []
         descriptions = []
@@ -232,10 +246,7 @@ class TextConditionedVAE(nn.Module):
             descriptions.append(item["description"])
 
         # Normalising the datapoint to match the training datapoint
-        train_transforms = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ])
+        train_transforms = get_train_transform()
         images = [image.convert("RGB") for image in states]
         states_tensors = [train_transforms(image) for image in images]
         

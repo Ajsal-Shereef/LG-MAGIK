@@ -24,6 +24,16 @@ def train(args: DictConfig) -> None:
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
+    elif args.env.name ==  "Magik_env":
+        from env.Magik_env import MultiObjectMiniGridEnv
+        env = MultiObjectMiniGridEnv(args.env)
+        from minigrid.wrappers import RGBImgPartialObsWrapper
+        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+    elif args.env.name == "PickEnv":
+        from env.PickEnv import PickEnv
+        env = PickEnv(args.env)
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -35,7 +45,10 @@ def train(args: DictConfig) -> None:
     print(f"[INFO] Using device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
     
     #Make the agent
-    args.agent.network.action_dim = int(env.action_space.n)
+    if args.env.name == "PickEnv":
+        args.agent.network.action_dim = env.action_space.shape[0]
+    else:
+        args.agent.network.action_dim = int(env.action_space.n)
     args.agent.network.input_dim = int(env.observation_space.shape[-1])
     agent = hydra.utils.instantiate(args.agent.network)
     agent = agent.to(device)
@@ -45,6 +58,8 @@ def train(args: DictConfig) -> None:
     
     # Set training params
     agent.set_training_params(args.agent.training)
+    #Setting the mission for the agent
+    args.agent.training.mission = env.unwrapped.mission
     
     # Initialise the optimizer
     agent.set_optimizer(args.agent.hyperparameters)
@@ -60,14 +75,15 @@ def train(args: DictConfig) -> None:
     
     env_total_steps = 0
     env_episode_steps = 0
-    env_episodes = 0
-    agent.do_pre_task_proceessing()   
+    env_episodes = 0  
     state, info = env.reset()
     cumulative_reward = 0
     average_episodic_return = deque(maxlen=10)
     for i in range(1, args.env.total_timestep+1):
         action = agent.get_action(train_transforms(state), env_total_steps)
         next_state, reward, terminated, truncated, info = env.step(action)
+        if reward > 4.9:
+            print("Success")
         done = terminated or truncated
         agent.add_transition_to_buffer((state, action, reward, next_state, terminated, truncated))
         metric = agent.learn(env_total_steps)
@@ -94,7 +110,7 @@ def train(args: DictConfig) -> None:
         if i % args.save_every == 0:
             agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
     agent.eval()
-    dump_dir = args.agent.video_save_path + f"/{args.agent.name}"
+    dump_dir = args.agent.video_save_path + f"/{args.agent.name}/train"
     agent.test(env, args.env.fps, dump_dir)
     #Saving the model
     agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")

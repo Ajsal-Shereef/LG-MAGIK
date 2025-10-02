@@ -1,11 +1,11 @@
 # General agent and path configuration
-_target_: agents.dqn.DQN
+_target_: agents.softdqn.SoftDQN
 video_save_path: result
-name: DQN
+name: SoftDQN
 
 # Network architecture parameters
 network:
-  _target_: agent.dqn.DQN
+  _target_: agent.softdqn.SoftDQN
   input_dim: ??? # Must be specified
   action_dim: ??? # Must be specified
   channels: [32, 32, 32]
@@ -27,7 +27,7 @@ hyperparameters:
   batch_size: 100
   buffer_size: 100000
   clip_grad_param: 10
-  use_per: true # Prioritized Experience Replay
+  use_per: false # Prioritized Experience Replay
   betas:
   - 0.9
   - 0.999
@@ -38,6 +38,7 @@ hyperparameters:
 training:
   hard_update: true
   gamma: 0.99
+  alpha: 0.1
   tau: 5.0e-3
   target_update_frequency: 4000
   initial_random_samples: 10000
@@ -50,4 +51,4 @@ training:
 # Testing and evaluation settings
 evaluation:
   test_episodes: 10
-  checkpoint: model_weights/DQN/2025-09-30_12-50-17_T63KXV/
+  checkpoint: model_weights/SoftDQN/2025-10-01_12-00-00_EXAMPLE/

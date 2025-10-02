@@ -5,9 +5,19 @@ test_allowed_types : [[2,1]]
 highlight : false
 tile_size : 8
 max_steps : 50
-agent_view_size : 7
+agent_view_size : 9
 render_mode : "none"
 size : 10
 n_downsample : 3
-total_timestep : 200000
+total_timestep : 1000000
 fps : 2.5
+verbose : False
+validation_prompts :
+  - Agent is in a room surrounded by blue walls. Agent sees to the bottom left,
+    a blue ball which is 2 units apart at (2,5).
+  - Agent is in a room surrounded by blue walls. No other objects can be seen
+  - Agent is in a room surrounded by grey walls. Agent sees to the bottom right,
+    a yellow ball which is 2 units apart at (4,5).
+  - Agent is in a room surrounded by grey walls. Agent sees to the bottom left,
+    a yellow ball which is 2 units apart at (2,5) and to the bottom right, a green
+    ball which is 2 units apart at (5,6).

@@ -1,51 +1,78 @@
+import os
 import json
-import requests
+from dotenv import load_dotenv
+from architectures.common_utils import query_openrouter
 
-# OpenRouter API key
-API_KEY = "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"
+# Load the .env file
+load_dotenv(dotenv_path="config/.env")
 
-def query_openrouter(prompt: str) -> str:
-    """
-    Sends a prompt to the OpenRouter API and returns the assistant's response.
-    """
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "x-ai/grok-4-fast:free",
-        "messages": [
-            {"role": "system", "content": "You are an assistant that helps an RL agent adapt to a new target task by modifying scene descriptions."},
-            {"role": "user", "content": prompt}
-        ],
-    }
-
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    else:
-        raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
+# Access the API key
+api_key = os.getenv('API_KEY')
 
 if __name__ == "__main__":
+    # Example input for testing
     prompt = (
-        "The agent was trained on a source task (e.g., pick the green ball) but now needs to perform a target task (e.g., pick the red ball).\n\n"
-        "Rules:\n"
-        "- Extract the source object and target object from the given task specification.\n"
-        "- Whenever the target object appears in the scene, replace it with the source object (keeping position, distance, and all other details unchanged) "
-        "and return the output with \"imagine\" as true and \"description\" as the changed input description.\n"
-        "- If the target object does not appear in the scene, return the output with \"imagine\" as false without any description.\n\n"
-        "Return only valid JSON, with no extra text, no explanations, no code, no markdown.\n"
-        "Format:\n"
-        "{\n"
-        "  \"imagine\": true/false,\n"
-        "  \"description\": \"...\"\n"
-        "}\n\n"
-        "Source task: Pick orange ball\n"
-        "Target task: Pick blue ball\n"
-        "Input description: Agent sees to the bottom left, a yellow ball which is 2 units apart at (2,5) and to the bottom right, a blue ball which is 2 units apart at (5,6)."
+        "Target task: Pick only green ball.\n"
+        "Input description: Agent sees a green ball at (2,5) and a red ball at (4,5)."
     )
 
-    reply = json.loads(query_openrouter(prompt))
+    # System prompt: reasoning-based imagination (agent only knows pick red ball)
+    system_prompt = (
+        "You are an assistant that rewrites scene descriptions so an RL agent (which only knows a single skill) "
+        "can solve new target tasks by imagining alternative scenes. Use common-sense and logical reasoning "
+        "to produce the minimal scene-change that will allow the agent to use its known skill.\n\n"
+        "Goal:\n"
+        "- Given a Target task and an Input description of the current scene, produce a rewritten scene description "
+        "that, when imagined by the agent, makes the target task solvable using the agent's single known skill.\n"
+        "- The model should reason about which object(s) to change or remove, but must output only the final JSON (no explanations).\n\n"
+        "Imagination rules:\n"
+        "1. If the Target task is \"pick the green ball\" and the scene contains only a green ball (no red ball), "
+        "replace the green ball with a red ball at the same coordinates.\n"
+        "2. If the Target task is \"pick only the green ball\" and the scene contains both a red ball and a green ball, "
+        "remove the red ball, and replace the green ball with a red ball at the same coordinates.\n"
+        "   The final imagined scene should therefore contain only the single (imagined) red ball at the green ball's location.\n"
+        "3. Preserve all spatial details (positions, coordinates, distances) when making replacements or removals.\n"
+        "4. Do not introduce any new objects or change any other objects unless required by rules 1–2.\n"
+        "5. If the transformation above cannot be applied because the scene contains no relevant balls, return {\"imagine\": false}.\n\n"
+        "Output format (strict JSON only — no extra text, no markdown):\n"
+        "{\n"
+        "  \"imagine\": true|false,\n"
+        "  \"description\": \"<rewritten scene description>\"\n"
+        "}\n\n"
+        "Few-shot examples:\n\n"
+        "Example A:\n"
+        "Target task: Pick the green ball.\n"
+        "Input description: Agent sees a green ball at (2,5).\n"
+        "Output:\n"
+        "{\n"
+        "  \"imagine\": true,\n"
+        "  \"description\": \"Agent sees a red ball at (2,5).\"\n"
+        "}\n\n"
+        "Example B:\n"
+        "Target task: Pick only the green ball.\n"
+        "Input description: Agent sees a red ball at (3,4) and a green ball at (6,7).\n"
+        "Output:\n"
+        "{\n"
+        "  \"imagine\": true,\n"
+        "  \"description\": \"Agent sees a red ball at (6,7).\"\n"
+        "}\n\n"
+        "Example C:\n"
+        "Target task: Pick the green ball.\n"
+        "Input description: Agent sees an empty room.\n"
+        "Output:\n"
+        "{\n"
+        "  \"imagine\": false,\n"
+        "  \"description\": \"Agent sees an empty room.\"\n"
+        "}\n\n"
+        "Example D:\n"
+        "Target task: Pick the green ball.\n"
+        "Input description: Agent sees a green ball at (6,7) and a locked gate at (10,7).\n"
+        "Output:\n"
+        "{\n"
+        "  \"imagine\": true,\n"
+        "  \"description\": \"Agent sees a red ball at (6,7) and a locked gate at (10,7).\"\n"
+        "}\n"
+    )
+
+    reply = json.loads(query_openrouter(system_prompt, prompt, api_key))
     print("Response:", reply)

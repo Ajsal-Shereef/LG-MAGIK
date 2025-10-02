@@ -23,8 +23,8 @@ model:
   activ: selu
   pad_type: replicate
   encoder_final_dim:
-  - 7
-  - 7
+  - 11
+  - 11
   latent_channel: 4
   output_dim: 3
   text_encoder: ${models.data.text_encoder_path}
@@ -42,15 +42,7 @@ training:
   experiment_name: TextConditionedVAE
   log_media_interval: 8000
   log_values_and_images: false
-  validation_prompts:
-  - Agent is in a room surrounded by blue walls. Agent sees to the bottom left,
-    a blue ball which is 2 units apart at (2,5).
-  - Agent is in a room surrounded by blue walls. No other objects can be seen
-  - Agent is in a room surrounded by grey walls. Agent sees to the bottom right,
-    a yellow ball which is 2 units apart at (4,5).
-  - Agent is in a room surrounded by grey walls. Agent sees to the bottom left,
-    a yellow ball which is 2 units apart at (2,5) and to the bottom right, a green
-    ball which is 2 units apart at (5,6).
+  validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
   save_weight_freequency: 50
@@ -68,4 +60,5 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/TextConditionedVAE/2025-09-26_19-25-12_7W466E
+  model_dir: model_weights/TextConditionedVAE/2025-09-26_19-37-26_F2QPO6
+
