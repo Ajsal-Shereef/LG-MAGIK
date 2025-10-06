@@ -53,7 +53,7 @@ class TextConditionedVAE(nn.Module):
         """
         images = x["pixel_values"]
         text_tokens = x["input_ids"]
-        attention_mask = x["attention_masks"]
+        attention_mask = x["attention_mask"]
         # Encode the input to get the posterior distribution
         hidden = self.encoder(images)
         

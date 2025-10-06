@@ -40,8 +40,10 @@ class PickEnv(gym.Env):
         # Mode: "data_collection" or "train"
         self.mode = mode
 
-        # New: max per-step angle deviation at dist=1 (add to Hydra config)
+        # max per-step angle deviation at dist=1 (add to Hydra config)
         self.max_turn_rads = getattr(cfg, "max_turn_rads", 0.5)  # radians at dist=1
+        
+        self.observation_mode = getattr(cfg, "observation_mode", "image")
 
         # Actions: [angle_delta_cmd, distance, force], all in [-1, 1]
         self.action_space = spaces.Box(
@@ -49,12 +51,18 @@ class PickEnv(gym.Env):
             high=np.array([1.0, 1.0, 1.0], dtype=np.float32)
         )
 
-        # Observation: RGB image (H, W, 3) uint8
-        self.observation_space = spaces.Box(
-            low=0, high=255,
-            shape=(self.height, self.width, 3),
-            dtype=np.uint8
-        )
+        if self.observation_mode == "feature":
+            # 12 features: sin/cos angle, rel pos, rel bearing, one-hot type/weight, status
+            feature_dim = 12
+            self.observation_space = spaces.Box(
+                low=-1.0, high=1.0, shape=(feature_dim,), dtype=np.float32
+            )
+        else: # Default to image
+            self.observation_space = spaces.Box(
+                low=0, high=255,
+                shape=(self.height, self.width, 3),
+                dtype=np.uint8
+            )
 
         # Internal state
         self.reset_state()
@@ -135,7 +143,7 @@ class PickEnv(gym.Env):
         color_str = "green" if obj_weight == "light" else "red"
         self.mission = f"Pick the {color_str} {self.object['type']} without breaking it. Apply minimum force!"
     
-        # New: Resample object until no initial overlap
+        # Resample object until no initial overlap
         max_resamples = 50  # Prevent infinite loop (rare)
         for _ in range(max_resamples):
             if self.object["type"] == "circle":
@@ -161,6 +169,7 @@ class PickEnv(gym.Env):
     
         self.steps = 0
         self.done = False
+        self.last_action_status = None
         
     def _get_description(self):
         weight_str = "light" if self.object["weight"] == "light" else "heavy"
@@ -197,6 +206,7 @@ class PickEnv(gym.Env):
         return self._get_obs(), info
 
     def step(self, action):
+        self.last_action_status = None
         # Map actions from [-1, 1] to original ranges
         mapped_angle_delta_cmd = np.pi * float(action[0])  # [-1, 1] -> [-pi, pi]
         mapped_dist = (float(action[1]) + 1.0) / 2.0       # [-1, 1] -> [0, 1]
@@ -205,7 +215,7 @@ class PickEnv(gym.Env):
         self.steps += 1
 
         # Movement scale (pixels per unit distance)
-        move_scale = self.width / 30.0
+        move_scale = self.width / 10
         
         # Compute distance before movement for approach reward
         dist_before = float(np.linalg.norm(self.agent_pos - self.object["pos"]))
@@ -213,15 +223,13 @@ class PickEnv(gym.Env):
         # Rate-limited, incremental heading update (no hard clipping):
         # allowed change grows with forward input, emulating speed-proportional turn rate.
         # allowed = max_turn_rads at dist=1, linearly scaled by current dist in [0,1].
-        allowed = float(self.max_turn_rads) * float(mapped_dist)
+        allowed = float(self.max_turn_rads) * max(0.1, float(mapped_dist))
         cmd = float(mapped_angle_delta_cmd)
-        if allowed <= 0.0:
-            applied_delta = 0.0
-        else:
-            # Soft scale factor: shrink command proportionally if it exceeds allowed magnitude.
-            # This yields a smooth, continuous limiter instead of a hard clip.
-            scale = min(1.0, allowed / (abs(cmd) + 1e-12))
-            applied_delta = cmd * scale
+
+        # Soft scale factor: shrink command proportionally if it exceeds allowed magnitude.
+        # This yields a smooth, continuous limiter instead of a hard clip.
+        scale = min(1.0, allowed / (abs(cmd) + 1e-12))
+        applied_delta = cmd * scale
 
         self.agent_angle += applied_delta
 
@@ -235,7 +243,7 @@ class PickEnv(gym.Env):
         # Compute distance after movement
         dist_after = float(np.linalg.norm(self.agent_pos - self.object["pos"]))
 
-        reward = -0.1 # Ensure timestep penalty
+        reward = -0.05 # Ensure timestep penalty
         terminated = False
         truncated = False
         
@@ -266,8 +274,9 @@ class PickEnv(gym.Env):
             if mapped_force >= threshold:
                 # Break: High penalty
                 self.object["broken"] = True
-                reward = -2.0
+                reward += -2.0
                 terminated = True
+                self.last_action_status = "broken"
             elif mapped_force >= min_force:
                 # Success: Variable reward based on excess force
                 excess = float(mapped_force) - min_force
@@ -277,9 +286,11 @@ class PickEnv(gym.Env):
                 self.object["picked"] = True
                 reward += variable_reward  # Add to any approach penalties
                 terminated = True
+                self.last_action_status = "picked"
             else:
                 # This explicitly tells the agent that this action was a failure.
                 reward -= 0.05 # A small but clear penalty
+                self.last_action_status = "weak"
 
         if self.steps >= self.max_steps:
             truncated = True
@@ -295,8 +306,75 @@ class PickEnv(gym.Env):
         return self._get_obs(), reward, terminated, truncated, info
     
     def getframe(self):
-        """Return the current observation (RGB array)."""
-        return self._get_obs()
+        """Always returns the current rendered image, regardless of observation mode."""
+        return self._get_image_obs()
+    
+    def _get_features(self):
+        """Compiles and returns the environment state as a feature vector."""
+        # Agent features
+        agent_angle_sin = np.sin(self.agent_angle)
+        agent_angle_cos = np.cos(self.agent_angle)
+
+        # Object features (relative to agent)
+        rel_pos = (self.object["pos"] - self.agent_pos)
+        rel_pos_x_norm = rel_pos[0] / self.width
+        rel_pos_y_norm = rel_pos[1] / self.height
+
+        # Relative bearing
+        abs_angle_to_obj = np.arctan2(rel_pos[1], rel_pos[0])
+        rel_angle = abs_angle_to_obj - self.agent_angle
+        rel_angle = np.arctan2(np.sin(rel_angle), np.cos(rel_angle)) # Normalize to [-pi, pi]
+        rel_angle_sin = np.sin(rel_angle)
+        rel_angle_cos = np.cos(rel_angle)
+
+        # One-hot encodings for object type and weight
+        is_circle = 1.0 if self.object["type"] == "circle" else 0.0
+        is_square = 1.0 - is_circle
+        is_light = 1.0 if self.object["weight"] == "light" else 0.0
+        is_heavy = 1.0 - is_light
+        
+        # Status flags
+        is_picked = 1.0 if self.object["picked"] else 0.0
+        is_broken = 1.0 if self.object["broken"] else 0.0
+        
+        # If object is gone, zero out its relative info
+        if is_picked or is_broken:
+            rel_pos_x_norm = 0.0
+            rel_pos_y_norm = 0.0
+            rel_angle_sin = 0.0
+            rel_angle_cos = 0.0
+
+        features = np.array([
+            agent_angle_sin,
+            agent_angle_cos,
+            rel_pos_x_norm,
+            rel_pos_y_norm,
+            rel_angle_sin,
+            rel_angle_cos,
+            is_circle,
+            is_square,
+            is_light,
+            is_heavy,
+            is_picked,
+            is_broken
+        ], dtype=np.float32)
+
+        return features
+    
+    def _get_image_obs(self):
+        """Renders and returns the environment state as an RGB image array."""
+        W, H = self.width, self.height
+        if self.ssaa_scale > 1:
+            big_w, big_h = W * self.ssaa_scale, H * self.ssaa_scale
+            big = pygame.Surface((big_w, big_h), flags=pygame.SRCALPHA)
+            self._draw_scene(big, scale=self.ssaa_scale)
+            small = pygame.transform.smoothscale(big, (W, H))
+            arr = np.transpose(np.array(pygame.surfarray.pixels3d(small), copy=True), (1, 0, 2))
+        else:
+            surface = pygame.Surface((W, H), flags=pygame.SRCALPHA)
+            self._draw_scene(surface, scale=1)
+            arr = np.transpose(np.array(pygame.surfarray.pixels3d(surface), copy=True), (1, 0, 2))
+        return arr.astype(np.uint8)
 
     # ---------------------------
     # Rendering helpers
@@ -330,6 +408,22 @@ class PickEnv(gym.Env):
                 ]
                 gfxdraw.filled_polygon(surface, pts, color)
                 gfxdraw.aapolygon(surface, pts, color)
+                
+        # ------------------------
+        # Draw full-frame bounding box (status-based)
+        # ------------------------
+        box_color = None
+        if self.last_action_status == "picked":
+            box_color = (0, 255, 0)   # green
+        elif self.last_action_status == "broken":
+            box_color = (255, 0, 0)   # red
+        elif self.last_action_status == "weak":
+            box_color = (0, 0, 255)   # blue
+
+        if box_color is not None:
+            surf_w, surf_h = surface.get_width(), surface.get_height()
+            thickness = max(1, int(round(3 * scale)))
+            pygame.draw.rect(surface, box_color, pygame.Rect(0, 0, surf_w, surf_h), thickness)
 
         # Draw agent
         if self.agent_shape == "disk":
@@ -397,24 +491,15 @@ class PickEnv(gym.Env):
     # Observation and render
     # ---------------------------
     def _get_obs(self):
-        W, H = self.width, self.height
-
-        if self.ssaa_scale > 1:
-            big_w, big_h = W * self.ssaa_scale, H * self.ssaa_scale
-            big = pygame.Surface((big_w, big_h), flags=pygame.SRCALPHA)
-            self._draw_scene(big, scale=self.ssaa_scale)
-            small = pygame.transform.smoothscale(big, (W, H))
-            arr = np.transpose(np.array(pygame.surfarray.pixels3d(small), copy=True), (1, 0, 2))
-        else:
-            surface = pygame.Surface((W, H), flags=pygame.SRCALPHA)
-            self._draw_scene(surface, scale=1)
-            arr = np.transpose(np.array(pygame.surfarray.pixels3d(surface), copy=True), (1, 0, 2))
-
-        return arr.astype(np.uint8)
+        """Dispatcher to return observation based on the configured mode."""
+        if self.observation_mode == "feature":
+            return self._get_features()
+        else: # "image"
+            return self._get_image_obs()
 
     def render(self):
         if self.render_mode != "human":
-            return
+            return self._get_image_obs()
 
         # Lazy-init display
         if self.screen is None:
@@ -492,21 +577,73 @@ def save_dataset_for_diffusers(dataset, save_dir):
     print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
     print(f"Images saved in: {images_dir}")
     print(f"Metadata saved in: {metadata_path}")
+    
+def save_feature_dataset(dataset, save_dir):
+    """
+    Saves a dataset of feature vectors and captions in a structure
+    compatible with dataset loaders.
+
+    This creates a directory with a 'features' subfolder containing .npy files
+    and a 'metadata.jsonl' file at the root.
+
+    Args:
+        dataset (list): A list of dictionaries, where each dict has "frame" (a numpy array)
+                        and "description".
+        save_dir (str): The path to the root directory where the dataset will be saved.
+    """
+    if not dataset:
+        print("Warning: No data to save.")
+        return
+        
+    features_dir = os.path.join(save_dir, "features")
+    os.makedirs(features_dir, exist_ok=True)
+    
+    metadata_entries = []
+    
+    print(f"Saving {len(dataset)} feature vectors to {save_dir}...")
+    for i, item in enumerate(dataset):
+        try:
+            feature_vector = item["frame"]
+            
+            # Define numpy filename and save it
+            base_filename = f"{i:06d}.npy"
+            feature_path = os.path.join(features_dir, base_filename)
+            np.save(feature_path, feature_vector)
+            
+            # Create metadata entry. The file_name must be relative to the root of the dataset directory.
+            metadata_entry = {
+                "file_name": os.path.join("features", base_filename),
+                "text": item["description"]
+            }
+            metadata_entries.append(metadata_entry)
+
+        except Exception as e:
+            print(f"Error processing item {i}: {e}")
+
+    # Write the metadata.jsonl file
+    metadata_path = os.path.join(save_dir, "metadata.jsonl")
+    with open(metadata_path, "w", encoding='utf-8') as f:
+        for entry in metadata_entries:
+            f.write(json.dumps(entry) + '\n')
+
+    print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
+    print(f"Feature .npy files saved in: {features_dir}")
+    print(f"Metadata saved in: {metadata_path}")
             
 @hydra.main(version_base=None, config_path="../config/env", config_name="PickEnv")
 def main(cfg: DictConfig) -> None:
     is_collect_data = True
+    cfg.observation_mode = "feature"
     if is_collect_data:
         mode="collect_data"
     else:
-        
         mode="train"
     cfg.verbose = True
-    cfg.max_steps = 160000
+    cfg.max_steps = 50
     env = PickEnv(cfg, mode)
     paired_data = []
     # Total number of timesteps to collect
-    total_training_data = 160000
+    total_training_data = 1000
     validation_data = 100
     paired_data, episode = collect_data(env, total_training_data + validation_data)
     env.close()
@@ -516,20 +653,26 @@ def main(cfg: DictConfig) -> None:
         training_data = paired_data[:total_training_data]
         val_data = paired_data[total_training_data:]
 
-        # --- Save the training dataset in the required image/text pair format ---
-        save_dir_train = f"data/{env.name}/training"
-        os.makedirs(save_dir_train, exist_ok=True)
-        
-        # Save the training dataset
-        print("\n--- Saving Training Dataset ---")
-        save_dataset_for_diffusers(training_data, save_dir_train)
+        # --- DYNAMIC SAVING BASED ON OBSERVATION MODE ---
+        if cfg.observation_mode == "image":
+            save_dir_train = f"data/{env.name}/training_images"
+            print("\n--- Saving Image Training Dataset ---")
+            save_dataset_for_diffusers(training_data, save_dir_train)
 
-        save_dir_val = f"data/{env.name}/validation"
-        os.makedirs(save_dir_val, exist_ok=True)
-        
-        # Save the validation dataset
-        print("\n--- Saving Validation Dataset ---")
-        save_dataset_for_diffusers(val_data, save_dir_val)
+            save_dir_val = f"data/{env.name}/validation_images"
+            print("\n--- Saving Image Validation Dataset ---")
+            save_dataset_for_diffusers(val_data, save_dir_val)
+
+        elif cfg.observation_mode == "feature":
+            # Call the new numpy saving function
+            save_dir_train = f"data/{env.name}/training_features"
+            print("\n--- Saving Feature Training Dataset (NumPy format) ---")
+            save_feature_dataset(training_data, save_dir_train)
+
+            save_dir_val = f"data/{env.name}/validation_features"
+            print("\n--- Saving Feature Validation Dataset (NumPy format) ---")
+            save_feature_dataset(val_data, save_dir_val)
+
 
         
 if __name__ == "__main__":

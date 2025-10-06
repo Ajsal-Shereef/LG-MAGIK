@@ -5,7 +5,7 @@ defaults:
 project_name: TextConditionedVAE
 seed: 42
 data:
-  train_dir: data/${env.name}/training
+  train_dir: data/${env.name}/training_features
   cache_dir: null
   resolution: 112
   batch_size: 128
@@ -23,8 +23,8 @@ model:
   activ: selu
   pad_type: replicate
   encoder_final_dim:
-  - 11
-  - 11
+  - 9
+  - 9
   latent_channel: 4
   output_dim: 3
   text_encoder: ${models.data.text_encoder_path}

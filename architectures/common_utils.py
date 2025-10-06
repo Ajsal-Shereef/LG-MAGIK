@@ -1,6 +1,7 @@
 import os
 import re
 import cv2
+import json
 import random
 import string
 import numpy as np
@@ -166,70 +167,144 @@ def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
     )
     return inputs.input_ids, inputs.attention_mask
 
-def get_dataloader(cfg: DictConfig) -> DataLoader:
+class NumpyFeaturesDataset(Dataset):
+    """Custom dataset for loading numpy feature arrays + text metadata."""
+    def __init__(self, feature_dir, metadata_path, tokenizer_path=None, text_key="text", transform=None):
+        self.feature_dir = feature_dir
+        self.metadata = []
+        self.transform = transform
+        self.text_key = text_key
+
+        # Load metadata.jsonl (each line = one JSON dict)
+        with open(metadata_path, "r") as f:
+            for line in f:
+                self.metadata.append(json.loads(line.strip()))
+
+        # Optional tokenizer
+        self.tokenizer = None
+        if tokenizer_path:
+            self.tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path)
+
+    def __len__(self):
+        return len(self.metadata)
+
+    def __getitem__(self, idx):
+        item = self.metadata[idx]
+        feature_path = os.path.join(self.feature_dir, item["file_name"])
+
+        # Load the numpy feature
+        arr = np.load(feature_path)
+        if self.transform:
+            arr = self.transform(arr)
+
+        sample = {"pixel_values": arr}
+
+        # If text description exists, tokenize
+        if self.text_key in item and self.tokenizer:
+            tokens = self.tokenizer(
+                item[self.text_key],
+                truncation=True,
+                padding="max_length",
+                max_length=77,
+                return_tensors="pt",
+            )
+            sample["input_ids"] = tokens.input_ids.squeeze(0)
+            sample["attention_mask"] = tokens.attention_mask.squeeze(0)
+
+        return sample
+
+def get_dataloader(args: DictConfig) -> DataLoader:
     """
-    Prepares and returns a DataLoader for the VAE training.
-
-    Args:
-        cfg (DictConfig): The Hydra configuration object.
-
-    Returns:
-        DataLoader: The configured DataLoader for the training set.
+    Returns a PyTorch DataLoader for diffusion model training,
+    automatically handling image or numpy feature datasets.
     """
-    # Define data transformations
-    train_transforms = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5]),
-    ])
+    cfg = args.models
+    observation_mode = args.env.get("observation_mode", "image")
 
-    def preprocess_train(examples: Dict) -> Dict:
-        """Applies transformations to a batch of examples."""
-        images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
-        examples["pixel_values"] = [train_transforms(image) for image in images]
-        if cfg.data.caption_column:
-            tockeniser = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
-            input_ids, attention_mask = tokenize_captions(tockeniser, examples, cfg.data.caption_column)
-            examples["input_ids"] = input_ids
-            examples["attention_mask"] = attention_mask
-        return examples
+    # -------------------------
+    # IMAGE MODE
+    # -------------------------
+    if observation_mode == "image":
+        train_transforms = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ])
 
-    # Load dataset from the specified image folder
-    data_files = {"train": os.path.join(cfg.data.train_dir, "**")}
-    dataset = load_dataset(
-        "imagefolder",
-        data_files=data_files,
-        cache_dir=cfg.data.cache_dir,
-    )
-    
-    # Verify required columns are present
-    column_names = dataset["train"].column_names
-    if cfg.data.image_column not in column_names:
-        raise ValueError(
-            f"Image column '{cfg.data.image_column}' not found in dataset columns: {', '.join(column_names)}"
+        def preprocess_train(examples: Dict) -> Dict:
+            images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
+            examples["pixel_values"] = [train_transforms(image) for image in images]
+            if cfg.data.caption_column:
+                tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
+                tokens = tokenizer(
+                    examples[cfg.data.caption_column],
+                    padding="max_length",
+                    truncation=True,
+                    max_length=77,
+                    return_tensors="pt",
+                )
+                examples["input_ids"] = tokens.input_ids
+                examples["attention_mask"] = tokens.attention_mask
+            return examples
+
+        # Load dataset from image folder
+        data_files = {"train": os.path.join(cfg.data.train_dir, "**")}
+        dataset = load_dataset(
+            "imagefolder",
+            data_files=data_files,
+            cache_dir=cfg.data.cache_dir,
         )
 
-    # Apply the transformations
-    train_dataset = dataset["train"].with_transform(preprocess_train)
+        column_names = dataset["train"].column_names
+        if cfg.data.image_column not in column_names:
+            raise ValueError(f"Image column '{cfg.data.image_column}' not found in {column_names}")
 
-    def collate_fn(examples: list[Dict]) -> Dict:
-        """Collates preprocessed examples into a batch tensor."""
-        pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        attention_masks = torch.stack([example["attention_mask"] for example in examples])
-        attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
-        if cfg.data.caption_column:
-            input_ids = torch.stack([example["input_ids"] for example in examples])
-            return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_masks" : attention_masks}
-        return {"pixel_values": pixel_values}
+        train_dataset = dataset["train"].with_transform(preprocess_train)
 
-    # Create and return the DataLoader
+        def collate_fn(examples: list[Dict]) -> Dict:
+            pixel_values = torch.stack([ex["pixel_values"] for ex in examples])
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+            if cfg.data.caption_column:
+                input_ids = torch.cat([ex["input_ids"] for ex in examples])
+                attention_masks = torch.cat([ex["attention_mask"] for ex in examples])
+                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_mask": attention_masks}
+            return {"pixel_values": pixel_values}
+
+    # -------------------------
+    # NUMPY FEATURE MODE
+    # -------------------------
+    else:
+        train_transforms = transforms.Compose([
+            transforms.Lambda(lambda x: torch.tensor(x).float()),
+            transforms.Lambda(lambda x: x.unsqueeze(0) if x.ndim == 2 else x),
+        ])
+
+        dataset = NumpyFeaturesDataset(
+            feature_dir=cfg.data.train_dir,
+            metadata_path=os.path.join(cfg.data.train_dir, "metadata.jsonl"),
+            tokenizer_path=cfg.data.text_encoder_path if cfg.data.get("caption_column") else None,
+            text_key=cfg.data.get("caption_column", "text"),
+            transform=train_transforms,
+        )
+
+        def collate_fn(examples: list[Dict]) -> Dict:
+            pixel_values = torch.stack([ex["pixel_values"] for ex in examples])
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+            if "input_ids" in examples[0]:
+                input_ids = torch.stack([ex["input_ids"] for ex in examples])
+                attention_masks = torch.stack([ex["attention_mask"] for ex in examples])
+                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_mask": attention_masks}
+            return {"pixel_values": pixel_values}
+
+    # -------------------------
+    # DATALOADER
+    # -------------------------
     dataloader = DataLoader(
-        train_dataset,
+        dataset,
         batch_size=cfg.data.batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
         num_workers=cfg.data.num_workers,
         pin_memory=True,
+        collate_fn=collate_fn,
     )
 
     return dataloader

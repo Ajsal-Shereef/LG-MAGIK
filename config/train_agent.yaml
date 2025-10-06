@@ -1,5 +1,5 @@
 defaults:
-  - env : PickEnv
+  - env : SimplePickup
   - agent : sac
 save_every : 10000
 use_wandb : False

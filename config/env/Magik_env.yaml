@@ -11,6 +11,7 @@ tile_size : 8
 agent_view_size : 7
 wall_color : 'grey'
 verbose : false
+observation_mode : 'image'
 # Optional fixed starting position and direction for the agent
 # Use null to place the agent randomly
 agent_start:
