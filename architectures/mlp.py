@@ -3,7 +3,7 @@ from torch.distributions import Categorical, Normal
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
+from transformers import CLIPTokenizer, CLIPTextModel
 from architectures.common_utils import identity, get_activation, get_normalisation_1d
 from architectures.math_utils import TanhNormal
 
@@ -89,7 +89,6 @@ class MLP(nn.Module):
         self.hidden_sizes = hidden_sizes
         self.input_size = input_size
         self.output_size = output_size
-        self.hidden_activation = get_activation(hidden_activation)
         self.output_activation = get_activation(output_activation)
         self.linear_layer = linear_layer
         self.use_output_layer = use_output_layer
@@ -100,7 +99,7 @@ class MLP(nn.Module):
         in_size = self.input_size
         self.hidden_layers = nn.Sequential()
         for i, next_size in enumerate(hidden_sizes):
-            fc = Linear(in_size, next_size, post_activation = self.hidden_activation, dropout_prob = dropout_prob, norm = norm)
+            fc = Linear(in_size, next_size, post_activation = hidden_activation, dropout_prob = dropout_prob, norm = norm)
             in_size = next_size
             self.hidden_layers.add_module("hidden_fc_{}".format(i),fc)
 
@@ -126,28 +125,275 @@ class MLP(nn.Module):
         x = self.output_activation(x) + self.stabilise_factor
         return x
     
-
-class MLPEncoder(nn.Module):
-    def __init__(self, dims):
-        """
-        Inference network
-
-        Attempts to infer the probability distribution
-        p(z|x) from the data by fitting a variational
-        distribution q_φ(z|x). Returns the two parameters
-        of the distribution (µ, log σ²).
-
-        :param dims: dimensions of the networks
-           given by the number of neurons on the form
-           [input_dim, [hidden_dims], latent_dim].
-        """
-        super(MLPEncoder, self).__init__()
-        [input_dim, h_dim, encoder_hidden_layers] = dims
-        self.feature_encoder = MLP(input_dim, h_dim, encoder_hidden_layers)
+class MLPResBlock(nn.Module):
+    """
+    An MLP-based residual block with a skip connection.
+    """
+    def __init__(self, dim, hidden_dim_ratio, norm, activ, dropout_prob=0):
+        super(MLPResBlock, self).__init__()
+        hidden_dim = int(dim * hidden_dim_ratio)
         
+        self.mlp_block = nn.Sequential(
+            Linear(dim, hidden_dim, post_activation=activ, norm=norm, dropout_prob=dropout_prob),
+            Linear(hidden_dim, dim, post_activation="identity", norm=norm, dropout_prob=dropout_prob)
+        )
+
     def forward(self, x):
-        return self.feature_encoder(x)
+        """
+        Apply the MLP block and add the skip connection.
+        x_residual = self.mlp_block(x)
+        """
+        return x + self.mlp_block(x)
     
+class MLPEncoder(nn.Module):
+    """
+    An MLP-based encoder that uses residual blocks.
+    """
+    def __init__(self, input_dim, hidden_dims, out_dim, num_res_blocks, norm, activ, dropout_prob=0):
+        super(MLPEncoder, self).__init__()
+        self.blocks = nn.ModuleList()
+        #MLP layers
+        self.blocks.append(MLP(input_size=input_dim,
+                               output_size=out_dim,
+                               hidden_sizes=hidden_dims,
+                               hidden_activation=activ,
+                               norm = norm,
+                               dropout_prob=dropout_prob))
+        #Resblocks
+        for _ in range(num_res_blocks):
+            self.blocks.append(MLPResBlock(out_dim, 2, norm, activ))
+
+    def forward(self, x):
+        for block in self.blocks:
+            x = block(x)
+        return x
+
+    def get_all_features(self, x):
+        features = []
+        for block in self.blocks:
+            x = block(x)
+            features.append(x)
+        return features
+    
+class TransformerCrossAttention(nn.Module):
+    """
+    A transformer-based attention module to fuse a feature vector with text embeddings.
+
+    This module takes a batch of feature vectors and a batch of text embeddings and
+    uses cross-attention to refine the feature vector based on the information
+    in the text. This is a common pattern in multimodal architectures.
+
+    Args:
+        feature_dim (int): The dimensionality of the input feature vector (F).
+        embed_dim (int): The dimensionality of the text embeddings and the model's hidden state.
+        nhead (int): The number of attention heads in the MultiheadAttention model.
+        num_layers (int): The number of transformer decoder layers to stack.
+        dim_feedforward (int): The dimension of the feedforward network model in the decoder layer.
+        dropout (float): The dropout value.
+    """
+    def __init__(self, feature_dim: int, embed_dim: int = 512, nhead: int = 8, num_layers: int = 1, dim_feedforward: int = 2048, dropout: float = 0.1):
+        super().__init__()
+
+        self.embed_dim = embed_dim
+
+        # 1. Input projection layer
+        # This linear layer projects the input feature vector from its original
+        # dimension (F) to the model's embedding dimension (512), so it can be
+        # processed by the transformer decoder.
+        self.feature_proj = nn.Linear(feature_dim, embed_dim)
+
+        # 2. Transformer Decoder Layer
+        # We use a standard TransformerDecoderLayer, which is perfect for this
+        # use case. It's designed for cross-attention between a 'target' sequence
+        # and a 'memory' sequence.
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embed_dim,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True  # Important: ensures input/output tensors are (batch, seq, feature)
+        )
+        
+        # 3. Transformer Decoder
+        # This stacks multiple decoder layers. For many tasks, one layer is sufficient.
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+    def forward(self, feature: torch.Tensor, text_embedding: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the attention module.
+
+        Args:
+            feature (torch.Tensor): The input feature tensor of shape [B, F].
+            text_embedding (torch.Tensor): The text embedding tensor of shape [B, 77, 512].
+
+        Returns:
+            torch.Tensor: The transformed feature tensor of shape [B, 512].
+        """
+        # --- Input Validation ---
+        if feature.dim() != 2:
+            raise ValueError(f"Expected feature to have 2 dimensions [B, F], but got {feature.dim()}")
+        if text_embedding.dim() != 3:
+            raise ValueError(f"Expected text_embedding to have 3 dimensions [B, 77, 512], but got {text_embedding.dim()}")
+        if text_embedding.shape[2] != self.embed_dim:
+             raise ValueError(f"Text embedding dimension ({text_embedding.shape[2]}) does not match model embed_dim ({self.embed_dim})")
+
+
+        # --- Cross-Attention Steps ---
+
+        # 1. Project the feature to the embedding dimension.
+        # Shape: [B, F] -> [B, embed_dim]
+        projected_feature = self.feature_proj(feature)
+
+        # 2. Add a sequence dimension to the projected feature.
+        # The transformer decoder expects a sequence. We treat our single feature vector
+        # as a sequence of length 1. This will be the 'query' in the attention mechanism.
+        # Shape: [B, embed_dim] -> [B, 1, embed_dim]
+        tgt = projected_feature.unsqueeze(1)
+
+        # 3. The text embedding serves as the 'memory' (key and value) for the attention.
+        # The model will "attend to" the text to gather relevant information.
+        # Shape: [B, 77, 512]
+        memory = text_embedding
+
+        # 4. Apply the transformer decoder.
+        # The `tgt` (our feature) attends to the `memory` (the text).
+        # The output will have the same shape as the `tgt`.
+        # Shape: [B, 1, embed_dim] -> [B, 1, embed_dim]
+        output = self.transformer_decoder(tgt=tgt, memory=memory)
+
+        # 5. Remove the sequence dimension to get the final transformed feature.
+        # Shape: [B, 1, embed_dim] -> [B, embed_dim]
+        transformed_feature = output.squeeze(1)
+
+        return transformed_feature
+    
+class FiLM(nn.Module):
+    def __init__(self, num_features, cond_dim):
+        """
+        Args:
+            num_features (int): Number of feature channels to condition.
+            cond_dim (int): Dimension of the condition vector.
+        """
+        super(FiLM, self).__init__()
+        # Learn a scaling (gamma) and shifting (beta) for each feature channel.
+        self.gamma = nn.Linear(cond_dim, num_features)
+        self.beta  = nn.Linear(cond_dim, num_features)
+
+    def forward(self, x, cond):
+        """
+        Args:
+            x (Tensor): Feature map of shape (B, F).
+            cond (Tensor): Condition vector of shape (B, cond_dim).
+        Returns:
+            Tensor: FiLM-modulated feature map.
+        """
+        # Compute scale and shift parameters and unsqueeze them to (B, C, 1, 1)
+        gamma = self.gamma(cond)
+        beta  = self.beta(cond)
+        return gamma, beta
+    
+class CrossAttentionFiLM(nn.Module):
+    """
+    FiLM + Residual Cross-Attention block with learnable gate,
+    adapted for feature latent code z.
+    """
+    def __init__(self, input_dim, latent_dim, text_dim, norm="ln"):
+        super().__init__()
+
+
+        # FiLM: gamma, beta from latent
+        self.film = FiLM(input_dim, latent_dim)
+
+        # Local conv processing
+        self.linear = Linear(input_dim, input_dim, norm=norm)
+
+        # Cross-attention
+        self.cross = TransformerCrossAttention(input_dim, text_dim)
+        self.cross_norm = get_normalisation_1d(norm, input_dim)
+
+        # Activation
+        self.act = nn.GELU()
+
+    def forward(self, x, z, text_feat, attention):
+
+        # --- FiLM modulation ---
+        gamma, beta = self.film(z)
+
+        out = self.linear(x)
+
+        out = out * (1 + gamma) + beta
+
+        # --- Cross-attention residual ---
+        attn_out = self.cross(out, text_feat, attention)  # (B, F)
+
+        #residual connection
+        out = out + self.cross_norm(attn_out)
+
+        return self.act(out)
+    
+class FinalTextConditionedOutput(nn.Module):
+    def __init__(self, input_dim, output_dim, text_dim, n_heads=8):
+        super().__init__()
+        self.cross_attention = TransformerCrossAttention(input_dim, text_dim, n_heads)
+
+        # stronger head: residual conv stack
+        # self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        self.linear = MLP(input_dim, output_dim, [input_dim//2], "gelu")
+
+    def forward(self, x, text_feat, attention_mask):
+        """
+        x: [B, F] - feature map
+        text_feat: [B, T, D] - Text feature (from the text encoder)
+        """
+
+        # cross-attn
+        refined = self.cross_attention(x, text_feat, attention_mask)
+
+        # Pass the refined features through the final convolution
+        return torch.tanh(self.linear(refined))
+    
+class MLPTextConditionedDecoder(nn.Module):
+    def __init__(self, latent_dim, output_dim, decoder_hidden_dims, clip_model):
+        super(MLPTextConditionedDecoder, self).__init__()
+
+        #Conv layer to map latent channel to dim
+        self.mapping_linear = Linear(latent_dim, decoder_hidden_dims[0])
+        #Text encoder and tockenizer
+        self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
+        self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
+        #Freeze the CLIP model parameters
+        for params in self.text_encoder.parameters():
+            params.requires_grad = False
+        self.text_encoder.eval()
+        self.text_dim=self.text_encoder.config.hidden_size
+        self.text_adapter = MLP(self.text_dim, self.text_dim, [64, 256], hidden_activation = 'gelu', norm='ln')
+        self.attention = TransformerCrossAttention(latent_dim, self.text_dim, n_heads=2)
+        # self.text_to_latent = nn.Linear(self.text_dim, latent_dim)
+        
+        self.attention_film_blocks=nn.ModuleList()
+        self.linear_blocks = nn.ModuleList()
+        start_dim = decoder_hidden_dims[0]
+        for hidden_dim in decoder_hidden_dims:
+            self.attention_film_blocks.append(CrossAttentionFiLM(start_dim, latent_dim, self.text_dim))
+            self.linear_blocks.append(Linear(start_dim, hidden_dim, "gelu"))
+            start_dim = hidden_dim
+            
+        self.final = FinalTextConditionedOutput(decoder_hidden_dims[-1], output_dim, self.text_dim)
+        
+    def forward(self,z,text_tockens, attention_mask):
+        self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
+        self.text_feats = self.text_adapter(self.text_feats)
+        # Expand text_feat to spatial (broadcast over H_z, W_z)
+        # text_global = self.text_feats.mean(dim=1)  # [B, D]
+        # text_proj = self.text_to_latent(text_global)  # [B, F]
+        # z = torch.cat([z, text_proj], dim=1)  # concat along channel
+
+        z = self.attention(z, self.text_feats)
+        x = self.mapping_linear(z)
+        for blk,linear in zip(self.attention_film_blocks, self.linear_blocks):
+            x=blk(x,z,self.text_feats, attention_mask)
+            x=linear(x)
+        return self.final(x, self.text_feats, attention_mask)
     
 class Embed(nn.Module):
     def __init__(
@@ -174,7 +420,7 @@ class Linear(nn.Module):
         self,
         in_dim, 
         out_dim,
-        post_activation = identity,
+        post_activation = "identity",
         dropout_prob = 0,
         norm = "bn",
         ):
@@ -184,7 +430,7 @@ class Linear(nn.Module):
         self.batch_norm = get_normalisation_1d(norm, out_dim)
         nn.init.orthogonal_(self.linear_layer.weight)
         self.dropout_layer = nn.Dropout(dropout_prob)
-        self.post_activation = post_activation
+        self.post_activation = get_activation(post_activation)
 
     def forward(self, x):
         """

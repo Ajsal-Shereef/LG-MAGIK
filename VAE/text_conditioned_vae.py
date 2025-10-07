@@ -13,7 +13,8 @@ from torchvision.utils import make_grid
 from torchvision.utils import save_image
 from architectures.common_utils import grad_reverse
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
-from architectures.stochastic import GaussianSampleSpatial
+from architectures.mlp import MLPEncoder, MLPTextConditionedDecoder
+from architectures.stochastic import GaussianSampleSpatial, GaussianSample
 from architectures.common_utils import tokenize_captions, get_train_transform
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,24 +22,47 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class TextConditionedVAE(nn.Module):
     def __init__(self, **kwargs):
         super(TextConditionedVAE, self).__init__()
-        n_downsample = kwargs["n_downsample"]
-        encoder_n_res = kwargs["encoder_n_res"]
-        input_dim = kwargs["input_dim"]
-        dim = kwargs["dim"]
-        norm = kwargs["norm"]
-        activ = kwargs["activ"]
-        pad_type = kwargs["pad_type"]
-        output_dim = kwargs["output_dim"]
-        clip_model = kwargs["text_encoder"]
-        encoder_final_dim = kwargs["encoder_final_dim"]
+
+        observation_model = kwargs["observation_mode"]
         
-        self.encoder = CNNEncoder(
-            n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
-        
-        self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, kwargs["latent_channel"])
-        
-        self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, output_dim, clip_model, kwargs["latent_channel"])
-        self.caption_discriminator = MLP(kwargs["latent_channel"]*np.prod(encoder_final_dim), self.decoder.tokenizer.model_max_length*self.decoder.text_dim, kwargs["discriminator_fc_hidden"])
+        if observation_model == "images":
+            #Extracting the parameters for the CNN encoder and decoder
+            n_downsample = kwargs["n_downsample"]
+            encoder_n_res = kwargs["encoder_n_res"]
+            input_dim = kwargs["input_dim"]
+            dim = kwargs["dim"]
+            norm = kwargs["norm"]
+            activ = kwargs["activ"]
+            pad_type = kwargs["pad_type"]
+            output_dim = kwargs["output_dim"]
+            clip_model = kwargs["text_encoder"]
+            encoder_final_dim = kwargs["encoder_final_dim"]
+            latent_channel = kwargs["latent_channel"]
+            discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
+            
+            self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
+            self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
+            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, output_dim, clip_model, latent_channel)
+            self.caption_discriminator = MLP(latent_channel*np.prod(encoder_final_dim), self.decoder.tokenizer.model_max_length*self.decoder.text_dim, discriminator_fc_hidden)
+        else:
+            #Extracting the parameters for the MLP encoder and decoder
+            input_dim = kwargs["input_dim"]
+            encoder_out_dim = kwargs["encoder_output_dim"]
+            hidden_dims = kwargs["encoder_hidden_dims"]
+            num_resblocks = kwargs["num_resblocks"]
+            clip_model = kwargs["text_encoder"]
+            norm = kwargs["norm"]
+            activ = kwargs["activ"]
+            pad_type = kwargs["pad_type"]
+            dropout = kwargs["dropout"]
+            latent_dim = kwargs["latent_dim"]
+            discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
+            decoder_hidden_dims = kwargs["decoder_hidden_dims"]
+
+            self.encoder = MLPEncoder(input_dim, hidden_dims, encoder_out_dim, num_resblocks, norm, activ, dropout)
+            self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)
+            self.decoder = MLPTextConditionedDecoder(latent_dim, input_dim, decoder_hidden_dims, clip_model)
+            self.caption_discriminator = MLP(latent_dim, self.decoder.tokenizer.model_max_length*self.decoder.text_dim, discriminator_fc_hidden)
         
     def forward(self, x: torch.Tensor):
         """
@@ -53,7 +77,7 @@ class TextConditionedVAE(nn.Module):
         """
         images = x["pixel_values"]
         text_tokens = x["input_ids"]
-        attention_mask = x["attention_mask"]
+        attention_mask = x["attention_masks"]
         # Encode the input to get the posterior distribution
         hidden = self.encoder(images)
         

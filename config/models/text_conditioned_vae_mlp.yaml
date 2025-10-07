@@ -1,0 +1,68 @@
+# --- Defaults ---
+defaults:
+  - _self_
+
+project_name: TextConditionedVAE
+seed: 42
+data:
+  train_dir: data/${env.name}/training_features
+  cache_dir: null
+  batch_size: 128
+  num_workers: 4
+  image_column: image
+  caption_column: text
+  text_encoder_path: openai/clip-vit-base-patch32
+model:
+  _target_: VAE.text_conditioned_vae.TextConditionedVAE
+  input_dim: 12
+  norm: in
+  activ: selu
+  pad_type: replicate
+  encoder_hidden_dims:
+  - 128
+  - 256
+  - 256
+  decoder_hidden_dims:
+  - 256
+  - 128
+  - 128
+  encoder_output_dim: 64
+  num_resblocks : 2
+  dropout : 0
+  latent_dim : 8
+  text_encoder: ${models.data.text_encoder_path}
+  discriminator_fc_hidden:
+  - 64
+  - 128
+  observation_mode : features
+training:
+  num_epochs: 500
+  seed: 42
+  kl_weight: 1
+  adv_lambda: 1.0
+  adv_weight: 1.0
+  logs: logs
+  output_dir: model_weights/vae
+  experiment_name: TextConditionedVAE
+  log_media_interval: 8000
+  log_values_and_images: false
+  validation_prompts: ${env.validation_prompts}
+  generate_interval: 8000
+  num_images_to_generate: 10
+  save_weight_freequency: 50 
+optimizer:
+  lr: 0.0001
+  betas:
+  - 0.9
+  - 0.999
+  weight_decay: 0.01
+  eps: 1.0e-08
+accelerator:
+  mixed_precision: 'no'
+  gradient_accumulation_steps: 1
+  log_with: wandb
+  project_dir: ${models.training.logs}
+  logging_dir: ${models.training.logs}/logs
+test:
+  model_dir: model_weights/TextConditionedVAE/2025-09-26_19-37-26_F2QPO6
+

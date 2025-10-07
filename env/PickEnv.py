@@ -633,7 +633,7 @@ def save_feature_dataset(dataset, save_dir):
 @hydra.main(version_base=None, config_path="../config/env", config_name="PickEnv")
 def main(cfg: DictConfig) -> None:
     is_collect_data = True
-    cfg.observation_mode = "feature"
+    cfg.observation_mode = "features"
     if is_collect_data:
         mode="collect_data"
     else:
@@ -643,7 +643,7 @@ def main(cfg: DictConfig) -> None:
     env = PickEnv(cfg, mode)
     paired_data = []
     # Total number of timesteps to collect
-    total_training_data = 1000
+    total_training_data = 150000
     validation_data = 100
     paired_data, episode = collect_data(env, total_training_data + validation_data)
     env.close()

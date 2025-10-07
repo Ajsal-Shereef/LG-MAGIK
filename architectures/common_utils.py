@@ -148,9 +148,9 @@ def change_descriptions(data):
 
     return nested_list
     
-def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
+def tokenize_captions(tokenizer, caption_list, is_train=True):
     captions = []
-    for caption in examples[caption_column]:
+    for caption in caption_list:
         if isinstance(caption, str):
             captions.append(caption)
         elif isinstance(caption, (list, np.ndarray)):
@@ -158,7 +158,7 @@ def tokenize_captions(tokenizer, examples, caption_column, is_train=True):
             captions.append(random.choice(caption) if is_train else caption[0])
         else:
             raise ValueError(
-                f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                f"Caption list should contain either strings or lists of strings."
             )
     # token_lengths = [len(tokenizer.encode(caption, add_special_tokens=True)) for caption in captions]
     # max_token_length = max(token_lengths)
@@ -201,16 +201,9 @@ class NumpyFeaturesDataset(Dataset):
 
         # If text description exists, tokenize
         if self.text_key in item and self.tokenizer:
-            tokens = self.tokenizer(
-                item[self.text_key],
-                truncation=True,
-                padding="max_length",
-                max_length=77,
-                return_tensors="pt",
-            )
-            sample["input_ids"] = tokens.input_ids.squeeze(0)
-            sample["attention_mask"] = tokens.attention_mask.squeeze(0)
-
+            input_ids, attention_mask = tokenize_captions(self.tokenizer, [item[self.text_key]])
+            sample["input_ids"] = input_ids.squeeze()
+            sample["attention_mask"] = attention_mask.squeeze()
         return sample
 
 def get_dataloader(args: DictConfig) -> DataLoader:
@@ -219,12 +212,12 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     automatically handling image or numpy feature datasets.
     """
     cfg = args.models
-    observation_mode = args.env.get("observation_mode", "image")
+    observation_mode = cfg.model.get("observation_mode", "images")
 
     # -------------------------
     # IMAGE MODE
     # -------------------------
-    if observation_mode == "image":
+    if observation_mode == "images":
         train_transforms = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -235,17 +228,10 @@ def get_dataloader(args: DictConfig) -> DataLoader:
             examples["pixel_values"] = [train_transforms(image) for image in images]
             if cfg.data.caption_column:
                 tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
-                tokens = tokenizer(
-                    examples[cfg.data.caption_column],
-                    padding="max_length",
-                    truncation=True,
-                    max_length=77,
-                    return_tensors="pt",
-                )
-                examples["input_ids"] = tokens.input_ids
-                examples["attention_mask"] = tokens.attention_mask
-            return examples
-
+                input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column])
+                examples["input_ids"] = input_ids
+                examples["attention_mask"] = attention_mask
+                return examples
         # Load dataset from image folder
         data_files = {"train": os.path.join(cfg.data.train_dir, "**")}
         dataset = load_dataset(
@@ -260,15 +246,6 @@ def get_dataloader(args: DictConfig) -> DataLoader:
 
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
-        def collate_fn(examples: list[Dict]) -> Dict:
-            pixel_values = torch.stack([ex["pixel_values"] for ex in examples])
-            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-            if cfg.data.caption_column:
-                input_ids = torch.cat([ex["input_ids"] for ex in examples])
-                attention_masks = torch.cat([ex["attention_mask"] for ex in examples])
-                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_mask": attention_masks}
-            return {"pixel_values": pixel_values}
-
     # -------------------------
     # NUMPY FEATURE MODE
     # -------------------------
@@ -276,9 +253,10 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         train_transforms = transforms.Compose([
             transforms.Lambda(lambda x: torch.tensor(x).float()),
             transforms.Lambda(lambda x: x.unsqueeze(0) if x.ndim == 2 else x),
+            transforms.Normalize([0.5], [0.5]),
         ])
 
-        dataset = NumpyFeaturesDataset(
+        train_dataset = NumpyFeaturesDataset(
             feature_dir=cfg.data.train_dir,
             metadata_path=os.path.join(cfg.data.train_dir, "metadata.jsonl"),
             tokenizer_path=cfg.data.text_encoder_path if cfg.data.get("caption_column") else None,
@@ -286,20 +264,22 @@ def get_dataloader(args: DictConfig) -> DataLoader:
             transform=train_transforms,
         )
 
-        def collate_fn(examples: list[Dict]) -> Dict:
-            pixel_values = torch.stack([ex["pixel_values"] for ex in examples])
-            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-            if "input_ids" in examples[0]:
-                input_ids = torch.stack([ex["input_ids"] for ex in examples])
-                attention_masks = torch.stack([ex["attention_mask"] for ex in examples])
-                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_mask": attention_masks}
-            return {"pixel_values": pixel_values}
-
+    def collate_fn(examples: list[Dict]) -> Dict:
+        """Collates preprocessed examples into a batch tensor."""
+        pixel_values = torch.stack([example["pixel_values"] for example in examples])
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+        attention_masks = torch.stack([example["attention_mask"] for example in examples])
+        attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
+        if cfg.data.caption_column:
+            input_ids = torch.stack([example["input_ids"] for example in examples])
+            return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_masks" : attention_masks}
+        return {"pixel_values": pixel_values}
+    
     # -------------------------
     # DATALOADER
     # -------------------------
     dataloader = DataLoader(
-        dataset,
+        train_dataset,
         batch_size=cfg.data.batch_size,
         shuffle=True,
         num_workers=cfg.data.num_workers,

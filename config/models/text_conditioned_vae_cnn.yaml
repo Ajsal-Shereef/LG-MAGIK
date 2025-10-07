@@ -5,10 +5,9 @@ defaults:
 project_name: TextConditionedVAE
 seed: 42
 data:
-  train_dir: data/${env.name}/training_features
+  train_dir: data/${env.name}/training_images
   cache_dir: null
-  resolution: 112
-  batch_size: 128
+  batch_size: 64
   num_workers: 4
   image_column: image
   caption_column: text
@@ -31,6 +30,7 @@ model:
   discriminator_fc_hidden:
   - 64
   - 128
+  observation_mode : images
 training:
   num_epochs: 500
   seed: 42
@@ -45,7 +45,7 @@ training:
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
-  save_weight_freequency: 50
+  save_weight_freequency: 50 
 optimizer:
   lr: 0.0001
   betas:

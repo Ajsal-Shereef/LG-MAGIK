@@ -286,42 +286,99 @@ class CrossAttention(nn.Module):
         return out
     
 class TransformerCrossAttention(nn.Module):
-    def __init__(self, channels, text_dim, n_heads=8):
+    """
+    A transformer-based attention module to fuse an image with text embeddings.
+
+    This module flattens the spatial dimensions of an image into a sequence of
+    patches, projects them into the embedding space, and then uses a transformer
+    decoder to refine these image features by attending to text embeddings.
+
+    This version uses the standard `nn.TransformerDecoder` from PyTorch.
+
+    Args:
+        img_channels (int): The number of channels in the input image feature map (C).
+        embed_dim (int): The dimensionality of the text embeddings and the model's hidden state.
+        nhead (int): The number of attention heads in the MultiheadAttention model.
+        num_layers (int): The number of transformer decoder layers to stack.
+        dim_feedforward (int): The dimension of the feedforward network model in the decoder layer.
+        dropout (float): The dropout value.
+    """
+    def __init__(self, img_channels: int, embed_dim: int = 512, nhead: int = 8, num_layers: int = 1, dim_feedforward: int = 2048, dropout: float = 0.1):
         super().__init__()
-        self.query_proj = nn.Linear(channels, channels)
-        self.key_proj   = nn.Linear(text_dim, channels)
-        self.value_proj = nn.Linear(text_dim, channels)
-        self.out_proj   = nn.Linear(channels, channels)
-        self.n_heads = n_heads
 
-    def forward(self, img_feat, text_feat, attention_mask=None):
+        self.img_channels = img_channels
+        self.embed_dim = embed_dim
+        # 1. Input projection layer for the image
+        # This linear layer projects each flattened "pixel" or "patch" from its
+        # channel dimension (C) to the model's embedding dimension, so it can be
+        # processed by the transformer decoder alongside the text.
+        self.text_proj = nn.Linear(embed_dim, img_channels)
+
+        # 2. Standard PyTorch Transformer Decoder
+        # We define a single decoder layer first. batch_first=True is crucial.
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=img_channels,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True
+        )
+        
+        # The nn.TransformerDecoder stacks multiple instances of the decoder_layer.
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+    def forward(self, image: torch.Tensor, text_embedding: torch.Tensor, text_mask: torch.Tensor) -> torch.Tensor:
         """
-        img_feat: [B, N, C]
-        text_feat: [B, T, D]
-        attention_mask: [B, T] (1 = keep, 0 = mask)
+        Forward pass for the attention module.
+
+        Args:
+            image (torch.Tensor): The input image tensor of shape [B, C, H, W].
+            text_embedding (torch.Tensor): The text embedding tensor of shape [B, 77, 512].
+
+        Returns:
+            torch.Tensor: The transformed image feature map of shape [B, 512, H, W].
         """
-        B, N, C = img_feat.shape
-        H = self.n_heads
-        d = C // H
+        # --- Input Validation ---
+        if image.dim() != 4:
+            raise ValueError(f"Expected image to have 4 dimensions [B, C, H, W], but got {image.dim()}")
+        if text_embedding.dim() != 3:
+            raise ValueError(f"Expected text_embedding to have 3 dimensions [B, 77, 512], but got {text_embedding.dim()}")
+        if text_embedding.shape[2] != self.embed_dim:
+             raise ValueError(f"Text embedding dimension ({text_embedding.shape[2]}) does not match model embed_dim ({self.embed_dim})")
 
-        q = self.query_proj(img_feat).view(B, N, H, d).transpose(1, 2)  # [B,H,N,d]
-        k = self.key_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
-        v = self.value_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
+        B, C, H, W = image.shape
 
-        # Attention scores
-        attn = (q @ k.transpose(-2, -1)) / (d ** 0.5)  # [B,H,N,T]
+        # --- Prepare Image for Transformer ---
 
-        if attention_mask is not None:
-            # expand mask: [B,T] -> [B,1,1,T]
-            mask = attention_mask[:, None, None, :].to(attn.dtype)
-            attn = attn.masked_fill(mask == 0, float('-inf'))
+        # 1. Flatten spatial dimensions (H, W) into a single sequence length (H*W).
+        # Shape: [B, C, H, W] -> [B, C, H*W]
+        image_flat = image.view(B, C, H * W)
 
-        attn = attn.softmax(dim=-1)
+        # 2. Transpose to the standard sequence format (Batch, SeqLen, Features).
+        # Shape: [B, C, H*W] -> [B, H*W, C]
+        image_seq = image_flat.permute(0, 2, 1)
 
-        out = attn @ v  # [B,H,N,d]
-        out = out.transpose(1, 2).contiguous().view(B, N, C)
-        return self.out_proj(out)
+        # 3. Project text features to the image dimension.
+        # Shape: [B, H*W, C] -> [B, H*W, image_dim]
+        projected_text = self.text_proj(text_embedding)
 
+        # --- Cross-Attention ---
+        # `tgt` is the sequence of image patches.
+        # `memory` is the sequence of text embeddings.
+        # The decoder will update each image patch based on all text embeddings.
+        output_seq = self.transformer_decoder(tgt=image_seq, memory=projected_text, memory_key_padding_mask=text_mask)
+
+        # --- Reshape Output back to Image Format ---
+
+        # 1. Transpose back to (Batch, Features, SeqLen).
+        # Shape: [B, H*W, image_dim] -> [B, image_dim, H*W]
+        output_permuted = output_seq.permute(0, 2, 1)
+
+        # 2. Un-flatten the spatial dimensions.
+        # Shape: [B, image_dim, H*W] -> [B, image_dim, H, W]
+        output_image = output_permuted.view(B, self.img_channels, H, W)
+
+        return output_image
 
 class CrossAttentionFiLM(nn.Module):
     def __init__(self, channels, film_dim, text_dim):
@@ -391,9 +448,7 @@ class CrossAttentionFiLMSpatial(nn.Module):
         out = out * (1 + gamma) + beta
 
         # --- Cross-attention residual ---
-        out_flat = out.view(B, C, H*W).permute(0, 2, 1)   # (B, N, C)
-        attn_out = self.cross(out_flat, text_feat, attention)  # (B, N, C)
-        attn_out = attn_out.permute(0, 2, 1).contiguous().view(B, C, H, W)
+        attn_out = self.cross(out, text_feat, attention)  # (B, N, C)
 
         #residual connection
         out = out + self.cross_norm(attn_out)
@@ -420,14 +475,8 @@ class FinalTextConditionedOutput(nn.Module):
         x: [B, C, H, W] - Image feature map
         text_feat: [B, T, D] - Text feature (from the text encoder)
         """
-        B, C, H, W = x.shape
-
-        # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
-        img_feat = x.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
-
         # cross-attn
-        refined = self.cross_attention(img_feat, text_feat, attention_mask)
-        refined = refined.transpose(1, 2).view(B, C, H, W)
+        refined = self.cross_attention(x, text_feat, attention_mask)
 
         # Pass the refined features through the final convolution
         return torch.tanh(self.conv(refined))
@@ -447,7 +496,7 @@ class CNNTextConditionedDecoder(nn.Module):
         self.text_encoder.eval()
         self.text_dim=self.text_encoder.config.hidden_size
         self.text_adapter = MLP(self.text_dim, self.text_dim, [64, 256], hidden_activation = 'gelu', norm='ln')
-        self.attention = TransformerCrossAttention(latent_channel, self.text_dim, n_heads=2)
+        self.attention = TransformerCrossAttention(latent_channel, self.text_dim, nhead=2)
         # self.text_to_latent = nn.Linear(self.text_dim, latent_channel)
         
         self.blocks=nn.ModuleList()
@@ -462,7 +511,7 @@ class CNNTextConditionedDecoder(nn.Module):
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
     def forward(self,z,text_tockens, attention_mask):
-        self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
+        self.text_feats = self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)
         # text_global = self.text_feats.mean(dim=1)  # [B, D]
@@ -471,10 +520,7 @@ class CNNTextConditionedDecoder(nn.Module):
 
         # z = torch.cat([z, text_proj], dim=1)  # concat along channel
         # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
-        B,C,H,W = z.shape
-        z = z.view(B, C, H * W).transpose(1, 2)  # Shape: [B, H*W, C]
-        # Reshape it back to the image spatial dimensions [B, C, H, W]
-        z = self.attention(z, self.text_feats).transpose(1, 2).view(B, C, H, W)
+        z = self.attention(z, self.text_feats, attention_mask)
         x = self.mapping_conv(z)
         for blk,up,conv in zip(self.blocks, self.ups, self.conv):
             x=blk(x,z,self.text_feats, attention_mask)
