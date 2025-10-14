@@ -1,5 +1,5 @@
 defaults:
-  - models : text_conditioned_vae #text_conditioned_vae
+  - models : text_conditioned_vae_cnn #text_conditioned_vae
   - env : SimplePickup
 
 save_path : model_weights

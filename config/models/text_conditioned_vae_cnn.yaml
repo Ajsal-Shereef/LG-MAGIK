@@ -15,28 +15,34 @@ data:
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   n_downsample: 3
-  encoder_n_res: 2
+  encoder_n_res: 3
   input_dim: 3
   dim: 32
   norm: in
-  activ: selu
+  activ: gelu
   pad_type: replicate
   encoder_final_dim:
-  - 9
-  - 9
+  - 7
+  - 7
   latent_channel: 4
   output_dim: 3
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
+  - 32
   - 64
   - 128
   observation_mode : images
+  use_image_discriminator: false
+  disc_params:
+    base_channels: 64
+    n_layers: 3
+    norm: in
 training:
   num_epochs: 500
   seed: 42
   kl_weight: 1
   adv_lambda: 1.0
-  adv_weight: 1.0
+  adv_weight: 5.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: TextConditionedVAE
@@ -45,7 +51,9 @@ training:
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
-  save_weight_freequency: 50 
+  save_weight_freequency: 50
+  img_adv_weight : 1
+  img_adv_lambda : 1
 optimizer:
   lr: 0.0001
   betas:
@@ -60,5 +68,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/TextConditionedVAE/2025-09-26_19-37-26_F2QPO6
-
+  model_dir: model_weights/TextConditionedVAE/2025-10-11_14-10-51_C4JS5A/

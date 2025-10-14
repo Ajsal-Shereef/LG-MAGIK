@@ -1,12 +1,12 @@
 # Configuration for the MultiObjectMiniGrid Environment
 name : "Magik_env"
-size: 10
+size: 9
 max_steps: 30
 render_mode: 'human'  # Options: 'human', 'rgb_array', or null
 is_single_object: false
 reward_object: 'Red_ball'     # Options: 'Green_ball', 'Red_ball', 'Both'
 to_be_terminated: true   # If true, episode ends after picking the reward object
-see_through_walls: false
+see_through_walls: true
 tile_size : 8
 agent_view_size : 7
 wall_color : 'grey'
@@ -19,5 +19,5 @@ agent_start:
   dir: null   # 0: right, 1: down, 2: left, 3: up
 
 #Agent training
-total_timestep : 500000
+total_timestep : 1000000
 fps : 2.5

@@ -107,9 +107,9 @@ class DQN(nn.Module):
         q = self.critic(states)[0]
         action_q_values = q.gather(1, actions.long())
         if self.use_per:
-            critic_loss = (is_weights.unsqueeze(1) * F.smooth_l1_loss(action_q_values, Q_targets, reduction="none")).mean()
+            critic_loss = (is_weights.unsqueeze(1) * F.mse_loss(action_q_values, Q_targets, reduction="none")).mean()
         else:
-            critic_loss = F.smooth_l1_loss(action_q_values, Q_targets, reduction="none").mean()
+            critic_loss = F.mse_loss(action_q_values, Q_targets, reduction="none").mean()
 
         self.optimizer.zero_grad()
         critic_loss.backward()
@@ -187,7 +187,7 @@ class DQN(nn.Module):
         
     def load_params(self, path):
         """Load model and optimizer parameters."""
-        params = torch.load(path + "SoftDQN.tar", map_location=device, weights_only=True)
+        params = torch.load(path + "DQN.tar", map_location=device, weights_only=True)
         self.critic.load_state_dict(params["critic"])
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic.load_state_dict(params["critic_optim"])

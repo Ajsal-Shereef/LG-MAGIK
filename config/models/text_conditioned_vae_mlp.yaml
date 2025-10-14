@@ -26,6 +26,7 @@ model:
   - 256
   - 128
   - 128
+  - 64
   encoder_output_dim: 64
   num_resblocks : 2
   dropout : 0
@@ -38,7 +39,7 @@ model:
 training:
   num_epochs: 500
   seed: 42
-  kl_weight: 1
+  kl_weight: 0.1
   adv_lambda: 1.0
   adv_weight: 1.0
   logs: logs

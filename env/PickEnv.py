@@ -43,7 +43,7 @@ class PickEnv(gym.Env):
         # max per-step angle deviation at dist=1 (add to Hydra config)
         self.max_turn_rads = getattr(cfg, "max_turn_rads", 0.5)  # radians at dist=1
         
-        self.observation_mode = getattr(cfg, "observation_mode", "image")
+        self.observation_mode = getattr(cfg, "observation_mode", "images")
 
         # Actions: [angle_delta_cmd, distance, force], all in [-1, 1]
         self.action_space = spaces.Box(
@@ -51,7 +51,7 @@ class PickEnv(gym.Env):
             high=np.array([1.0, 1.0, 1.0], dtype=np.float32)
         )
 
-        if self.observation_mode == "feature":
+        if self.observation_mode == "features":
             # 12 features: sin/cos angle, rel pos, rel bearing, one-hot type/weight, status
             feature_dim = 12
             self.observation_space = spaces.Box(
@@ -375,6 +375,48 @@ class PickEnv(gym.Env):
             self._draw_scene(surface, scale=1)
             arr = np.transpose(np.array(pygame.surfarray.pixels3d(surface), copy=True), (1, 0, 2))
         return arr.astype(np.uint8)
+    
+    def render_observation(self, obs):
+        """Renders the given observation as an RGB image."""
+        if self.observation_mode == "images":
+            # If observation is already an image, return it
+            return obs
+        else:
+            features = obs
+            agent_angle = np.arctan2(features[0], features[1])
+            rel_pos = np.array([features[2] * self.width, features[3] * self.height])
+            obj_type = "circle" if features[6] > 0.5 else "square"
+            obj_weight = "light" if features[8] > 0.5 else "heavy"
+            picked = features[10] > 0.5
+            broken = features[11] > 0.5
+            agent_pos = np.array([self.width / 2.0, self.height / 2.0])
+            obj_pos = agent_pos + rel_pos
+            object_dict = {
+                "type": obj_type,
+                "pos": obj_pos,
+                "weight": obj_weight,
+                "picked": picked,
+                "broken": broken
+            }
+            if obj_type == "circle":
+                object_dict["radius"] = self.width / 25.0
+            else:
+                object_dict["size"] = self.width / 14.28
+            last_action_status = None
+            W, H = self.width, self.height
+            if self.ssaa_scale > 1:
+                big_w, big_h = W * self.ssaa_scale, H * self.ssaa_scale
+                big = pygame.Surface((big_w, big_h), flags=pygame.SRCALPHA)
+                big.fill((100, 100, 100))
+                PickEnv.draw_scene(big, self.ssaa_scale, agent_pos, agent_angle, self.agent_radius, self.agent_shape, object_dict, last_action_status)
+                small = pygame.transform.smoothscale(big, (W, H))
+                arr = np.transpose(np.array(pygame.surfarray.pixels3d(small), copy=True), (1, 0, 2))
+            else:
+                surface = pygame.Surface((W, H), flags=pygame.SRCALPHA)
+                surface.fill((100, 100, 100))
+                PickEnv.draw_scene(surface, 1, agent_pos, agent_angle, self.agent_radius, self.agent_shape, object_dict, last_action_status)
+                arr = np.transpose(np.array(pygame.surfarray.pixels3d(surface), copy=True), (1, 0, 2))
+            return arr.astype(np.uint8)
 
     # ---------------------------
     # Rendering helpers
@@ -492,7 +534,7 @@ class PickEnv(gym.Env):
     # ---------------------------
     def _get_obs(self):
         """Dispatcher to return observation based on the configured mode."""
-        if self.observation_mode == "feature":
+        if self.observation_mode == "features":
             return self._get_features()
         else: # "image"
             return self._get_image_obs()
@@ -654,7 +696,7 @@ def main(cfg: DictConfig) -> None:
         val_data = paired_data[total_training_data:]
 
         # --- DYNAMIC SAVING BASED ON OBSERVATION MODE ---
-        if cfg.observation_mode == "image":
+        if cfg.observation_mode == "images":
             save_dir_train = f"data/{env.name}/training_images"
             print("\n--- Saving Image Training Dataset ---")
             save_dataset_for_diffusers(training_data, save_dir_train)
@@ -663,7 +705,7 @@ def main(cfg: DictConfig) -> None:
             print("\n--- Saving Image Validation Dataset ---")
             save_dataset_for_diffusers(val_data, save_dir_val)
 
-        elif cfg.observation_mode == "feature":
+        elif cfg.observation_mode == "features":
             # Call the new numpy saving function
             save_dir_train = f"data/{env.name}/training_features"
             print("\n--- Saving Feature Training Dataset (NumPy format) ---")

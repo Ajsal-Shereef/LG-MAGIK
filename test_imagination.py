@@ -9,14 +9,15 @@ from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
-from architectures.common_utils import query_openrouter, get_train_transform, save_gif
+from architectures.common_utils import query_openrouter, get_train_transform, save_gif, preprocess_llm_output
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 @hydra.main(version_base=None, config_path="config", config_name="test_imagination")
 def main(args: DictConfig) -> None:
     if args.env.name ==  "SimplePickup":
-        args.env.verbose = True
+        if args.mode == "transfer":
+            args.env.verbose = True
         from env.SimplePickup import SimplePickup
         env = SimplePickup(args.env, mode="Test")
         from minigrid.wrappers import RGBImgPartialObsWrapper
@@ -26,6 +27,7 @@ def main(args: DictConfig) -> None:
     if args.env.name ==  "Magik_env":
         if args.mode == "transfer":
             args.env.verbose = True
+        args.env.reward_object = "Green_ball"
         from env.Magik_env import MultiObjectMiniGridEnv
         env = MultiObjectMiniGridEnv(args.env)
         from minigrid.wrappers import RGBImgPartialObsWrapper
@@ -43,6 +45,13 @@ def main(args: DictConfig) -> None:
     #Make the agent
     args.agent.network.action_dim = int(env.action_space.n)
     args.agent.network.input_dim = int(env.observation_space.shape[-1])
+    agent_model_dir = args.agent.evaluation.checkpoint
+    if os.path.exists(agent_model_dir + "/config.yaml"):
+        agent_model_args =  OmegaConf.load(agent_model_dir + "/config.yaml")
+        args.agent = agent_model_args.agent
+        args.agent.evaluation.checkpoint = agent_model_dir
+    else:
+        raise FileNotFoundError(f"Config file not found in {agent_model_dir}/config.yaml")
     agent = instantiate(args.agent.network)
     agent = agent.to(device)
     
@@ -98,7 +107,6 @@ def main(args: DictConfig) -> None:
         frame_array_full = []
         state, info = env.reset()
         episode_step = 1
-        frame_array_partial.append(state)
         frame_array_full.append(env.unwrapped.get_frame())
         cumulative_reward = 0
         done = False
@@ -109,9 +117,10 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.agent.training.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                llm_reply = json.loads(query_openrouter(system_prompt, user_prompt, api_key))
-                if llm_reply.get("imagine", False):
-                    changed_state, imagined_state = vision_model.imagine(state, llm_reply.get("description", ""))
+                llm_reply = query_openrouter(system_prompt, user_prompt, api_key)
+                llm_reply_json = preprocess_llm_output(llm_reply)
+                if llm_reply_json.get("imagine", False):
+                    changed_state, imagined_state = vision_model.imagine(state, llm_reply_json.get("description", ""))
                 else:
                     changed_state, imagined_state = train_transforms(state), state
             else:
@@ -126,9 +135,9 @@ def main(args: DictConfig) -> None:
             episode_step += 1
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
-            save_dir = f"result/{args.agent.name}/test/transfer"
+            save_dir = f"result/{args.agent.name}/{args.env.name}/test/transfer"
         else:
-            save_dir = f"result/{args.agent.name}/test/source"
+            save_dir = f"result/{args.agent.name}/{args.env.name}/test/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
     

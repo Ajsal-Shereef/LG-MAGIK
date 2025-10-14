@@ -5,9 +5,9 @@ test_allowed_types : [[2,1]]
 highlight : false
 tile_size : 8
 max_steps : 50
-agent_view_size : 9
+agent_view_size : 7
 render_mode : "none"
-size : 10
+size : 9
 n_downsample : 3
 total_timestep : 1000000
 fps : 2.5

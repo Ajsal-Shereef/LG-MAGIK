@@ -41,8 +41,9 @@ def identity(x, dim=0):
 def get_env(config):
     if config.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
-        from minigrid.wrappers import RGBImgPartialObsWrapper
+        from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
         env = RGBImgPartialObsWrapper(SimplePickup(config), config.tile_size)
+        env = ImgObsWrapper(env)
     else:
         raise NotImplementedError("The environment is not implemented yet")
     return env
@@ -85,62 +86,67 @@ def collect_data(env, total_data):
         episode += 1
     return paired_data, episode
 
-def change_descriptions(data):
+def change_descriptions(data, no_ball_prob=0.1):
     """
-    Generates 10 new descriptions for each description in the input data,
-    ensuring that if multiple balls are present, their colours are unique.
-
-    Args:
-        data (list): A list of dictionaries, where each dictionary has a
-                     'description' key.
-
-    Returns:
-        list: A nested list where each inner list contains 10 string
-              variations of an original description.
+    Generates 10 new descriptions for each input description.
+    - If 'No other objects can be seen.' is present → only wall color changes.
+    - If balls are present → randomly recolor or remove them entirely.
     """
+
     nested_list = []
     wall_colors = ["grey", "blue"]
     ball_colors = ["red", "blue", "yellow", "green"]
 
-    # Pre-compile regex patterns for efficiency
+    # Regex patterns
     wall_pattern = re.compile(r'(surrounded by )(\w+)( walls)')
     ball_pattern = re.compile(r'\b(red|blue|yellow|green)(?= ball\b)')
+    ball_phrase_pattern = re.compile(r'\b(?:a |the )?(red|blue|yellow|green) ball\b', re.IGNORECASE)
+    no_object_pattern = re.compile(r'No other objects can be seen', re.IGNORECASE)
 
     for item in data:
         variations_for_item = []
-        original_description = item['description']
+        original_description = item["description"].strip()
 
         for _ in range(10):
-            # --- 1. Change Wall Color (No change in this logic) ---
+            # --- 1. Change Wall Color (always applies) ---
             new_wall_color = random.choice(wall_colors)
             temp_description = wall_pattern.sub(r'\1' + new_wall_color + r'\3', original_description)
 
-            # --- 2. Change Ball Colors with Uniqueness Constraint ---
-            
-            # First, find all ball colours to determine how many there are
-            matches = list(ball_pattern.finditer(temp_description))
-            num_balls = len(matches)
-
-            if num_balls > 0:
-                # Select a unique sample of colours, one for each ball
-                # e.g., if num_balls is 2, this might return ['yellow', 'red']
-                new_unique_colors = random.sample(ball_colors, k=num_balls)
-
-                new_description = ""
-                last_end = 0
-                # Iterate through the matches and the new unique colours simultaneously
-                for i, match in enumerate(matches):
-                    start, end = match.span()
-                    # Assign the pre-selected unique colour from our list
-                    new_ball_color = new_unique_colors[i]
-                    
-                    new_description += temp_description[last_end:start] + new_ball_color
-                    last_end = end
-                
-                new_description += temp_description[last_end:]
-            else:
-                # If there are no balls, the description is unchanged
+            # --- 2. If it's already a no-object description ---
+            if no_object_pattern.search(original_description):
+                # Only change the wall color, keep everything else same
                 new_description = temp_description
+
+            else:
+                # --- 3. Otherwise, handle the ball logic ---
+                if random.random() < no_ball_prob:
+                    # Remove all ball mentions
+                    temp_description = ball_phrase_pattern.sub('', temp_description)
+                    temp_description = re.sub(r'\s{2,}', ' ', temp_description).strip()
+
+                    # Add "No other objects can be seen."
+                    match = wall_pattern.search(temp_description)
+                    if match:
+                        base_part = temp_description[:match.end()]
+                        new_description = base_part.rstrip('.') + '. No other objects can be seen.'
+                    else:
+                        new_description = 'Agent sees nothing.'
+                else:
+                    # Change colors of balls (unique if multiple)
+                    matches = list(ball_pattern.finditer(temp_description))
+                    num_balls = len(matches)
+
+                    if num_balls > 0:
+                        new_unique_colors = random.sample(ball_colors, k=num_balls)
+                        new_description = ""
+                        last_end = 0
+                        for i, match in enumerate(matches):
+                            start, end = match.span()
+                            new_description += temp_description[last_end:start] + new_unique_colors[i]
+                            last_end = end
+                        new_description += temp_description[last_end:]
+                    else:
+                        new_description = temp_description
 
             variations_for_item.append(new_description)
 
@@ -218,10 +224,9 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     # IMAGE MODE
     # -------------------------
     if observation_mode == "images":
-        train_transforms = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ])
+        train_transforms = train_transforms = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])])
 
         def preprocess_train(examples: Dict) -> Dict:
             images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
@@ -252,8 +257,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     else:
         train_transforms = transforms.Compose([
             transforms.Lambda(lambda x: torch.tensor(x).float()),
-            transforms.Lambda(lambda x: x.unsqueeze(0) if x.ndim == 2 else x),
-            transforms.Normalize([0.5], [0.5]),
+            transforms.Lambda(lambda x: x.unsqueeze(0) if x.ndim == 2 else x)
         ])
 
         train_dataset = NumpyFeaturesDataset(
@@ -1025,8 +1029,8 @@ def query_openrouter(system: str, prompt: str, api_key: str) -> str:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "x-ai/grok-4-fast:free",
-        "temperature": 0.2,        # make output more precise, less random
+        "model": "x-ai/grok-4-fast",
+        "temperature": 0.1,        # make output more precise, less random
         "max_tokens": 500,
         "messages": [
             {"role": "system", "content": system},
@@ -1043,6 +1047,69 @@ def query_openrouter(system: str, prompt: str, api_key: str) -> str:
         return result["choices"][0]["message"]["content"]
     else:
         raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
+    
+def preprocess_llm_output(raw_text: str) -> dict:
+    """
+    Preprocess and sanitize the raw LLM output.
+    
+    Steps:
+    1. Extract valid JSON substring if extra text/tokens are present.
+    2. Remove unwanted tokens or markdown fences.
+    3. Parse JSON safely.
+    4. Fill missing keys with defaults.
+    5. Normalize whitespace and capitalization in the description.
+
+    Returns:
+        A clean dict with keys:
+        {
+            "imagine": bool,
+            "description": str
+        }
+    """
+    # Handle empty or None output
+    if not raw_text or not raw_text.strip():
+        return {"imagine": False, "description": "Agent sees nothing."}
+
+    cleaned_text = raw_text.strip()
+
+    # Remove markdown/code fences if present
+    cleaned_text = re.sub(r"^```(?:json)?|```$", "", cleaned_text.strip(), flags=re.MULTILINE)
+
+    # Extract JSON substring if extra tokens appear before/after
+    json_match = re.search(r"\{.*\}", cleaned_text, flags=re.DOTALL)
+    if json_match:
+        cleaned_text = json_match.group(0)
+    else:
+        # Fallback if no valid JSON braces found
+        return {"imagine": False, "description": "Agent sees nothing."}
+
+    try:
+        parsed = json.loads(cleaned_text)
+    except json.JSONDecodeError:
+        # Try a looser parse: remove trailing commas and retry
+        cleaned_text = re.sub(r",\s*}", "}", cleaned_text)
+        cleaned_text = re.sub(r",\s*\]", "]", cleaned_text)
+        try:
+            parsed = json.loads(cleaned_text)
+        except Exception:
+            return {"imagine": False, "description": "Agent sees nothing."}
+
+    # Fill defaults if missing
+    imagine = parsed.get("imagine")
+    description = parsed.get("description")
+
+    if imagine is None:
+        imagine = False
+
+    # Normalize description
+    if not description or not str(description).strip():
+        description = "Agent sees nothing."
+
+    description = description.strip()
+    description = re.sub(r"\s+", " ", description)
+    description = description[0].upper() + description[1:] if description else description
+
+    return {"imagine": bool(imagine), "description": description}
     
     
 # def query_openrouter(system: str, prompt: str, api_key: str) -> str:

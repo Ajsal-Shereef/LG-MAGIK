@@ -366,14 +366,14 @@ def main(args: DictConfig) -> None:
         val_data = paired_data[total_training_data:]
 
         # --- Save the training dataset in the required image/text pair format ---
-        save_dir_train = f"data/{env.unwrapped.name}/training"
+        save_dir_train = f"data/{env.unwrapped.name}/training_images"
         os.makedirs(save_dir_train, exist_ok=True)
         
         # Save the training dataset
         print("\n--- Saving Training Dataset ---")
         save_dataset_for_diffusers(training_data, save_dir_train)
 
-        save_dir_val = f"data/{env.unwrapped.name}/validation"
+        save_dir_val = f"data/{env.unwrapped.name}/validation_images"
         os.makedirs(save_dir_val, exist_ok=True)
         
         # Save the validation dataset

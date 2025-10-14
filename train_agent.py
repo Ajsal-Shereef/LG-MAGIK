@@ -24,6 +24,7 @@ def train(args: DictConfig) -> None:
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
+        args.agent.training.mission = env.unwrapped.mission
     elif args.env.name ==  "Magik_env":
         from env.Magik_env import MultiObjectMiniGridEnv
         env = MultiObjectMiniGridEnv(args.env)
@@ -31,9 +32,11 @@ def train(args: DictConfig) -> None:
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
+        args.agent.training.mission = env.unwrapped.mission
     elif args.env.name == "PickEnv":
         from env.PickEnv import PickEnv
         env = PickEnv(args.env)
+        args.agent.training.mission = env.mission
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -58,9 +61,7 @@ def train(args: DictConfig) -> None:
     
     # Set training params
     agent.set_training_params(args.agent.training)
-    #Setting the mission for the agent
-    args.agent.training.mission = env.unwrapped.mission
-    
+
     # Initialise the optimizer
     agent.set_optimizer(args.agent.hyperparameters)
     

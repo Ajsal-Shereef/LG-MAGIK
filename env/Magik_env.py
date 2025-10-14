@@ -1,3 +1,4 @@
+import time
 import hydra
 import numpy as np
 import gymnasium as gym
@@ -113,7 +114,7 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
         self.reward_object = config.get('reward_object', 'Green_ball')
         self.is_single_object = config.get('is_single_object', False)
         self.to_be_terminated = config.get('to_be_terminated', False)
-        self.see_through_walls = config.get('see_through_walls', False)
+        self.see_through_walls = config.get('see_through_walls', True)
         self.wall_color = config.get('wall_color', 'grey')
         # --- End of config extraction ---
 
@@ -175,6 +176,13 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
         # Generate the surrounding walls
         self.grid.wall_rect(0, 0, width, height, Wall(self.wall_color))
         
+        # Place the agent
+        if self.agent_start_pos is not None:
+            self.agent_pos = self.agent_start_pos
+            self.agent_dir = self.agent_start_dir
+        else:
+            self.place_agent()
+        
         # Place one green ball at a random position
         if self.is_single_object and self.reward_object == 'Green_ball':
             self.green_ball_loc = self.place_obj(Ball('green'), max_tries=100)
@@ -186,13 +194,6 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
         if not self.is_single_object:
             self.green_ball_loc = self.place_obj(Ball('green'), max_tries=100)
             self.red_ball_loc = self.place_obj(Ball('red'), max_tries=100)
-
-        # Place the agent
-        if self.agent_start_pos is not None:
-            self.agent_pos = self.agent_start_pos
-            self.agent_dir = self.agent_start_dir
-        else:
-            self.place_agent()
 
         self.mission = self._gen_mission()
             
@@ -230,8 +231,8 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
     
     def gen_obs(self):
         # Return full-grid encoding as RGB-like 3D array
-        grid, _ = self.gen_obs_grid()
-        img = grid.encode()
+        grid, vis_mask = self.gen_obs_grid()
+        img = grid.encode(vis_mask)
         obs = {"image": img, "direction": self.agent_dir, "mission": self.mission}
 
         # Represent the inventory as an array of object observations

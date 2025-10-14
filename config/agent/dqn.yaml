@@ -25,9 +25,9 @@ network:
 hyperparameters:
   lr: 1.0e-4
   batch_size: 100
-  buffer_size: 100000
+  buffer_size: 200000
   clip_grad_param: 10
-  use_per: true # Prioritized Experience Replay
+  use_per: false # Prioritized Experience Replay
   betas:
   - 0.9
   - 0.999
@@ -50,4 +50,4 @@ training:
 # Testing and evaluation settings
 evaluation:
   test_episodes: 10
-  checkpoint: model_weights/DQN/2025-09-30_12-50-17_T63KXV/
+  checkpoint: model_weights/DQN/2025-10-11_20-52-18_CG3AZO/

@@ -22,6 +22,8 @@ def train(args: DictConfig) -> None:
         cfg (DictConfig): The Hydra configuration object.
     """
     cfg = args.models
+    # Creating the directory to save the model weights and configs. Placed at the top to generate different dir name before seeding
+    save_dir = create_dump_directory(os.path.join(args.save_path, args.models.project_name))
     # --- 1. Initialization and Setup ---
     if cfg.training.seed is not None:
         set_seed(cfg.training.seed)
@@ -46,13 +48,12 @@ def train(args: DictConfig) -> None:
     
     # Conditionally initialize trackers
     if accelerator.is_main_process and log_values_and_images:
-        accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(cfg, resolve=True))
+        accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(args, resolve=True))
 
     # --- 2. Load Data ---
     accelerator.print("Loading dataset...")
     dataloader = get_dataloader(args)
-    # Creating the directory to save the model weights and configs
-    save_dir = create_dump_directory(os.path.join(args.save_path, args.models.project_name))
+    accelerator.print("Save dir: ", save_dir)
     config_path = os.path.join(save_dir, "config.yaml")
     OmegaConf.save(config=args, f=config_path)
     
@@ -133,7 +134,8 @@ def train(args: DictConfig) -> None:
                         if global_step % cfg.training.generate_interval == 0:
                             validation_prompts = cfg.training.get("validation_prompts", [])
                             generated_images = vae.generate(output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
-                            tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
+                            if args.models.model.observation_mode == "images":
+                                tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
         if epoch % args.models.training.save_weight_freequency == 0:
             vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")       
@@ -150,15 +152,10 @@ def train(args: DictConfig) -> None:
     # --- 7. Save the trained model ---
     if accelerator.is_main_process:
         unwrapped_vae = accelerator.unwrap_model(vae)
-        # Save the model to a 'vae' subdirectory for easy integration
-        # with Stable Diffusion pipelines.
-        pipeline_save_path = cfg.training.output_dir
-        unwrapped_vae.save_pretrained(pipeline_save_path)
+        pipeline_save_path = f"{save_dir}/{args.models.project_name}"
+        unwrapped_vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")
         accelerator.print(f"VAE model saved for pipeline integration at: {pipeline_save_path}")
 
-    #Saving the final model
-    vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")
-    
     # Conditionally end training
     if log_values_and_images:
         accelerator.end_training()

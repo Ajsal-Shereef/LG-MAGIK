@@ -1,3 +1,4 @@
+import math
 import torch
 from torch.distributions import Categorical, Normal
 import torch.nn as nn
@@ -176,96 +177,149 @@ class MLPEncoder(nn.Module):
         return features
     
 class TransformerCrossAttention(nn.Module):
-    """
-    A transformer-based attention module to fuse a feature vector with text embeddings.
-
-    This module takes a batch of feature vectors and a batch of text embeddings and
-    uses cross-attention to refine the feature vector based on the information
-    in the text. This is a common pattern in multimodal architectures.
-
-    Args:
-        feature_dim (int): The dimensionality of the input feature vector (F).
-        embed_dim (int): The dimensionality of the text embeddings and the model's hidden state.
-        nhead (int): The number of attention heads in the MultiheadAttention model.
-        num_layers (int): The number of transformer decoder layers to stack.
-        dim_feedforward (int): The dimension of the feedforward network model in the decoder layer.
-        dropout (float): The dropout value.
-    """
-    def __init__(self, feature_dim: int, embed_dim: int = 512, nhead: int = 8, num_layers: int = 1, dim_feedforward: int = 2048, dropout: float = 0.1):
+    def __init__(self, input_dim, text_dim, nhead=8):
         super().__init__()
-
-        self.embed_dim = embed_dim
-
-        # 1. Input projection layer
-        # This linear layer projects the input feature vector from its original
-        # dimension (F) to the model's embedding dimension (512), so it can be
-        # processed by the transformer decoder.
-        self.feature_proj = nn.Linear(feature_dim, embed_dim)
-
-        # 2. Transformer Decoder Layer
-        # We use a standard TransformerDecoderLayer, which is perfect for this
-        # use case. It's designed for cross-attention between a 'target' sequence
-        # and a 'memory' sequence.
-        decoder_layer = nn.TransformerDecoderLayer(
-            d_model=embed_dim,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            batch_first=True  # Important: ensures input/output tensors are (batch, seq, feature)
-        )
+        self.query_proj = nn.Linear(input_dim, input_dim)
+        self.key_proj   = nn.Linear(text_dim, input_dim)
+        self.value_proj = nn.Linear(text_dim, input_dim)
+        self.out_proj   = nn.Linear(input_dim, input_dim)
+        self.n_heads = nhead
         
-        # 3. Transformer Decoder
-        # This stacks multiple decoder layers. For many tasks, one layer is sufficient.
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        self._reset_parameters()
+        
+    def _reset_parameters(self):
+        # Initialize weights as per the original Transformer paper
+        nn.init.xavier_uniform_(self.query_proj.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.key_proj.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.value_proj.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.out_proj.weight)
+        
+        if self.query_proj.bias is not None:
+            nn.init.constant_(self.query_proj.bias, 0)
+            nn.init.constant_(self.key_proj.bias, 0)
+            nn.init.constant_(self.value_proj.bias, 0)
+            nn.init.constant_(self.out_proj.bias, 0)
 
-    def forward(self, feature: torch.Tensor, text_embedding: torch.Tensor) -> torch.Tensor:
+    def forward(self, feat, text_feat, attention_mask=None):
         """
-        Forward pass for the attention module.
-
-        Args:
-            feature (torch.Tensor): The input feature tensor of shape [B, F].
-            text_embedding (torch.Tensor): The text embedding tensor of shape [B, 77, 512].
-
-        Returns:
-            torch.Tensor: The transformed feature tensor of shape [B, 512].
+        feat: [B, F]
+        text_feat: [B, T, D]
+        attention_mask: [B, T] (1 = keep, 0 = mask)
         """
-        # --- Input Validation ---
-        if feature.dim() != 2:
-            raise ValueError(f"Expected feature to have 2 dimensions [B, F], but got {feature.dim()}")
-        if text_embedding.dim() != 3:
-            raise ValueError(f"Expected text_embedding to have 3 dimensions [B, 77, 512], but got {text_embedding.dim()}")
-        if text_embedding.shape[2] != self.embed_dim:
-             raise ValueError(f"Text embedding dimension ({text_embedding.shape[2]}) does not match model embed_dim ({self.embed_dim})")
+        B, F = feat.shape
+        H = self.n_heads
+        d = F // H
+
+        q = self.query_proj(feat).view(B, 1, H, d).transpose(1, 2)  # [B,H,N,d]
+        k = self.key_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
+        v = self.value_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
+
+        # Attention scores
+        attn = (q @ k.transpose(-2, -1)) / (d ** 0.5)  # [B,H,N,T]
+
+        if attention_mask is not None:
+            # expand mask: [B,T] -> [B,1,1,T]
+            mask = attention_mask[:, None, None, :].to(attn.dtype)
+            attn = attn.masked_fill(mask == 0, float('-inf'))
+
+        attn = attn.softmax(dim=-1)
+
+        out = attn @ v  # [B,H,N,d]
+        out = out.transpose(1, 2).contiguous().view(B, F)
+        return self.out_proj(out)
+    
+# class TransformerCrossAttention(nn.Module):
+#     """
+#     A transformer-based attention module to fuse a feature vector with text embeddings.
+
+#     This module takes a batch of feature vectors and a batch of text embeddings and
+#     uses cross-attention to refine the feature vector based on the information
+#     in the text. This is a common pattern in multimodal architectures.
+
+#     Args:
+#         feature_dim (int): The dimensionality of the input feature vector (F).
+#         embed_dim (int): The dimensionality of the text embeddings and the model's hidden state.
+#         nhead (int): The number of attention heads in the MultiheadAttention model.
+#         num_layers (int): The number of transformer decoder layers to stack.
+#         dim_feedforward (int): The dimension of the feedforward network model in the decoder layer.
+#         dropout (float): The dropout value.
+#     """
+#     def __init__(self, feature_dim: int, embed_dim: int = 512, nhead: int = 8, num_layers: int = 1, dim_feedforward: int = 2048, dropout: float = 0.1):
+#         super().__init__()
+
+#         self.feature_dim = feature_dim
+#         self.embed_dim = embed_dim
+
+#         # 1. Input projection layer
+#         # This linear layer projects the input feature vector from its original
+#         # dimension (F) to the model's embedding dimension (512), so it can be
+#         # processed by the transformer decoder.
+#         self.text_proj = nn.Linear(embed_dim, feature_dim)
+
+#         # 2. Transformer Decoder Layer
+#         # We use a standard TransformerDecoderLayer, which is perfect for this
+#         # use case. It's designed for cross-attention between a 'target' sequence
+#         # and a 'memory' sequence.
+#         decoder_layer = nn.TransformerDecoderLayer(
+#             d_model=feature_dim,
+#             nhead=nhead,
+#             dim_feedforward=dim_feedforward,
+#             dropout=dropout,
+#             batch_first=True  # Important: ensures input/output tensors are (batch, seq, feature)
+#         )
+        
+#         # 3. Transformer Decoder
+#         # This stacks multiple decoder layers. For many tasks, one layer is sufficient.
+#         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+#     def forward(self, feature: torch.Tensor, text_embedding: torch.Tensor, text_mask: torch.Tensor) -> torch.Tensor:
+#         """
+#         Forward pass for the attention module.
+
+#         Args:
+#             feature (torch.Tensor): The input feature tensor of shape [B, F].
+#             text_embedding (torch.Tensor): The text embedding tensor of shape [B, 77, 512].
+
+#         Returns:
+#             torch.Tensor: The transformed feature tensor of shape [B, 512].
+#         """
+#         # --- Input Validation ---
+#         if feature.dim() != 2:
+#             raise ValueError(f"Expected feature to have 2 dimensions [B, F], but got {feature.dim()}")
+#         if text_embedding.dim() != 3:
+#             raise ValueError(f"Expected text_embedding to have 3 dimensions [B, 77, 512], but got {text_embedding.dim()}")
+#         if text_embedding.shape[2] != self.embed_dim:
+#              raise ValueError(f"Text embedding dimension ({text_embedding.shape[2]}) does not match model embed_dim ({self.embed_dim})")
 
 
-        # --- Cross-Attention Steps ---
+#         # --- Cross-Attention Steps ---
 
-        # 1. Project the feature to the embedding dimension.
-        # Shape: [B, F] -> [B, embed_dim]
-        projected_feature = self.feature_proj(feature)
+#         # 1. Project the feature to the embedding dimension.
+#         # Shape: [B, T, F] -> [B, T, feature_dim]
+#         projected_text = self.text_proj(text_embedding)
 
-        # 2. Add a sequence dimension to the projected feature.
-        # The transformer decoder expects a sequence. We treat our single feature vector
-        # as a sequence of length 1. This will be the 'query' in the attention mechanism.
-        # Shape: [B, embed_dim] -> [B, 1, embed_dim]
-        tgt = projected_feature.unsqueeze(1)
+#         # 2. Add a sequence dimension to the projected feature.
+#         # The transformer decoder expects a sequence. We treat our single feature vector
+#         # as a sequence of length 1. This will be the 'query' in the attention mechanism.
+#         # Shape: [B, feature_dim] -> [B, 1, feature_dim]
+#         tgt = feature.unsqueeze(1)
 
-        # 3. The text embedding serves as the 'memory' (key and value) for the attention.
-        # The model will "attend to" the text to gather relevant information.
-        # Shape: [B, 77, 512]
-        memory = text_embedding
+#         # 3. The text embedding serves as the 'memory' (key and value) for the attention.
+#         # The model will "attend to" the text to gather relevant information.
+#         # Shape: [B, 77, feature_dim]
+#         memory = projected_text
 
-        # 4. Apply the transformer decoder.
-        # The `tgt` (our feature) attends to the `memory` (the text).
-        # The output will have the same shape as the `tgt`.
-        # Shape: [B, 1, embed_dim] -> [B, 1, embed_dim]
-        output = self.transformer_decoder(tgt=tgt, memory=memory)
+#         # 4. Apply the transformer decoder.
+#         # The `tgt` (our feature) attends to the `memory` (the text).
+#         # The output will have the same shape as the `tgt`.
+#         # Shape: [B, 1, feature_dim] -> [B, 1, feature_dim]
+#         output = self.transformer_decoder(tgt=tgt, memory=memory, memory_key_padding_mask=text_mask)
 
-        # 5. Remove the sequence dimension to get the final transformed feature.
-        # Shape: [B, 1, embed_dim] -> [B, embed_dim]
-        transformed_feature = output.squeeze(1)
+#         # 5. Remove the sequence dimension to get the final transformed feature.
+#         # Shape: [B, 1, feature_dim] -> [B, feature_dim]
+#         transformed_feature = output.squeeze(1)
 
-        return transformed_feature
+#         return transformed_feature
     
 class FiLM(nn.Module):
     def __init__(self, num_features, cond_dim):
@@ -279,7 +333,7 @@ class FiLM(nn.Module):
         self.gamma = nn.Linear(cond_dim, num_features)
         self.beta  = nn.Linear(cond_dim, num_features)
 
-    def forward(self, x, cond):
+    def forward(self, cond):
         """
         Args:
             x (Tensor): Feature map of shape (B, F).
@@ -350,7 +404,7 @@ class FinalTextConditionedOutput(nn.Module):
         refined = self.cross_attention(x, text_feat, attention_mask)
 
         # Pass the refined features through the final convolution
-        return torch.tanh(self.linear(refined))
+        return self.linear(refined)
     
 class MLPTextConditionedDecoder(nn.Module):
     def __init__(self, latent_dim, output_dim, decoder_hidden_dims, clip_model):
@@ -367,7 +421,7 @@ class MLPTextConditionedDecoder(nn.Module):
         self.text_encoder.eval()
         self.text_dim=self.text_encoder.config.hidden_size
         self.text_adapter = MLP(self.text_dim, self.text_dim, [64, 256], hidden_activation = 'gelu', norm='ln')
-        self.attention = TransformerCrossAttention(latent_dim, self.text_dim, n_heads=2)
+        self.attention = TransformerCrossAttention(latent_dim, self.text_dim, nhead=2)
         # self.text_to_latent = nn.Linear(self.text_dim, latent_dim)
         
         self.attention_film_blocks=nn.ModuleList()
@@ -388,7 +442,7 @@ class MLPTextConditionedDecoder(nn.Module):
         # text_proj = self.text_to_latent(text_global)  # [B, F]
         # z = torch.cat([z, text_proj], dim=1)  # concat along channel
 
-        z = self.attention(z, self.text_feats)
+        z = self.attention(z, self.text_feats, attention_mask)
         x = self.mapping_linear(z)
         for blk,linear in zip(self.attention_film_blocks, self.linear_blocks):
             x=blk(x,z,self.text_feats, attention_mask)
