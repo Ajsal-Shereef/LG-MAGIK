@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from PIL import Image
 from typing import Dict
 from itertools import chain
+import torch.optim as optim
 from architectures.mlp import MLP
 from torchvision import transforms
 from torchvision.utils import make_grid
@@ -52,16 +53,38 @@ class PatchDiscriminator(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+# === MINE: Mutual Information Neural Estimator ===
+class MINECritic(nn.Module):
+    def __init__(self, z_dim, t_dim, hidden_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(z_dim + t_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, z, t):
+        zt = torch.cat([z, t], dim=-1)
+        return self.net(zt)
+
+
+# === Modified TextConditionedVAE ===
 class TextConditionedVAE(nn.Module):
     def __init__(self, **kwargs):
         super(TextConditionedVAE, self).__init__()
-
+        
+        # ---- Base configs ----
         self.observation_model = kwargs["observation_mode"]
         self.use_image_discriminator = kwargs.get("use_image_discriminator", False)
+        self.use_weighted_recon = kwargs.get("use_weighted_recon", False)
+        self.recon_mix_weight = kwargs.get("recon_mix_weight", 0.5)
+        self.use_mine = kwargs.get("use_mine", False)
         disc_params = kwargs.get("disc_params", {})
-        
+
+        # ---- Encoder/Decoder ----
         if self.observation_model == "images":
-            #Extracting the parameters for the CNN encoder and decoder
             n_downsample = kwargs["n_downsample"]
             encoder_n_res = kwargs["encoder_n_res"]
             input_dim = kwargs["input_dim"]
@@ -74,22 +97,23 @@ class TextConditionedVAE(nn.Module):
             encoder_final_dim = kwargs["encoder_final_dim"]
             latent_channel = kwargs["latent_channel"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
-            
+
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
             self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
             self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, output_dim, clip_model, latent_channel)
-            self.caption_discriminator = MLP(latent_channel*np.prod(encoder_final_dim), self.decoder.tokenizer.model_max_length*self.decoder.text_dim, discriminator_fc_hidden)
+            self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
+                                             self.decoder.tokenizer.model_max_length * self.decoder.text_dim,
+                                             discriminator_fc_hidden)
             if self.use_image_discriminator:
-                # default values if not provided
                 in_ch = kwargs.get("disc_in_channels", input_dim)
                 base = disc_params.get("base_channels", 64)
                 n_layers = disc_params.get("n_layers", 3)
                 norm = disc_params.get("norm", "in")
-                self.image_discriminator = PatchDiscriminator(in_channels=in_ch, base_channels=base, n_layers=n_layers, norm=norm).to(device)
+                self.image_discriminator = PatchDiscriminator(in_channels=in_ch, base_channels=base,
+                                                              n_layers=n_layers, norm=norm).to(device)
             else:
                 self.image_discriminator = None
         else:
-            #Extracting the parameters for the MLP encoder and decoder
             input_dim = kwargs["input_dim"]
             encoder_out_dim = kwargs["encoder_output_dim"]
             hidden_dims = kwargs["encoder_hidden_dims"]
@@ -106,135 +130,163 @@ class TextConditionedVAE(nn.Module):
             self.encoder = MLPEncoder(input_dim, hidden_dims, encoder_out_dim, num_resblocks, norm, activ, dropout)
             self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)
             self.decoder = MLPTextConditionedDecoder(latent_dim, input_dim, decoder_hidden_dims, clip_model)
-            self.caption_discriminator = MLP(latent_dim, self.decoder.tokenizer.model_max_length*self.decoder.text_dim, discriminator_fc_hidden)
+            self.caption_discriminator = MLP(latent_dim,
+                                             self.decoder.tokenizer.model_max_length * self.decoder.text_dim,
+                                             discriminator_fc_hidden)
             self.image_discriminator = None
-        
-    def forward(self, x: torch.Tensor):
+
+        # ---- Optional MINE module ----
+        if self.use_mine:
+            self.mine_critic = MINECritic(latent_dim if self.observation_model != "images" else latent_channel * np.prod(encoder_final_dim),
+                                          self.decoder.text_dim)
+        else:
+            self.mine_critic = None
+    
+    def set_optimizers(self, parms):
+        if self.image_discriminator:
+            vae_params = list(self.encoder.parameters()) + list(self.bottleneck.parameters()) + list(self.decoder.parameters()) + \
+                          list(self.caption_discriminator.parameters()) + list(self.image_discriminator.parameters())
+        else:
+            vae_params = list(self.encoder.parameters()) + list(self.bottleneck.parameters()) + list(self.decoder.parameters()) + \
+                          list(self.caption_discriminator.parameters())
+        self.vae_optim = optim.AdamW(vae_params,
+                                lr=parms.lr,
+                                betas=tuple(parms.betas),
+                                weight_decay=parms.weight_decay,
+                                eps=parms.eps,
+                               )
+        if self.use_mine:
+            self.mine_optim = optim.AdamW(self.mine_critic.parameters(),
+                                lr=parms.lr_mine,
+                                betas=tuple(parms.betas),
+                                weight_decay=parms.weight_decay,
+                                eps=parms.eps,
+                               )
+    
+    def forward(self, x):
         """
-        Performs the forward pass of the Text conditioned VAE.
-
-        Args:
-            x (torch.Tensor): The input batch of images, text.
-
-        Returns:
-            Dict: A dictionary containing
-                the reconstructed images and the posterior distribution.
+        x: dict containing pixel_values, input_ids, attention_masks
         """
         images = x["pixel_values"]
         text_tokens = x["input_ids"]
         attention_mask = x["attention_masks"]
-        # Encode the input to get the posterior distribution
+        
         hidden = self.encoder(images)
-        
-        # Posterior and sampled latent
         sampler = self.bottleneck(hidden)
- 
-        # Decode the latents to reconstruct the image
-        # .sample is used to get the mean of the decoded output distribution
-        if self.training:
-            reconstructed_x = self.decoder(sampler.latent, text_tokens, attention_mask)
+        latent = sampler.latent
+
+        # === Classifier-free guidance dropout ===
+        if self.use_weighted_recon:
+            dummy_text_tokens, _ = tokenize_captions(self.decoder.tokenizer, [""]*text_tokens.size(0))
+            dummy_text_tokens = text_tokens.to(device)
+            dummy_attention_mask = torch.ones_like(attention_mask)
+            text_agnostic_reconstructed_x = self.decoder(latent, dummy_text_tokens, dummy_attention_mask)
+            text_aligned_reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
+            reconstructed_x = (1 - self.recon_mix_weight) * text_aligned_reconstructed_x + self.recon_mix_weight * text_agnostic_reconstructed_x
         else:
-            reconstructed_x = self.decoder(sampler.mean, text_tokens, attention_mask)
-        
-        return {
-            "x" : images,
-            "reconstructed_x": reconstructed_x, 
-            "posterior": sampler,
-            "latent" : sampler.latent
-        }
-        
-    def loss_function(
-        self,
-        original_x: torch.Tensor,
-        forward_output: Dict,
-        **kwargs,
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Calculates the Text conditioned VAE loss components.
+            reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
+        if self.use_weighted_recon:
+            return {
+                    "x": images,
+                    "reconstructed_x": reconstructed_x,
+                    "text_aligned_reconstructed_x" : text_aligned_reconstructed_x,
+                    "text_agnostic_reconstructed_x" : text_agnostic_reconstructed_x,
+                    "posterior": sampler,
+                    "latent": latent
+                    }
+        else:
+            return {
+                    "x": images,
+                    "reconstructed_x": reconstructed_x,
+                    "posterior": sampler,
+                    "latent": latent
+                    }
 
-        Args:
-            original_x (torch.Tensor): The original input images.
-            forward_output (Dict): The output from the forward pass.
-            training_configs (dict): The weight for the KL divergence term.
-
-        Returns:
-            Dict[str, torch.Tensor]: A dictionary containing total loss,
-                reconstruction loss, and KL divergence loss.
-        """
+    def loss_function(self, original_x, forward_output, **kwargs):
         original_x = original_x["pixel_values"]
         reconstructed_x = forward_output["reconstructed_x"]
         posterior = forward_output["posterior"]
 
-        # Reconstruction Loss (MSE)
-        # We flatten the image dimensions and sum over them, then take the mean over the batch.
         recon_loss = F.mse_loss(reconstructed_x, original_x, reduction="none")
+
         if self.observation_model == "images":
             recon_loss = recon_loss.sum(dim=[1,2,3]).mean()
-            # KL Divergence Loss
-            # This is the standard formula for KL divergence between the posterior and a standard normal prior.
             kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=[1,2,3]).mean()
         else:
             recon_loss = recon_loss.sum(dim=-1).mean()
             kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
-        
-        
-        # --- Adversarial loss (InfoNCE) ---
 
-        # Gradient reversal so encoder gets adversarial signal
+        # === Adversarial disentanglement loss ===
         z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
-
-        # Pass through discriminator
         pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
-
-        # Reshape to [B, T, F] to match text features
         pred = pred.view_as(self.decoder.text_feats)
+        pred_n = F.normalize(pred, dim=-1)
+        tgt_n = F.normalize(self.decoder.text_feats.detach(), dim=-1)
 
-        # Normalize embeddings
-        pred_n = F.normalize(pred, dim=-1)       # [B, T, F]
-        tgt_n  = F.normalize(self.decoder.text_feats.detach(), dim=-1)  # [B, T, F]
-
-        # Flatten tokens into batch dimension
         B, T, Fd = pred_n.shape
-        pred_flat = pred_n.reshape(B * T, Fd)    # [B*T, F]
-        tgt_flat  = tgt_n.reshape(B * T, Fd)     # [B*T, F]
-
-        # Compute similarity logits
-        logits = pred_flat @ tgt_flat.T          # [B*T, B*T]
-        logits /= kwargs.get("temperature", 0.07)
-
-        # Targets are aligned positions
-        labels = torch.arange(B * T, device=logits.device)
-
-        # Cross-entropy InfoNCE loss
+        pred_flat = pred_n.reshape(B*T, Fd)
+        tgt_flat  = tgt_n.reshape(B*T, Fd)
+        logits = (pred_flat @ tgt_flat.T) / kwargs.get("temperature", 0.07)
+        labels = torch.arange(B*T, device=logits.device)
         disc_loss = F.cross_entropy(logits, labels)
+
+        vae_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
         
-        # Total Loss
-        total_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"]*disc_loss
-
-        # Patch discriminator loss
+        # === Patch discriminator loss ===
         if self.image_discriminator is not None:
-
             D_real = self.image_discriminator(original_x)
             reconstructed_grl = grad_reverse(reconstructed_x, kwargs.get("img_adv_lambda", kwargs["adv_lambda"]))
             D_fake = self.image_discriminator(reconstructed_grl)
             loss_D_real = F.relu(1.0 - D_real).mean()
             loss_D_fake = F.relu(1.0 + D_fake).mean()
             img_disc_loss = loss_D_real + loss_D_fake
-            total_loss += kwargs.get("img_adv_weight", kwargs["adv_weight"]) * img_disc_loss
-            return {
-                "total_loss": total_loss,
-                "recon_loss": recon_loss,
-                "kl_loss": kl_loss,
-                "advesarial_loss" : disc_loss,
-                "img_adversarial_loss": img_disc_loss,
-            }
+            vae_loss += kwargs.get("img_adv_weight", kwargs["adv_weight"]) * img_disc_loss
         else:
-            return {
-                "total_loss": total_loss,
-                "recon_loss": recon_loss,
-                "kl_loss": kl_loss,
-                "advesarial_loss" : disc_loss,
-            }
+            img_disc_loss = torch.tensor(0.0, device=original_x.device)
+
+        # === MINE loss ===
+        if self.use_mine and self.mine_critic is not None:
+            z_flat = posterior.latent.view(posterior.latent.size(0), -1)
+            t_flat = self.decoder.text_feats.mean(dim=1)
+            # Positive pairs
+            joint = self.mine_critic(z_flat, t_flat).mean()
+            # Negative pairs (shuffle)
+            shuffled_t = t_flat[torch.randperm(t_flat.size(0))]
+            marginal_scores = self.mine_critic(z_flat, shuffled_t)
+            marginal_exp = torch.exp(marginal_scores).mean()
+            marginal_log = torch.log(marginal_exp + 1e-8)  # add epsilon for stability
+            mi_estimate = joint - marginal_log
+            # For VAE: minimize MI with unbiased gradient (detach marginal)
+            mi_for_vae = joint - marginal_log.detach()
+            vae_loss += kwargs.get("mine_weight", 0.1) * mi_for_vae
+            # For critic: maximize the bound, i.e., minimize -mi_estimate
+            critic_loss = -mi_estimate
+            mine_loss = mi_estimate  # The MI estimate for logging
+        else:
+            mine_loss = torch.tensor(0.0, device=original_x.device)
+            critic_loss = torch.tensor(0.0, device=original_x.device)
+
+        return {
+            "vae_loss": vae_loss,
+            "recon_loss": recon_loss,
+            "kl_loss": kl_loss,
+            "adversarial_loss": disc_loss,
+            "critic_loss": critic_loss,
+            "mine_loss" : mine_loss,
+            "img_disc_loss" : img_disc_loss
+        }
+        
+    def optimize(self, losses, accelerator):
+        self.vae_optim.zero_grad()
+        if self.use_mine:
+            self.mine_optim.zero_grad()
+        accelerator.backward(losses["vae_loss"], retain_graph=True if self.use_mine else False)
+        if self.use_mine:
+            self.mine_optim.zero_grad()  # Clear unwanted grads from vae_loss on critic params
+            accelerator.backward(losses["critic_loss"])
+        self.vae_optim.step()
+        if self.use_mine:
+            self.mine_optim.step()
         
     def imagine(self, state, description):
         train_transforms = get_train_transform()

@@ -1,6 +1,6 @@
 defaults:
   - env : Magik_env
-  - agent : softdqn
+  - agent : dqn
 save_every : 10000
 use_wandb : False
 log_every : 100

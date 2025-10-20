@@ -117,9 +117,9 @@ class SimplePickup(MiniGridEnv):
         ball_colors = [self.all_colors[i] for i in ball_ids]
         
         if 'red' in ball_colors:
-            self.mission = "Fetch the Red ball"
+            self.mission = "Pick the Red ball"
         if 'green' in ball_colors:
-            self.mission = "Fetch the Green ball"
+            self.mission = "Pick the Green ball"
         # Define gate position based on layout
         gate_pos = None
         # gate_pos = (width // 2, height // 2)  # vertical wall with gate
@@ -352,7 +352,7 @@ def main(args: DictConfig) -> None:
     env = SimplePickup(args, mode="collect_data")
     if is_collect_data:
         env = RGBImgPartialObsWrapper(env, tile_size=args.tile_size)
-        env = ImgObsWrapper(env)
+        env = ImgObsWrapper(env) 
     paired_data = []
     # Total number of timesteps to collect
     total_training_data = 160000

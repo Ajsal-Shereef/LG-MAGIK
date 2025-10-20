@@ -2,7 +2,6 @@ import os
 import hydra
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import wandb
 import torch.nn.functional as F
 
@@ -48,7 +47,8 @@ def train(args: DictConfig) -> None:
     
     # Conditionally initialize trackers
     if accelerator.is_main_process and log_values_and_images:
-        accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(args, resolve=True))
+        tracker_config = {log_with : {"name":f"{args.env.name}"}}
+        accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(args, resolve=True), init_kwargs=tracker_config)
 
     # --- 2. Load Data ---
     accelerator.print("Loading dataset...")
@@ -60,18 +60,12 @@ def train(args: DictConfig) -> None:
     # --- 3. Define Model ---
     accelerator.print("Initializing VAE model...")
     vae = instantiate(cfg.model)
-    
-    # --- 4. Define Optimizer ---
-    optimizer = optim.AdamW(
-        vae.parameters(),
-        lr=cfg.optimizer.lr,
-        betas=tuple(cfg.optimizer.betas),
-        weight_decay=cfg.optimizer.weight_decay,
-        eps=cfg.optimizer.eps,
-    )
-
+   
     # --- 5. Prepare for Distributed Training ---
-    vae, optimizer, dataloader = accelerator.prepare(vae, optimizer, dataloader)
+    vae, dataloader = accelerator.prepare(vae, dataloader)
+   
+    # --- 4. Define Optimizer within model ---
+    vae.set_optimizers(cfg.optimizer)
     
     # --- 6. Training Loop ---
     accelerator.print("Starting VAE training loop...")
@@ -90,9 +84,7 @@ def train(args: DictConfig) -> None:
                 losses = vae.loss_function(batch, output, **cfg.training)
                 
                 # Backward pass and optimization
-                accelerator.backward(losses["total_loss"])
-                optimizer.step()
-                optimizer.zero_grad()
+                vae.optimize(losses, accelerator)
                 
                 # Reduce all loss components across processes and convert to scalar
                 reduced_losses = {
@@ -122,7 +114,13 @@ def train(args: DictConfig) -> None:
                         recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
 
                         # Create a single grid for comparison
-                        comparison_tensor = torch.cat([img_to_log, recon_to_log])
+                        if not cfg.model.use_weighted_recon:
+                            comparison_tensor = torch.cat([img_to_log, recon_to_log])
+                        else:
+                            text_aligned_to_log = (output["text_aligned_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                            text_agnostic_to_log = (output["text_agnostic_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                            comparison_tensor = torch.cat([img_to_log, recon_to_log, text_aligned_to_log, text_agnostic_to_log])
+                            
                         comparison_grid = make_grid(comparison_tensor, nrow=num_images_to_log)
                         
                         tracker = accelerator.get_tracker("wandb")

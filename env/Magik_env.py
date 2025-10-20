@@ -146,11 +146,40 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
             self.env_name = "GreenBallPickUpMultipleObject"
         self.action_space = spaces.Discrete(4)
         self.mission = self._gen_mission()
+        self.env_description = self._get_environment_description()
 
     # ... (the rest of your class methods remain exactly the same) ...
     # reset, _gen_grid, gen_obs_grid, gen_obs, _reward, flatten_obs,
     # get_object_name, get_class, step, get_unprocesed_obs, _pickup, _drop,
     # _gen_mission, and render_partial_view_from_features
+    
+    def _get_environment_description(self):
+        """
+        Returns a textual description of the environment dynamics, object affordances,
+        agent capabilities, and scene variability.
+        This text will be appended to the LLM prompt for imagination reasoning.
+        """
+        description = (
+            "Environment context:\n"
+            "- The agent operates in a partially observable gridworld-like room. The agent sees a portion of the room.\n"
+            "- At the start of each episode, the agent may spawn in a room surrounded "
+            "by either grey walls or blue walls.\n"
+            "- The agent can perform the following actions: rotate left, rotate right, "
+            "move forward, and pick up objects that are within reach.\n"
+            "- The environment may contain objects such as balls, keys, boxes, and gates.\n"
+            "- Balls and keys can both be picked up; gates can only be opened using keys "
+            "of matching color.\n"
+            "- Since, the observation is partial, the agent can explore the environment by moving around to find the oject to perform different tasks.\n"
+            "- If the agent perform pick action in front of an object that can be picked up.\n "
+            "- If either there is no object in front or the object cannot be picked up and action choosen is pick, the action has no effect.\n"
+            "- Once one object is picked, the object dissapears from the scene and it is added to agent's inventory, which it can hold forever. This doesn't prevent picking another object later.\n"
+            "- The agent can store multiple objects in it's inventory, up to a maximum of two objects"
+            "- Non-interactive elements (walls, floor, background) cannot be acted upon.\n"
+            "- The agent receives a reward upon successfully completing the Target task "
+            "(for example, picking the specified object or opening the correct gate).\n"
+            "- Each episode ends once the Target task is completed or a maximum step limit is reached."
+        )
+        return description
     
     def reset(self, seed=None, **kwargs):
         # Optionally, if you need to set the seed:
@@ -466,9 +495,9 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
         self.obs = obs['image']
         
         if self.reward_object == "Green_ball":
-            reward = green_collection_reward
+            reward = green_collection_reward - red_collection_reward
         elif self.reward_object == "Red_ball":
-            reward = red_collection_reward
+            reward = red_collection_reward - green_collection_reward
         elif self.reward_object == "Both":
             reward = (green_collection_reward + red_collection_reward)/2
         else:
@@ -544,12 +573,16 @@ class MultiObjectMiniGridEnv(MiniGridEnv):
                 print("Cannot drop here!")
     
     def _gen_mission(self):
-        if self.reward_object == 'Green_ball':
-            return "Pick the green ball"
-        elif self.reward_object == 'Red_ball':
-            return "Pick the red ball"
+        if self.is_single_object and self.reward_object == 'Green_ball':
+            return f"Pick the green ball in the {self.wall_color} room"
+        elif self.is_single_object and self.reward_object == 'Red_ball':
+            return f"Pick the red ball in the {self.wall_color} room"
+        elif not self.is_single_object and self.reward_object == 'Green_ball':
+            return f"Pick green ball and avoid red ball in the {self.wall_color} room"
+        elif not self.is_single_object and self.reward_object == 'Red_ball':
+            return f"Pick red ball and avoid green ball in the {self.wall_color} room"
         else:
-            return "Pick both red ball and green ball"
+            return f"Pick red ball and green ball in the {self.wall_color} room"
 
     @staticmethod
     def render_partial_view_from_features(features, agent_dir, tile_size=32):

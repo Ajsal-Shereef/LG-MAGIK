@@ -9,7 +9,7 @@ from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
-from architectures.common_utils import query_openrouter, get_train_transform, save_gif, preprocess_llm_output
+from architectures.common_utils import get_train_transform, save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -24,16 +24,21 @@ def main(args: DictConfig) -> None:
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
+        env_name = env.unwrapped.env_name
+        env_description = env.unwrapped.env_description
     if args.env.name ==  "Magik_env":
         if args.mode == "transfer":
             args.env.verbose = True
-        args.env.reward_object = "Green_ball"
+        args.env.is_single_object = False
+        args.env.reward_object = "Both"
         from env.Magik_env import MultiObjectMiniGridEnv
         env = MultiObjectMiniGridEnv(args.env)
         from minigrid.wrappers import RGBImgPartialObsWrapper
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
+        env_name = env.unwrapped.env_name
+        env_description = env.unwrapped.env_description
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -99,9 +104,20 @@ def main(args: DictConfig) -> None:
     # Load the .env file
     load_dotenv(dotenv_path="config/.env")
 
-    # Access the API key
-    api_key = os.getenv('API_KEY')
-    
+    if args.querry_mode == "openrouter":
+        # Access the API key
+        api_key = os.getenv('API_KEY')
+        pipe = args.llm_model
+    elif args.querry_mode == "huggingface":
+        api_key = None
+        pipe = initialize_llm_hf_pipeline(args.llm_model)
+    elif args.querry_mode == "google":
+        # Access the API key
+        api_key = os.getenv('GOOGLE_API_KEY')
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        pipe = genai.GenerativeModel(args.llm_model)
+        
     for episode in range(args.num_episode):
         frame_array_partial = []
         frame_array_full = []
@@ -112,12 +128,16 @@ def main(args: DictConfig) -> None:
         done = False
         while not done:
             if args.mode == "transfer":
-                user_prompt = (
+                first_user_prompt = (
+                                f"Environment description : {env_description}\n"
                                 f"Target task : {mission}\n"
                                 f"What agent knows : {args.agent.training.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                llm_reply = query_openrouter(system_prompt, user_prompt, api_key)
+                if "No other objects can be seen" in info['description']:
+                    llm_reply = info['description']
+                else:
+                    llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)
                 llm_reply_json = preprocess_llm_output(llm_reply)
                 if llm_reply_json.get("imagine", False):
                     changed_state, imagined_state = vision_model.imagine(state, llm_reply_json.get("description", ""))
@@ -135,9 +155,9 @@ def main(args: DictConfig) -> None:
             episode_step += 1
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
-            save_dir = f"result/{args.agent.name}/{args.env.name}/test/transfer"
+            save_dir = f"result/{args.agent.name}/{args.env.name}/{env_name}/transfer"
         else:
-            save_dir = f"result/{args.agent.name}/{args.env.name}/test/source"
+            save_dir = f"result/{args.agent.name}/{args.env.name}/{env_name}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
     

@@ -7,6 +7,7 @@ import string
 import numpy as np
 import torch
 import requests
+import traceback
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
@@ -1022,31 +1023,144 @@ def write_video(frames, episode, dump_dir, frameSize=(224, 224)):
         video.write(img)
     video.release()
     
-def query_openrouter(system: str, prompt: str, api_key: str) -> str:
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "x-ai/grok-4-fast",
-        "temperature": 0.1,        # make output more precise, less random
-        "max_tokens": 500,
-        "messages": [
-            {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": prompt + "\n\nLet’s think step by step before the final answer."
-            },
-        ],
-    }
+def initialize_llm_hf_pipeline(model_id):
+    """
+    Initializes and returns a Hugging Face model and tokenizer.
+    This function handles loading the model with necessary arguments for modern architectures.
+    """
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    try:
+        print(f"Loading model and tokenizer for: {model_id}...")
+        print("This may take a moment...")
 
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
+        # Make sure remote code execution is allowed
+        os.environ["TRANSFORMERS_TRUST_REMOTE_CODE"] = "1"
+        
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        
+        # Modern GPUs (Ampere, Hopper, etc.) benefit greatly from bfloat16
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map="auto",
+            torch_dtype="auto",  # <-- IMPROVED: More specific and efficient than "auto"
+            trust_remote_code=True      # <-- CRUCIAL FIX: Allows execution of model-specific code
+        )
+        
+        print("Model and tokenizer loaded successfully. ✅")
+        return tokenizer, model
+
+    except ImportError:
+        raise ImportError(
+            "The required libraries are not installed. "
+            "Please run: pip install torch transformers accelerate bitsandbytes"
+        )
+    except Exception as e:
+        # 🐛 This provides a much more detailed error message for debugging
+        print("--- DETAILED TRACEBACK ---")
+        traceback.print_exc()
+        print("--------------------------")
+        raise RuntimeError(f"Failed to load model. See traceback above for details. Original error: {e}")
+    
+def split_gptoss_analysis_final(text: str):
+    """
+    Extracts the reasoning (analysis) and final output from GPT-OSS-style channel-tagged text.
+    """
+    # Extract analysis section
+    analysis_match = re.search(
+        r"<\|channel\|>analysis<\|message\|>(.*?)<\|end\|>",
+        text,
+        re.DOTALL
+    )
+    analysis = analysis_match.group(1).strip() if analysis_match else None
+
+    # Extract final section
+    final_match = re.search(
+        r"<\|channel\|>final<\|message\|>(.*?)<\|return\|>",
+        text,
+        re.DOTALL
+    )
+    final_output = final_match.group(1).strip() if final_match else None
+
+    return analysis, final_output
+    
+def query_llm(system: str, prompt: str, api_key: str, pipeline, mode: str) -> tuple[str, dict]:
+    """
+    Query LLM via OpenRouter, HuggingFace pipeline, or Google API 
+    with CONSISTENT formatting.
+    """
+    if mode == "openrouter":
+        # --- Your existing OpenRouter code (unchanged) ---
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": pipeline,
+            "temperature": 0.1,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": False,
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            result = response.json()
+            return (
+                result["choices"][0]["message"]["content"], 
+                result["choices"][0]["message"].get("reasoning", {})
+            )
+        else:
+            raise RuntimeError(f"OpenRouter failed: {response.status_code}: {response.text}")
+    
+    elif mode == "huggingface":
+        # --- Your existing HuggingFace code (unchanged) ---
+        tokenizer = pipeline[0]
+        model = pipeline[1]
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+
+        inputs = tokenizer.apply_chat_template(
+                                                messages,
+                                                add_generation_prompt=True,
+                                                return_tensors="pt",
+                                                return_dict=True,
+                                               ).to(model.device)
+ 
+        generated = model.generate(**inputs, max_new_tokens=4096)
+        reasoning, final = split_gptoss_analysis_final(tokenizer.decode(generated[0][inputs["input_ids"].shape[-1] :]))
+        return final, reasoning
+
+    elif mode == "google":
+
+        # 1. Add formatting instructions to the system prompt
+        structured_system_prompt = f"""{system}
+        
+        Please structure your response in two parts.
+        First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
+        Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
+        """
+        
+        full_prompt = f"{structured_system_prompt}\n\nUser Question: {prompt}"
+        
+        try:
+            response = pipeline.generate_content(full_prompt)
+            
+            # 2. Use your existing parser on the Gemini output
+            analysis, final = split_gptoss_analysis_final(response.text)
+            
+            # The 'analysis' can be returned as the reasoning dictionary
+            return final, {"reasoning": analysis} if analysis else {}
+            
+        except Exception as e:
+            raise RuntimeError(f"Google API call failed: {e}")
+            
     else:
-        raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
+        raise ValueError(f"Unsupported mode: {mode}")
     
 def preprocess_llm_output(raw_text: str) -> dict:
     """

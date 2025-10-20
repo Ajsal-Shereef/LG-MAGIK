@@ -37,6 +37,8 @@ model:
     base_channels: 64
     n_layers: 3
     norm: in
+  use_weighted_recon: false
+  use_mine: false           # Enables mutual information minimization
 training:
   num_epochs: 500
   seed: 42
@@ -47,13 +49,15 @@ training:
   output_dir: model_weights/vae
   experiment_name: TextConditionedVAE
   log_media_interval: 8000
-  log_values_and_images: false
+  log_values_and_images: true
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
   save_weight_freequency: 50
-  img_adv_weight : 1
+  img_adv_weight : 5.0
   img_adv_lambda : 1
+  mine_weight: 1           # Weight for MINE loss term
+  recon_mix_weight: 0.5
 optimizer:
   lr: 0.0001
   betas:
@@ -61,6 +65,7 @@ optimizer:
   - 0.999
   weight_decay: 0.01
   eps: 1.0e-08
+  lr_mine : 0.00001
 accelerator:
   mixed_precision: 'no'
   gradient_accumulation_steps: 1
