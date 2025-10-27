@@ -4,20 +4,16 @@ import os
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-from torch.distributions import Normal
+from architectures.mlp import MLP
+from architectures.stochastic import SquashedNormal
 from torch.nn.utils import clip_grad_norm_
 from architectures.cnn import Conv2d_MLP_Model
-from agent.agent_utils.buffer import ReplayBuffer, PrioritizedReplayBuffer
-from architectures.common_utils import save_gif, zip_strict, get_train_transform
-from agent.agent_utils.networks import CNNActor
+from agent.agent_utils.buffer import ReplayBuffer
+from architectures.common_utils import save_gif, zip_strict, get_train_transform_cnn, get_train_transform_mlp
+from agent.agent_utils.networks import CNNActor, MLPActor
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-# Assuming necessary imports and classes are available:
-# from agent.agent_utils.networks import Conv2d_MLP_Model, CNNActor
-# device, clip_grad_norm_, zip_strict, get_train_transform, save_gif
-# ReplayBuffer, PrioritizedReplayBuffer
 
 class CNNSACCritic(nn.Module):
     """Critic (Q-Network) Model for SAC."""
@@ -70,6 +66,20 @@ class CNNSACCritic(nn.Module):
         h = torch.cat([h, action], dim=-1)
         q = self.q_layer(h)
         return q
+    
+class MLPSACCritic(nn.Module):
+    """Critic (Q-Network) Model for SAC."""
+
+    def __init__(self, **kwargs):
+        """Initialize parameters and build model."""
+        super(MLPSACCritic, self).__init__()
+        
+        self.q_layer = MLP(kwargs["input_dim"] + kwargs["action_dim"], 1, kwargs["shared_fc_hidden_sizes"], kwargs["shared_fc_hidden_activation"])
+
+    def forward(self, state, action):
+        h = torch.cat([state, action], dim=-1)
+        q = self.q_layer(h)
+        return q
 
 class SAC(nn.Module):
     """Interacts with and learns from the environment."""
@@ -79,18 +89,30 @@ class SAC(nn.Module):
         """
         super(SAC, self).__init__()
         
-        # Actor with fc_output_actor
-        actor_kwargs = kwargs.copy()
-        actor_kwargs["fc_output"] = actor_kwargs.pop("fc_output_actor", 64)
-        self.actor = CNNActor(**actor_kwargs).to(device)
-        
-        # Critics with fc_output_critic
-        critic_kwargs = kwargs.copy()
-        critic_kwargs["fc_output"] = critic_kwargs.pop("fc_output_critic", 64)
-        self.critic1 = CNNSACCritic(**critic_kwargs).to(device)
-        self.critic2 = CNNSACCritic(**critic_kwargs).to(device)
-        self.critic_target1 = CNNSACCritic(**critic_kwargs).to(device)
-        self.critic_target2 = CNNSACCritic(**critic_kwargs).to(device)
+        if kwargs["observation_mode"] == 'image':
+            # Actor with fc_output_actor
+            actor_kwargs = kwargs.copy()
+            actor_kwargs["fc_output"] = actor_kwargs.pop("fc_output_actor", 64)
+            self.actor = CNNActor(**actor_kwargs).to(device)
+
+            # Critics with fc_output_critic
+            critic_kwargs = kwargs.copy()
+            critic_kwargs["fc_output"] = critic_kwargs.pop("fc_output_critic", 64)
+            self.critic1 = CNNSACCritic(**critic_kwargs).to(device)
+            self.critic2 = CNNSACCritic(**critic_kwargs).to(device)
+            self.critic_target1 = CNNSACCritic(**critic_kwargs).to(device)
+            self.critic_target2 = CNNSACCritic(**critic_kwargs).to(device)
+            
+            self.train_transform = get_train_transform_cnn()
+        else:
+            self.actor = MLPActor(kwargs).to(device)
+            self.critic1 = MLPSACCritic(**kwargs).to(device)
+            self.critic2 = MLPSACCritic(**kwargs).to(device)
+            self.critic_target1 = MLPSACCritic(**kwargs).to(device)
+            self.critic_target2 = MLPSACCritic(**kwargs).to(device)
+            
+            self.train_transform = get_train_transform_mlp()
+            
         self.critic_target1.load_state_dict(self.critic1.state_dict())
         self.critic_target2.load_state_dict(self.critic2.state_dict())
         for target_model in [self.critic_target1, self.critic_target2]:
@@ -103,7 +125,7 @@ class SAC(nn.Module):
     def initialise_buffer(self, config):
         #Buffer for storing the experience
         self.batch_size = config.batch_size
-        self.buffer = ReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device)
+        self.buffer = ReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device, train_transform=self.train_transform)
             
     def set_training_params(self, config):
         self.hard_update = config.hard_update
@@ -116,21 +138,21 @@ class SAC(nn.Module):
         self.learn_after = config.learn_after
         
     def set_optimizer(self, cfg):
-        self.actor_optimizer = optim.AdamW(
+        self.actor_optimizer = optim.Adam(
                                         self.actor.parameters(),
                                         lr=cfg.actor_lr,
                                         betas=tuple(cfg.betas),
                                         weight_decay=cfg.weight_decay,
                                         eps=cfg.eps,
                                     )
-        self.critic_optimizer = optim.AdamW(
+        self.critic_optimizer = optim.Adam(
                                         list(self.critic1.parameters()) + list(self.critic2.parameters()),
                                         lr=cfg.critic_lr,
                                         betas=tuple(cfg.betas),
                                         weight_decay=cfg.weight_decay,
                                         eps=cfg.eps,
                                     )
-        self.clip_grad_param = cfg.clip_grad_param
+        # self.clip_grad_param = cfg.clip_grad_param
         if cfg.alpha == 'auto':
             self.learnable_alpha = True
             # Target entropy is -|A|
@@ -138,7 +160,7 @@ class SAC(nn.Module):
             # We optimize log_alpha instead of alpha directly for stability
             self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
             self.alpha = self.log_alpha.exp()
-            self.alpha_optimizer = optim.AdamW([self.log_alpha], lr=cfg.actor_lr, betas=tuple(cfg.betas))
+            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=cfg.actor_lr, betas=tuple(cfg.betas))
         else:
             self.learnable_alpha = False
             self.alpha = cfg.alpha
@@ -163,8 +185,8 @@ class SAC(nn.Module):
         if not self.is_training:
             action = torch.tanh(mu)
         else:
-            dist = Normal(mu, std)
-            x_t = dist.rsample()
+            dist = SquashedNormal(mu, std)
+            x_t = dist.sample()
             action = torch.tanh(x_t)
         return action.squeeze(0).cpu().numpy()
     
@@ -186,7 +208,6 @@ class SAC(nn.Module):
             Q_target_next1 = self.critic_target1(next_states, next_actions)
             Q_target_next2 = self.critic_target2(next_states, next_actions)
             min_Q_target_next = torch.min(Q_target_next1, Q_target_next2)
-            # --- MODIFICATION: Use self.alpha which could be a tensor or float ---
             Q_targets = rewards + (self.gamma * (1 - done) * (min_Q_target_next - self.alpha * next_log_pi.unsqueeze(-1)))
 
         # Get current Q estimates
@@ -198,7 +219,7 @@ class SAC(nn.Module):
         
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        clip_grad_norm_(list(self.critic1.parameters()) + list(self.critic2.parameters()), self.clip_grad_param)
+        # clip_grad_norm_(list(self.critic1.parameters()) + list(self.critic2.parameters()), self.clip_grad_param)
         self.critic_optimizer.step()
         
         # -------------------------- update actor -------------------------- #
@@ -214,7 +235,7 @@ class SAC(nn.Module):
         
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        clip_grad_norm_(self.actor.parameters(), self.clip_grad_param)
+        # clip_grad_norm_(self.actor.parameters(), self.clip_grad_param)
         self.actor_optimizer.step()
 
         # --- Add update step for learnable alpha ---
@@ -248,7 +269,6 @@ class SAC(nn.Module):
             metric["Alpha"] = self.alpha.item()
         
         return metric
-
     
     def soft_update(self, local_model , target_model):
         """Soft update model parameters.
@@ -278,7 +298,6 @@ class SAC(nn.Module):
         """Test the agent in the environment."""
         is_training = self.is_training
         self.is_training = False
-        train_transform = get_train_transform()
         for episode in range(test_episodes):
             frame_array_partial = []
             frame_array_full = []
@@ -288,7 +307,7 @@ class SAC(nn.Module):
             cumulative_reward = 0
             done = False
             while not done:
-                action = self.get_action(train_transform(state), self.initial_random_samples+1)
+                action = self.get_action(self.train_transform(state), self.initial_random_samples+1)
                 next_state, reward, truncated, terminated, _ = env.step(action)
                 frame_array_partial.append(next_state)
                 frame_array_full.append(env.unwrapped.get_frame())
@@ -334,4 +353,4 @@ class SAC(nn.Module):
             os.mkdir(save_dir)
         checkpoint_path = save_dir + save_name + '.tar'
         torch.save(params, checkpoint_path)
-        print("[INFO] DQN model saved to: ", checkpoint_path)
+        print("[INFO] SAC model saved to: ", checkpoint_path)

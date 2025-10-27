@@ -5,12 +5,11 @@ import random
 import torch
 from PIL import Image
 from collections import deque, namedtuple
-from architectures.common_utils import get_train_transform
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, buffer_size, batch_size, device):
+    def __init__(self, buffer_size, batch_size, device, train_transform):
         """Initialize a ReplayBuffer object.
         Params
         ======
@@ -22,7 +21,7 @@ class ReplayBuffer:
         self.memory = deque(maxlen=buffer_size)  
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "truncated", "terminated"])
-        self.train_transform = get_train_transform()
+        self.train_transform = train_transform
     
     def add(self, transition):
         """Add a new experience to memory."""
@@ -121,7 +120,7 @@ class SumTree:
 
 
 class PrioritizedReplayBuffer:
-    def __init__(self, buffer_size, batch_size, device, alpha=0.6, beta_start=0.4, beta_frames=100000):
+    def __init__(self, buffer_size, batch_size, device, train_transform, alpha=0.6, beta_start=0.4, beta_frames=100000):
         self.tree = SumTree(buffer_size)
         self.batch_size = batch_size
         self.device = device
@@ -132,7 +131,7 @@ class PrioritizedReplayBuffer:
         self.frame = 1
         
         self.eps = 1e-5  # small value to avoid zero priority
-        self.train_transform = get_train_transform()
+        self.train_transform = train_transform
 
     def add(self, transition, priority=1.0):
         max_priority = np.max(self.tree.tree[-self.tree.capacity:])

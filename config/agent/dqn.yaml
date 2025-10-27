@@ -14,7 +14,7 @@ network:
   paddings: [0, 1, 1]
   cnn_activ: relu
   use_maxpool: true
-  fc_input_size : 800
+  fc_input_size : 2048
   fc_hidden_sizes: [100, 100]
   fc_hidden_activation: relu
   fc_output_activation: identity
@@ -50,4 +50,4 @@ training:
 # Testing and evaluation settings
 evaluation:
   test_episodes: 10
-  checkpoint: model_weights/DQN/2025-10-11_20-52-18_CG3AZO/
+  checkpoint: model_weights/DQN/2025-10-20_13-52-06_VY0UKC/

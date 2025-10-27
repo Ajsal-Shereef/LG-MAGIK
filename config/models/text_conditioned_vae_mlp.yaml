@@ -35,9 +35,9 @@ model:
   discriminator_fc_hidden:
   - 64
   - 128
-  observation_mode : features
+  observation_mode : ${env.observation_mode}
   use_weighted_recon: false
-  use_mine: true             # Enables mutual information minimization
+  use_mine: false             # Enables mutual information minimization
 training:
   num_epochs: 500
   seed: 42
@@ -48,7 +48,7 @@ training:
   output_dir: model_weights/vae
   experiment_name: TextConditionedVAE
   log_media_interval: 8000
-  log_values_and_images: true
+  log_values_and_images: false
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
@@ -62,6 +62,7 @@ optimizer:
   - 0.999
   weight_decay: 0.01
   eps: 1.0e-08
+  lr_mine : 1e-4
 accelerator:
   mixed_precision: 'no'
   gradient_accumulation_steps: 1

@@ -1,0 +1,46 @@
+# General agent and path configuration
+_target_: agents.sac.SAC
+video_save_path: result
+name: SAC
+
+# Network architecture parameters
+network:
+  _target_: agent.sac.SAC
+  input_dim: ??? # Must be specified (e.g., env.observation_space.shape[0] for vector; channels for images)
+  action_dim: ??? # Must be specified (e.g., env.action_space.shape[0])
+  shared_fc_hidden_sizes: [256, 256]  # SB3 default net_arch=[256, 256]
+  shared_fc_hidden_activation: relu
+  shared_fc_out_dim: 256  # Matches SB3 hidden size before policy/Q heads
+  log_std_bounds: [-5, 2]
+  dropout_prob: 0
+  norm: null  # SB3 defaults to no normalization
+  observation_mode: ${env.observation_mode}
+
+# Core learning hyperparameters
+hyperparameters:
+  actor_lr: 3.0e-4  # Matches SB3
+  critic_lr: 3.0e-4  # Matches SB3
+  batch_size: 256  # Matches SB3
+  buffer_size: 1000000  # SB3 default (1e6)
+  clip_grad_param: null  # SB3 has no explicit clipping; set to 0.5 if instability occurs
+  use_per: false  # Matches SB3 (uniform replay for SAC)
+  betas:
+  - 0.9
+  - 0.999  # Matches SB3 Adam betas
+  weight_decay: 0.0  # SB3 default (no L2 regularization)
+  eps: 1.0e-08  # Matches SB3 Adam eps
+  alpha: "auto"  # Matches SB3 ent_coef='auto'
+
+# Training and exploration strategy
+training:
+  hard_update: false  # Matches SB3 (soft updates)
+  gamma: 0.99  # Matches SB3
+  tau: 5.0e-3  # Matches SB3
+  initial_random_samples: 1000  # Close to SB3 learning_starts=100; higher for better random fill in SAC
+  learn_after: 1000  # Aligned with initial_random_samples for SB3-like start
+  mission: ???  # Must be specified (e.g., env name or task)
+
+# Testing and evaluation settings
+evaluation:
+  test_episodes: 10  # Reasonable default; SB3 uses 10 for quick evals
+  checkpoint: model_weights/SAC/2025-10-01_10-00-00_EXAMPLE/

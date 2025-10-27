@@ -2,7 +2,8 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
-
+from torch import distributions as pyd
+from architectures.common_utils import TanhTransform
 
 class Stochastic(nn.Module):
     """
@@ -48,6 +49,22 @@ class GaussianSample(Stochastic):
         self.log_variance = F.softplus(self.log_var(x))
         self.latent = self.reparametrize(self.mean, self.log_variance)
         return self
+    
+class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
+    def __init__(self, loc, scale):
+        self.loc = loc
+        self.scale = scale
+
+        self.base_dist = pyd.Normal(loc, scale)
+        transforms = [TanhTransform()]
+        super().__init__(self.base_dist, transforms)
+
+    @property
+    def mean(self):
+        mu = self.loc
+        for tr in self.transforms:
+            mu = tr(mu)
+        return mu
     
 class GaussianSampleSpatial(Stochastic):
     """

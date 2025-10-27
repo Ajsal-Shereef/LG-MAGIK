@@ -22,7 +22,7 @@ def train(args: DictConfig) -> None:
     """
     cfg = args.models
     # Creating the directory to save the model weights and configs. Placed at the top to generate different dir name before seeding
-    save_dir = create_dump_directory(os.path.join(args.save_path, args.models.project_name))
+    save_dir = create_dump_directory(os.path.join(args.save_path, cfg.model_name))
     # --- 1. Initialization and Setup ---
     if cfg.training.seed is not None:
         set_seed(cfg.training.seed)
@@ -47,7 +47,7 @@ def train(args: DictConfig) -> None:
     
     # Conditionally initialize trackers
     if accelerator.is_main_process and log_values_and_images:
-        tracker_config = {log_with : {"name":f"{args.env.name}"}}
+        tracker_config = {log_with : {"name":f"{cfg.model_name}_{args.env.name}"}}
         accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(args, resolve=True), init_kwargs=tracker_config)
 
     # --- 2. Load Data ---
@@ -132,7 +132,7 @@ def train(args: DictConfig) -> None:
                         if global_step % cfg.training.generate_interval == 0:
                             validation_prompts = cfg.training.get("validation_prompts", [])
                             generated_images = vae.generate(output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
-                            if args.models.model.observation_mode == "images":
+                            if args.models.model.observation_mode == "image":
                                 tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
         if epoch % args.models.training.save_weight_freequency == 0:
@@ -150,8 +150,8 @@ def train(args: DictConfig) -> None:
     # --- 7. Save the trained model ---
     if accelerator.is_main_process:
         unwrapped_vae = accelerator.unwrap_model(vae)
-        pipeline_save_path = f"{save_dir}/{args.models.project_name}"
-        unwrapped_vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")
+        pipeline_save_path = f"{save_dir}/{cfg.model_name}"
+        unwrapped_vae.save(f"{save_dir}/", save_name=f"{cfg.model_name}")
         accelerator.print(f"VAE model saved for pipeline integration at: {pipeline_save_path}")
 
     # Conditionally end training

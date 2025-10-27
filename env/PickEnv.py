@@ -43,7 +43,7 @@ class PickEnv(gym.Env):
         # max per-step angle deviation at dist=1 (add to Hydra config)
         self.max_turn_rads = getattr(cfg, "max_turn_rads", 0.5)  # radians at dist=1
         
-        self.observation_mode = getattr(cfg, "observation_mode", "images")
+        self.observation_mode = getattr(cfg, "observation_mode", "image")
 
         # Actions: [angle_delta_cmd, distance, force], all in [-1, 1]
         self.action_space = spaces.Box(
@@ -51,7 +51,7 @@ class PickEnv(gym.Env):
             high=np.array([1.0, 1.0, 1.0], dtype=np.float32)
         )
 
-        if self.observation_mode == "features":
+        if self.observation_mode == "feature":
             # 12 features: sin/cos angle, rel pos, rel bearing, one-hot type/weight, status
             feature_dim = 12
             self.observation_space = spaces.Box(
@@ -70,7 +70,31 @@ class PickEnv(gym.Env):
         # Pygame display state
         self.screen = None
         self.clock = None
-
+        
+        self.num_picked = 0
+        self.num_broken = 0
+        self.mission = self._get_mission()
+        
+    def _get_environment_description(self):
+        description = (
+            "Environment context:\n"
+            "- The agent need to pick up either a ball or a box. \n"
+            "- Each object can be either light or heavy. \n"
+            "- The agent must learn to apply minimum force and navigate near the object to succesfully pick up the object. \n"
+            "- If the object applies force beyond objects threshold, the object breaks and the episode ends with a penalty. \n"
+            "- The agent is penalised for applying a weak force (force less than required to pick the object) and wasting the timesteps. \n"
+            "- Each episode ends once the Target task is completed or a maximum step limit is reached.")
+        return description
+    
+    def _get_mission(self):
+        if self.mode == "train":
+            self.mission = f"Pick the light circle and heavy square without breaking it by applying required force."
+        elif self.mode == "test":
+            self.mission = f"Pick the heavy circle and light square without breaking it by applying required force."
+        else:
+            self.mission = "No mission specified" 
+        return self.mission   
+    
     # ---------------------------
     # Core environment methods
     # ---------------------------
@@ -100,10 +124,17 @@ class PickEnv(gym.Env):
                 obj_weight = "light"  # light ball
             else:
                 obj_weight = "heavy"  # heavy square
-        else:
+        elif self.mode == "collect_data":
             # data_collection mode: random type and weight
             obj_type = self.np_random.choice(["circle", "square"])
             obj_weight = self.np_random.choice(["light", "heavy"])
+        else:
+            # Test mode: only heavy ball (circle) and light square
+            obj_type = self.np_random.choice(["circle", "square"])
+            if obj_type == "circle":
+                obj_weight = "heavy"  # light ball
+            else:
+                obj_weight = "light"  # heavy square
     
         # Dynamic margin for objects (20% of dimension, with minimum of 15 pixels)
         obj_margin_x = max(15, int(self.width * 0.20))
@@ -141,8 +172,7 @@ class PickEnv(gym.Env):
             }
     
         color_str = "green" if obj_weight == "light" else "red"
-        self.mission = f"Pick the {color_str} {self.object['type']} without breaking it. Apply minimum force!"
-    
+        
         # Resample object until no initial overlap
         max_resamples = 50  # Prevent infinite loop (rare)
         for _ in range(max_resamples):
@@ -183,7 +213,7 @@ class PickEnv(gym.Env):
         dist_pixels = float(np.linalg.norm(rel_pos))
 
         # Normalize distance to action units (using move_scale)
-        move_scale = self.width / 30.0
+        move_scale = self.width / 10.0
         dist_units = dist_pixels / move_scale
 
         # Relative bearing (angle from agent's facing direction)
@@ -215,7 +245,7 @@ class PickEnv(gym.Env):
         self.steps += 1
 
         # Movement scale (pixels per unit distance)
-        move_scale = self.width / 10
+        self.move_scale = self.width / 10
         
         # Compute distance before movement for approach reward
         dist_before = float(np.linalg.norm(self.agent_pos - self.object["pos"]))
@@ -234,8 +264,8 @@ class PickEnv(gym.Env):
         self.agent_angle += applied_delta
 
         # Update position using the new heading
-        dx = float(mapped_dist) * move_scale * math.cos(self.agent_angle)
-        dy = float(mapped_dist) * move_scale * math.sin(self.agent_angle)
+        dx = float(mapped_dist) * self.move_scale * math.cos(self.agent_angle)
+        dy = float(mapped_dist) * self.move_scale * math.sin(self.agent_angle)
         self.agent_pos += np.array([dx, dy], dtype=np.float32)
         self.agent_pos[0] = np.clip(self.agent_pos[0], self.agent_radius, self.width-self.agent_radius)
         self.agent_pos[1] = np.clip(self.agent_pos[1], self.agent_radius, self.height-self.agent_radius)
@@ -277,6 +307,7 @@ class PickEnv(gym.Env):
                 reward += -2.0
                 terminated = True
                 self.last_action_status = "broken"
+                self.num_broken += 1
             elif mapped_force >= min_force:
                 # Success: Variable reward based on excess force
                 excess = float(mapped_force) - min_force
@@ -287,6 +318,7 @@ class PickEnv(gym.Env):
                 reward += variable_reward  # Add to any approach penalties
                 terminated = True
                 self.last_action_status = "picked"
+                self.num_picked += 1
             else:
                 # This explicitly tells the agent that this action was a failure.
                 reward -= 0.05 # A small but clear penalty
@@ -299,14 +331,14 @@ class PickEnv(gym.Env):
                 reward -= 2.0 # A penalty for running out of time
             
         if self.verbose:
-            info = {"mission": self.mission, "description": self._get_description()}
+            info = {"mission": self.mission, "description": self._get_description(), "object" : self.object}
         else:
-            info = {"mission": self.mission}
+            info = {"mission": self.mission, "object" : self.object}
 
         return self._get_obs(), reward, terminated, truncated, info
     
-    def getframe(self):
-        """Always returns the current rendered image, regardless of observation mode."""
+    def get_frame(self):
+        """Always returns the current rendered image, regardless of observation mode.""" 
         return self._get_image_obs()
     
     def _get_features(self):
@@ -378,7 +410,7 @@ class PickEnv(gym.Env):
     
     def render_observation(self, obs):
         """Renders the given observation as an RGB image."""
-        if self.observation_mode == "images":
+        if self.observation_mode == "image":
             # If observation is already an image, return it
             return obs
         else:
@@ -534,7 +566,7 @@ class PickEnv(gym.Env):
     # ---------------------------
     def _get_obs(self):
         """Dispatcher to return observation based on the configured mode."""
-        if self.observation_mode == "features":
+        if self.observation_mode == "feature":
             return self._get_features()
         else: # "image"
             return self._get_image_obs()
@@ -675,7 +707,7 @@ def save_feature_dataset(dataset, save_dir):
 @hydra.main(version_base=None, config_path="../config/env", config_name="PickEnv")
 def main(cfg: DictConfig) -> None:
     is_collect_data = True
-    cfg.observation_mode = "features"
+    cfg.observation_mode = "feature"
     if is_collect_data:
         mode="collect_data"
     else:
@@ -696,7 +728,7 @@ def main(cfg: DictConfig) -> None:
         val_data = paired_data[total_training_data:]
 
         # --- DYNAMIC SAVING BASED ON OBSERVATION MODE ---
-        if cfg.observation_mode == "images":
+        if cfg.observation_mode == "image":
             save_dir_train = f"data/{env.name}/training_images"
             print("\n--- Saving Image Training Dataset ---")
             save_dataset_for_diffusers(training_data, save_dir_train)
@@ -705,7 +737,7 @@ def main(cfg: DictConfig) -> None:
             print("\n--- Saving Image Validation Dataset ---")
             save_dataset_for_diffusers(val_data, save_dir_val)
 
-        elif cfg.observation_mode == "features":
+        elif cfg.observation_mode == "feature":
             # Call the new numpy saving function
             save_dir_train = f"data/{env.name}/training_features"
             print("\n--- Saving Feature Training Dataset (NumPy format) ---")

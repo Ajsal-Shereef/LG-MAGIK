@@ -14,15 +14,17 @@ from minigrid.core.grid import Grid
 from collections import Counter, defaultdict
 import sys
 sys.path.append(".")
-from architectures.common_utils import rollout, collect_data
+from architectures.common_utils import collect_data, save_dataset_for_diffusers
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import WorldObj
-from minigrid.core.world_object import  Ball, Wall
+from minigrid.core.world_object import  Ball, Box, Key, Wall
 from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
 from minigrid.utils.rendering import fill_coords, point_in_rect
 from minigrid.core.constants import OBJECT_TO_IDX, COLORS, COLOR_TO_IDX, STATE_TO_IDX
 
+
+NAME_TO_OBJECT = {"ball" : Ball, "key" : Key, "box" : Box}
 
 class FakeWall(WorldObj):
     def __init__(self, color="blue"):
@@ -36,29 +38,25 @@ class FakeWall(WorldObj):
 
 
 class SimplePickup(MiniGridEnv):
-    def __init__(self, config, mode="train"):
+    def __init__(self, config):
         size=config["size"]
         max_steps=config["max_steps"]
-        if mode == "train":
-            self.allowed_types=config["agent_training_allowed_types"]
-        elif mode == "collect_data":
-            self.allowed_types=config["data_collection_allowed_types"]
-        else:
-            self.allowed_types=config["test_allowed_types"]
         render_mode=config["render_mode"]
         # Register fakewall if not already registered
         if "fakewall" not in OBJECT_TO_IDX:
             OBJECT_TO_IDX["fakewall"] = max(OBJECT_TO_IDX.values()) + 1
-        self.all_colors = ["red", "blue", "green", "yellow"]
-        self.ball_combinations = list(itertools.combinations(range(4), 2))  # 6 combinations
-        self.current_type = (1, 1)
-        
+        self.objects = list(config.objects)
+        self.reward_objects = list(config.reward_objects)
+        self.wall_colors = list(config.wall_color)
         if max_steps is None:
             self.max_steps = 4 * size * size
         else:
             self.max_steps = max_steps
             
-        mission_space = MissionSpace(mission_func=self._gen_mission)
+        mission_space = MissionSpace(
+            mission_func=self._gen_mission,
+            ordered_placeholders=[self.objects, self.reward_objects, self.wall_colors],
+        )
         
         super().__init__(
             grid_size=size,
@@ -70,22 +68,73 @@ class SimplePickup(MiniGridEnv):
             highlight=config.highlight
         )
         self.action_space = spaces.Discrete(4)
-        self.name = 'SimplePickup'
+        self.env_description = self._get_environment_description()
+        self.env_name = self.set_env_name()
+        
+    def _get_environment_description(self):
+        """
+        Returns a textual description of the environment dynamics, object affordances,
+        agent capabilities, and scene variability.
+        This text will be appended to the LLM prompt for imagination reasoning.
+        """
+        description = (
+            "Environment context:\n"
+            "- The agent operates in a partially observable 2D gridworld-like room. The agent sees a portion of the room.\n"
+            "- At the start of each episode, the agent and objects are randomly initialised in the environment.\n"
+            "- The agent can perform the following actions: rotate left, rotate right, move forward, and pick up objects that are in front.\n"
+            "- The environment may contains different objects such are balls, keys, boxes of different color.\n"
+            "- The agent task is to pick/avoid the objects according to the mission string.\n"
+            "- Since, the observation is partial, the agent can explore the environment by moving around to find the objects to pick.\n"
+            "- Once one object is picked, the object dissapears from the scene and it is added to agent's inventory, which it can hold forever. This doesn't prevent picking another object later.\n"
+            "- The agent can store multiple objects in it's inventory, up to a maximum of two objects"
+            "- Non-interactive elements (walls, floor, background) cannot be acted upon.\n"
+            "- The agent receives a reward upon successfully completing the Target task "
+            "(for example, picking the specified object).\n"
+            "- Each episode ends once the Target task is completed or a maximum step limit is reached."
+        )
+        return description
+    
+    def set_env_name(self):
+        rewarding_objects = ""
+        non_rewarding_object = ""
+        reward_objects = self.reward_objects[0]
+        objects = self.objects[0]
+        if len(reward_objects) == 1:
+            rewarding_objects = reward_objects[0].replace(" ", "").capitalize()
+            non_rewarding_object = list(set(objects)-set(reward_objects))[0]
+            non_rewarding_object = non_rewarding_object.replace(" ", "").capitalize()
+        else:
+            rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
+        room_color = self.wall_colors[0].capitalize()
+        if not non_rewarding_object:
+           return f"Pick{rewarding_objects}Room{room_color}"
+        else:
+            return f"Pick{rewarding_objects}Avoid{non_rewarding_object}Room{room_color}"
 
     @staticmethod
-    def _gen_mission():
-        return "Fetch the Red ball"
+    def _gen_mission(objects:list[str], reward_objects:list[str], wall_colors:list[str]) -> str:
+        rewarding_objects = ""
+        non_rewarding_object = ""
+        for rewarding_object in reward_objects: assert rewarding_object in objects, f"{rewarding_object} must be in {objects}"
+        if len(reward_objects) == 1:
+            rewarding_objects = reward_objects[0]
+            non_rewarding_object = list(set(objects)-set(reward_objects))[0]
+        else:
+            rewarding_objects = f"{reward_objects[0]} and {reward_objects[1]}"
+        room_color = wall_colors
+        if not non_rewarding_object:
+           return f"Pick {rewarding_objects} from {room_color} room"
+        else:
+            return f"Pick the {rewarding_objects} and avoid {non_rewarding_object} from {room_color} room"
 
     def reset(self, *, seed=None, options=None):
-        self.current_type = random.choice(self.allowed_types)
-        self.layout = self.current_type[-1]
         obs, info = super().reset(seed=seed, options=options)
         info["description"] = self.get_description(obs)
         return obs, info
 
     def _add_layout_walls(self, layout_id, w, h):
         """Place walls based on the layout ID."""
-        if layout_id == 0:
+        if layout_id == 'blue':
             # Layout-specific wall placement
             self.grid.horz_wall(0, 0, w, obj_type=FakeWall)
             self.grid.horz_wall(0, 0 + h - 1, w, obj_type=FakeWall)
@@ -96,7 +145,7 @@ class SimplePickup(MiniGridEnv):
             # for y in range(1, self.height - 1):
             #     if y != self.height // 2:
             #         self.grid.set(self.width // 2, y, FakeWall())
-        elif layout_id == 1:
+        elif layout_id == 'grey':
             # Layout-specific wall placement
             self.grid.horz_wall(0, 0, w, obj_type=Wall)
             self.grid.horz_wall(0, 0 + h - 1, w, obj_type=Wall)
@@ -111,30 +160,39 @@ class SimplePickup(MiniGridEnv):
     def _gen_grid(self, width, height):
         self.grid = Grid(width, height)
         # self.grid.wall_rect(0, 0, width, height)
-    
-        ball_index, layout_id = self.current_type
-        ball_ids = self.ball_combinations[ball_index]
-        ball_colors = [self.all_colors[i] for i in ball_ids]
-        
-        if 'red' in ball_colors:
-            self.mission = "Pick the Red ball"
-        if 'green' in ball_colors:
-            self.mission = "Pick the Green ball"
-        # Define gate position based on layout
-        gate_pos = None
-        # gate_pos = (width // 2, height // 2)  # vertical wall with gate
-        # Layout-specific wall placement
-        self._add_layout_walls(layout_id, width, height)
+        self.wall_color = random.choice(self.wall_colors) 
+        self.index_id = random.randint(0, len(self.objects)-1)
+
+        for color in self.objects[self.index_id]:assert color in self.objects[self.index_id], f"Reward color {color} must be in {self.objects[self.index_id]}"
+        if len(self.reward_objects[self.index_id]) == 1:
+            rewarding_color = self.reward_objects[self.index_id][0]
+            non_rewarding_colors = list(set(self.objects[self.index_id]) - set(self.reward_objects[self.index_id]))[0]
+            self.mission = f"Pick the {rewarding_color} ball and avoid {non_rewarding_colors} ball from {self.wall_color} room"
+        else:
+            self.mission = f"Pick both {self.reward_objects[self.index_id][0]} and {self.reward_objects[self.index_id][1]} ball from {self.wall_color} room"
+            
+        self._add_layout_walls(self.wall_color, width, height)
         # Place agent
         self.place_agent()
     
-        # Place balls at random positions excluding the gate position
-        for color in ball_colors:
+        self.rewarding_objects_class = []
+        self.rewarding_objects_color = []
+        for obj in self.reward_objects[self.index_id]:
+            color, object_name = obj.split(" ")
+            object_class = NAME_TO_OBJECT.get(object_name.lower())
+            self.rewarding_objects_class.append(type(object_class(color)))
+            self.rewarding_objects_color.append(color)
+        
+        # Place objects at random positions
+        for object in self.objects[self.index_id]:
+            color, object_name = object.split(" ")
+            object_class = NAME_TO_OBJECT.get(object_name.lower())
             self.place_obj(
-                Ball(color),
-                reject_fn=lambda _, pos: self.grid.get(*pos) is not None or pos == gate_pos
+                object_class(color),
+                reject_fn=lambda _, pos: self.grid.get(*pos) is not None
             )
         
+
     def get_object_name(self, obj_type, obj_color, obj_state):
         """Returns a string description of an object based on its type, color, and state."""
         #Invert the dictionary
@@ -198,10 +256,8 @@ class SimplePickup(MiniGridEnv):
                 directions_map[direction].append((dist, desc, x, y))
 
         initial_description = ""
-        if self.layout == 0 and saw_wall:
-            initial_description = "Agent is in a room surrounded by blue walls."
-        elif self.layout == 1 and saw_wall:
-            initial_description = "Agent is in a room surrounded by grey walls."
+        if saw_wall:
+            initial_description = f"Agent is in a room surrounded by {self.wall_color} walls."
 
         # Case 1: only walls in view
         if not descriptions and saw_wall:
@@ -279,77 +335,28 @@ class SimplePickup(MiniGridEnv):
         obs, reward, terminated, truncated, info = super().step(action)
         info["description"] = self.get_description(obs)
         self.obs = obs['image']
-        # Custom reward logic for picking up balls
+        # Custom reward logic for picking up objects
         if action == self.actions.pickup and self.carrying is not None:
-            if isinstance(self.carrying, Ball):
+            if type(self.carrying) in self.rewarding_objects_class:
                 color = self.carrying.color
-                if color in ["red", "green"]:
+                if color in self.rewarding_objects_color[self.index_id]:
                     reward = 1.0
                 else:
                     reward = -1.0
-                # Drop the ball after reward is given
-                self.carrying = None
-                terminated = True  # Optionally end episode after pickup
+            else:
+                reward = -1.0
+            # Drop the ball after reward is given
+            self.carrying = None
+            terminated = True  # Optionally end episode after pickup
 
         return obs, reward, terminated, truncated, info
     
-def save_dataset_for_diffusers(dataset, save_dir):
-    """
-    Saves a dataset of images and captions in the format expected by diffusers.
 
-    This creates a directory with an 'images' subfolder and a 'metadata.jsonl' file.
-
-    Args:
-        dataset (list): A list of dictionaries, where each dict has "frame" and "description".
-        save_dir (str): The path to the root directory where the dataset will be saved.
-    """
-    if not dataset:
-        print("Warning: No data to save.")
-        return
-        
-    images_dir = os.path.join(save_dir, "images")
-    os.makedirs(images_dir, exist_ok=True)
-    
-    metadata_entries = []
-    
-    print(f"Saving {len(dataset)} items to {save_dir}...")
-    for i, item in enumerate(dataset):
-        try:
-            # Create a Pillow Image from the numpy array
-            img = Image.fromarray(item["frame"])
-            
-            # Define image filename and save it
-            base_filename = f"{i:06d}.png"
-            img_path = os.path.join(images_dir, base_filename)
-            img.save(img_path)
-            
-            # Create metadata entry
-            # The file_name must be relative to the root of the dataset directory
-            metadata_entry = {
-                "file_name": os.path.join("images", base_filename),
-                "text": item["description"]
-            }
-            metadata_entries.append(metadata_entry)
-
-        except Exception as e:
-            print(f"Error processing item {i}: {e}")
-
-    # Write the metadata.jsonl file
-    metadata_path = os.path.join(save_dir, "metadata.jsonl")
-    with open(metadata_path, "w", encoding='utf-8') as f:
-        for entry in metadata_entries:
-            f.write(json.dumps(entry) + '\n')
-
-    print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
-    print(f"Images saved in: {images_dir}")
-    print(f"Metadata saved in: {metadata_path}")
-
-        
 @hydra.main(version_base=None, config_path="../config/env", config_name="SimplePickup")
 def main(args: DictConfig) -> None:
     # type_list = [(i, j) for i in range(0, 6) for j in range(0, 2)]
     is_collect_data = True
-    env = SimplePickup(args, mode="collect_data")
+    env = SimplePickup(args)
     if is_collect_data:
         env = RGBImgPartialObsWrapper(env, tile_size=args.tile_size)
         env = ImgObsWrapper(env) 

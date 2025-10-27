@@ -47,7 +47,8 @@ class CNNLayer(nn.Module):
         x = self.pre_activation_fn(x)
         x = self.activation_fn(x)
         x = self.post_activation_fn(x)
-        x = self.norm(x)
+        if self.norm:
+            x = self.norm(x)
         return x
 
 
@@ -71,7 +72,7 @@ class CNN(nn.Module):
         """
         Get the output of CNN.
         """
-        if len(x.size()) == 3:
+        if len(x.shape) == 3:
             x = x.unsqueeze(0)
         x = self.cnn(x)
         # flatten x

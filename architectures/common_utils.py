@@ -2,6 +2,7 @@ import os
 import re
 import cv2
 import json
+import math
 import random
 import string
 import numpy as np
@@ -26,7 +27,7 @@ from datasets import load_dataset
 from omegaconf import DictConfig
 from transformers import CLIPTokenizer
 from torch.utils.data import Dataset, DataLoader
-from torchvision.models import vgg16, VGG16_Weights
+from torch import distributions as pyd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -49,13 +50,19 @@ def get_env(config):
         raise NotImplementedError("The environment is not implemented yet")
     return env
 
-def get_train_transform():
+def get_train_transform_cnn():
     train_transforms = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5]),
         transforms.Lambda(lambda x: x.to(device))
     ])
     return train_transforms
+
+def get_train_transform_mlp():
+    mlp_transform = transforms.Compose([
+        transforms.Lambda(lambda x: torch.from_numpy(x).float().to(device)),
+    ])
+    return mlp_transform
 
 def rollout(env, remaining_steps, collect_data=False):
     paired_data = []
@@ -74,6 +81,57 @@ def rollout(env, remaining_steps, collect_data=False):
         if terminated or truncated:
             break
     return steps, paired_data
+
+def save_dataset_for_diffusers(dataset, save_dir):
+    """
+    Saves a dataset of images and captions in the format expected by diffusers.
+
+    This creates a directory with an 'images' subfolder and a 'metadata.jsonl' file.
+
+    Args:
+        dataset (list): A list of dictionaries, where each dict has "frame" and "description".
+        save_dir (str): The path to the root directory where the dataset will be saved.
+    """
+    if not dataset:
+        print("Warning: No data to save.")
+        return
+        
+    images_dir = os.path.join(save_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    
+    metadata_entries = []
+    
+    print(f"Saving {len(dataset)} items to {save_dir}...")
+    for i, item in enumerate(dataset):
+        try:
+            # Create a Pillow Image from the numpy array
+            img = Image.fromarray(item["frame"])
+            
+            # Define image filename and save it
+            base_filename = f"{i:06d}.png"
+            img_path = os.path.join(images_dir, base_filename)
+            img.save(img_path)
+            
+            # Create metadata entry
+            # The file_name must be relative to the root of the dataset directory
+            metadata_entry = {
+                "file_name": os.path.join("images", base_filename),
+                "text": item["description"]
+            }
+            metadata_entries.append(metadata_entry)
+
+        except Exception as e:
+            print(f"Error processing item {i}: {e}")
+
+    # Write the metadata.jsonl file
+    metadata_path = os.path.join(save_dir, "metadata.jsonl")
+    with open(metadata_path, "w", encoding='utf-8') as f:
+        for entry in metadata_entries:
+            f.write(json.dumps(entry) + '\n')
+
+    print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
+    print(f"Images saved in: {images_dir}")
+    print(f"Metadata saved in: {metadata_path}")
     
 def collect_data(env, total_data):
     paired_data = []
@@ -212,6 +270,35 @@ class NumpyFeaturesDataset(Dataset):
             sample["input_ids"] = input_ids.squeeze()
             sample["attention_mask"] = attention_mask.squeeze()
         return sample
+    
+class TanhTransform(pyd.transforms.Transform):
+    domain = pyd.constraints.real
+    codomain = pyd.constraints.interval(-1.0, 1.0)
+    bijective = True
+    sign = +1
+
+    def __init__(self, cache_size=1):
+        super().__init__(cache_size=cache_size)
+
+    @staticmethod
+    def atanh(x):
+        return 0.5 * (x.log1p() - (-x).log1p())
+
+    def __eq__(self, other):
+        return isinstance(other, TanhTransform)
+
+    def _call(self, x):
+        return x.tanh()
+
+    def _inverse(self, y):
+        # We do not clamp to the boundary here as it may degrade the performance of certain algorithms.
+        # one should use `cache_size=1` instead
+        return self.atanh(y)
+
+    def log_abs_det_jacobian(self, x, y):
+        # We use a formula that is more numerically stable, see details in the following link
+        # https://github.com/tensorflow/probability/commit/ef6bb176e0ebd1cf6e25c6b5cecdd2428c22963f#diff-e120f70e92e6741bca649f04fcd907b7
+        return 2. * (math.log(2.) - x - F.softplus(-2. * x))
 
 def get_dataloader(args: DictConfig) -> DataLoader:
     """
@@ -219,15 +306,16 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     automatically handling image or numpy feature datasets.
     """
     cfg = args.models
-    observation_mode = cfg.model.get("observation_mode", "images")
+    observation_mode = cfg.model.get("observation_mode", "image")
 
     # -------------------------
     # IMAGE MODE
     # -------------------------
-    if observation_mode == "images":
-        train_transforms = train_transforms = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5])])
+    if observation_mode == "image":
+        train_transforms = transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize([0.5], [0.5]),
+                        ])
 
         def preprocess_train(examples: Dict) -> Dict:
             images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
@@ -257,9 +345,8 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     # -------------------------
     else:
         train_transforms = transforms.Compose([
-            transforms.Lambda(lambda x: torch.tensor(x).float()),
-            transforms.Lambda(lambda x: x.unsqueeze(0) if x.ndim == 2 else x)
-        ])
+                            transforms.Lambda(lambda x: torch.from_numpy(x).float()),
+                            ])
 
         train_dataset = NumpyFeaturesDataset(
             feature_dir=cfg.data.train_dir,
@@ -1095,11 +1182,17 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline, mode: str) -> tu
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        structured_system_prompt = f"""{system}
+        
+        Please structure your response in two parts.
+        First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
+        Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
+        """
         payload = {
             "model": pipeline,
             "temperature": 0.1,
             "messages": [
-                {"role": "system", "content": system},
+                {"role": "system", "content": structured_system_prompt},
                 {"role": "user", "content": prompt}
             ],
             "stream": False,
@@ -1108,10 +1201,15 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline, mode: str) -> tu
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
             result = response.json()
-            return (
-                result["choices"][0]["message"]["content"], 
-                result["choices"][0]["message"].get("reasoning", {})
-            )
+            # 2. Use your existing parser on the Gemini output
+            analysis, final = split_gptoss_analysis_final(result["choices"][0]["message"]["content"])
+            
+            # The 'analysis' can be returned as the reasoning dictionary
+            return final, {"reasoning": analysis} if analysis else {}
+            # return (
+            #     result["choices"][0]["message"]["content"], 
+            #     result["choices"][0]["message"].get("reasoning", {})
+            # )
         else:
             raise RuntimeError(f"OpenRouter failed: {response.status_code}: {response.text}")
     

@@ -1,6 +1,8 @@
 defaults:
-  - env : Magik_env
-  - agent : dqn
+  - env : MiniWorld
+  - agent : ppo
 save_every : 10000
 use_wandb : False
 log_every : 100
+save_data : true
+number_data_to_collect : 1.6e5

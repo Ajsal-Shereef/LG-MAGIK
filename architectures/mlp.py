@@ -493,7 +493,8 @@ class Linear(nn.Module):
         :return: torch.Tensor
         """
         x = self.linear_layer(x)
-        x = self.batch_norm(x)
+        if self.batch_norm:
+            x = self.batch_norm(x)
         x = self.dropout_layer(x)
         x = self.post_activation(x)
         return x    

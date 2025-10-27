@@ -1,13 +1,13 @@
 defaults:
-  - agent: dqn
-  - models: text_conditioned_vae_cnn
-  - env: Magik_env
+  - agent: ppo
+  - models: text_conditioned_vq_vae
+  - env: MiniWorld
 
 num_episode: 10
 result_dir: result
-mode: transfer
-querry_mode: google # Querry mode for LLM. options openrouter/huggingface
-llm_model: "gemini-2.5-flash-lite-preview-09-2025" #meta-llama/Meta-Llama-3.1-8B-Instruct
+mode: agent
+querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
+llm_model: "google/gemini-2.5-flash-lite-preview-09-2025" #meta-llama/Meta-Llama-3.1-8B-Instruct
 
 system_prompt: |
 
@@ -34,9 +34,10 @@ system_prompt: |
   ────────────────────────────────
   HOW IMAGINATION WORKS
   ────────────────────────────────
-  - The agent performs only its known skills (source tasks).
-  - When the target task differs, the agent imagines — mentally alters its perception of the scene
+  - The agent performs strictly its known skills (source tasks). 
+  - When the target task differs (Agent absolutely can't perform the target task even if there is a SUBTLE difference. Give extra emphasis on the differences between source and target and map the target to source where ever required), the agent imagines — mentally alters its perception of the scene
     so the new goal is solvable using the same skill.
+  - If you determine that there are changes between the target and source and imagination would be necesssary, make the changed description as close as possible to the source task.
   - Imagination occurs strictly in **observation space**, not the physical world.
 
   1. **Minimal Transformation**
@@ -49,7 +50,7 @@ system_prompt: |
        - Known: "pick red ball"
        - Target: "pick green ball"
        → Imagine the green ball as red. This will direct the agent to pick the red ball, as it is a known skill. In reality, it is picking the green ball. 
-     - If the target task requires dealing with objects that the agent doesn't know, the agent must *imagine* that object as the closest recognizable object it knows with affordance reasoning.
+     - If the target task requires dealing with objects that the agent doesn't know, the agent must *imagine* that object as the closest recognizable object it knows provided affordance are matching.
 
   3. **Source Task Inclusion / Exclusion**
      - If the target includes the source (e.g., pick red and green), keep the source unchanged.
@@ -57,8 +58,8 @@ system_prompt: |
        to prevent the agent from defaulting to performing the source task. This is because the agent immediately performs the source task (known skill).
 
   4. **Multi-Object or Sequential Tasks**
-     - For multi-object targets (e.g., “pick red and green”), treat them as subtasks (pick red → pick green).
-     - Modify only one object per subgoal; preserve others for later interaction.
+     - For multi-object targets (e.g., “pick red and green”, "pick red and avoid green"), treat them as subtasks ((pick red,pick green),(pick red, avoid green)).
+     - Identify sequnece of subtask need to be performed to achieve the target task.
      - Give proper attention to the spatial position if there are multiple object. Don't mix up the positions.
 
   6. **No Fabrication**
@@ -75,10 +76,12 @@ system_prompt: |
   - Explain:
     1. What the agent currently knows.
     2. What the target task is.
-    3. Whether the subtask division is necessary.
-    3. What is visible in the current scene?
-    4. What minimal changes are needed and why?
-    5. Can the minimal changes help the agent to solve the target task by mentally imagining an altered scene?. Check against each of the subtasks. Discard if the change doesn't affect the subtask.  
+    3. What are the differences between the target and the source task.
+    4. How to map such differences to the source task.
+    5. Whether the subtask division is necessary.
+    6. What is visible in the current scene?
+    7. What minimal changes are needed and why?
+    8. Can the minimal changes help the agent to solve the target task by mentally imagining an altered scene?. Check against each of the subtasks. Discard if the change doesn't affect the subtask.  
   - Use clear, causal reasoning before outputting the JSON.
   - Stop reasoning once the decision is made.
 

@@ -1,0 +1,84 @@
+# --- Defaults ---
+defaults:
+  - _self_
+
+project_name: TextConditionedVAE
+model_name : "VQ_VAE"
+seed: 42
+
+data:
+  train_dir: data/${env.name}/training_images
+  cache_dir: null
+  batch_size: 64
+  num_workers: 4
+  image_column: image
+  caption_column: text
+  text_encoder_path: openai/clip-vit-base-patch32
+
+# Network architecture parameters
+model:
+  _target_: VAE.text_conditioned_vq_vae.TextConditionedVQVAE
+  observation_mode: ${env.observation_mode}
+  input_dim: 3
+  output_dim: 3
+  dim: 16
+  n_downsample: 4
+  encoder_n_res: 3
+  norm: "in"
+  activ: "relu"
+  pad_type: "reflect"
+  text_encoder: ${models.data.text_encoder_path}
+  encoder_final_dim: [5, 5] # Must be calculated: H / (2^n_downsample)
+  discriminator_fc_hidden: [256, 256]
+  use_weighted_recon : False
+
+  # --- VQ-VAE Specific Hyperparameters ---
+  vqvae_params:
+    embedding_dim: 256         # D: Dimension of each codebook vector
+    num_embeddings: 1024       # K: Number of vectors in the codebook
+    commitment_cost: 0.25      # Beta for commitment loss
+
+  # --- Discriminator (Optional) ---
+  use_image_discriminator: true
+  disc_params:
+    base_channels: 64
+    n_layers: 3
+    norm: "in"
+
+# Core learning hyperparameters
+optimizer:
+  lr: 0.0001
+  betas:
+  - 0.9
+  - 0.999
+  weight_decay: 0.01
+  eps: 1.0e-08
+
+accelerator:
+  mixed_precision: 'no'
+  gradient_accumulation_steps: 1
+  log_with: wandb
+  project_dir: ${models.training.logs}
+  logging_dir: ${models.training.logs}/logs
+
+# Loss weights and training strategy
+training:
+  num_epochs: 500
+  seed: ${models.seed}
+  # kl_weight is NOT used in VQ-VAE
+  adv_weight: 5.0
+  adv_lambda: 1.0
+  temperature: 0.07
+  img_adv_weight: 0.1 # Weight for patch discriminator
+  logs: logs
+  output_dir: model_weights/vq_vae
+  experiment_name: ${models.project_name}
+  log_media_interval: 8000
+  log_values_and_images: true
+  validation_prompts: ${env.validation_prompts}
+  generate_interval: 8000
+  num_images_to_generate: 10
+  save_weight_freequency: 50
+
+test:
+  model_dir: model_weights/TextConditionedVAE/2025-10-26_18-59-18_ZOOCUU/

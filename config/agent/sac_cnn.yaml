@@ -21,6 +21,7 @@ network:
   fc_output_critic: 64  # Feature dim before Q layer in critic
   dropout_prob: 0
   norm: ln
+  observation_mode : ${env.observation_mode}
 
 # Core learning hyperparameters
 hyperparameters:

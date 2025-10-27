@@ -9,7 +9,7 @@ from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
-from architectures.common_utils import get_train_transform, save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
+from architectures.common_utils import get_train_transform_cnn, save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -19,14 +19,14 @@ def main(args: DictConfig) -> None:
         if args.mode == "transfer":
             args.env.verbose = True
         from env.SimplePickup import SimplePickup
-        env = SimplePickup(args.env, mode="Test")
+        env = SimplePickup(args.env)
         from minigrid.wrappers import RGBImgPartialObsWrapper
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         env_name = env.unwrapped.env_name
         env_description = env.unwrapped.env_description
-    if args.env.name ==  "Magik_env":
+    elif args.env.name ==  "Magik_env":
         if args.mode == "transfer":
             args.env.verbose = True
         args.env.is_single_object = False
@@ -39,6 +39,20 @@ def main(args: DictConfig) -> None:
         env = ImgObsWrapper(env)
         env_name = env.unwrapped.env_name
         env_description = env.unwrapped.env_description
+    elif args.env.name ==  "PickEnv":
+        if args.mode == "transfer":
+            args.env.verbose = True
+        from env.PickEnv import PickEnv
+        env = PickEnv(args.env, mode="test")
+        env_name = "PickEnv"
+        env_description = env.env_description
+    elif args.env.name == "MiniWorld":
+        if args.mode == "transfer":
+            args.env.verbose = True
+        from env.MiniWorld import PickObjectEnv
+        env = PickObjectEnv(args.env)
+        env_name = env.env_name
+        env_description = env.env_description
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -63,8 +77,12 @@ def main(args: DictConfig) -> None:
     #Load the weights
     agent.load_params(args.agent.evaluation.checkpoint)
     
-    # Set agent training params. Changing the epsilon to 0 to choose the acton greeedly
-    args.agent.training.epsilon_start = 0
+    if args.agent.name == "DQN":
+        # Set agent training params. Changing the epsilon to 0 to choose the acton greeedly
+        args.agent.training.epsilon_start = 0
+        steps = agent.initial_random_samples+1
+    else:
+        steps = 0
     agent.set_training_params(args.agent.training)
     
     # Make the vision model
@@ -94,30 +112,31 @@ def main(args: DictConfig) -> None:
 
         # --- 5. Prepare agent for inference ---
         vision_model = accelerator.prepare(vision_model)
+        
+        system_prompt = args.system_prompt
+        # Load the .env file
+        load_dotenv(dotenv_path="config/.env")
+    
+        if args.querry_mode == "openrouter":
+            # Access the API key
+            api_key = os.getenv('OPEN_ROUTER_API_KEY')
+            pipe = args.llm_model
+        elif args.querry_mode == "huggingface":
+            api_key = None
+            pipe = initialize_llm_hf_pipeline(args.llm_model)
+        elif args.querry_mode == "google":
+            # Access the API key
+            api_key = os.getenv('GOOGLE_API_KEY')
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            pipe = genai.GenerativeModel(args.llm_model)
 
     # Get the mission
     mission = env.unwrapped.mission
     
     # Get data trasnformer
-    train_transforms = get_train_transform()
-    system_prompt = args.system_prompt
-    # Load the .env file
-    load_dotenv(dotenv_path="config/.env")
-
-    if args.querry_mode == "openrouter":
-        # Access the API key
-        api_key = os.getenv('API_KEY')
-        pipe = args.llm_model
-    elif args.querry_mode == "huggingface":
-        api_key = None
-        pipe = initialize_llm_hf_pipeline(args.llm_model)
-    elif args.querry_mode == "google":
-        # Access the API key
-        api_key = os.getenv('GOOGLE_API_KEY')
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        pipe = genai.GenerativeModel(args.llm_model)
-        
+    train_transforms = get_train_transform_cnn()
+  
     for episode in range(args.num_episode):
         frame_array_partial = []
         frame_array_full = []
@@ -134,7 +153,7 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.agent.training.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if "No other objects can be seen" in info['description']:
+                if "No objects are visible in the current view." in info['description']:
                     llm_reply = info['description']
                 else:
                     llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)
@@ -145,7 +164,7 @@ def main(args: DictConfig) -> None:
                     changed_state, imagined_state = train_transforms(state), state
             else:
                 changed_state, imagined_state = train_transforms(state), state
-            action = agent.get_action(changed_state, agent.initial_random_samples+1)
+            action = agent.get_action(changed_state, steps)
             next_state, reward, truncated, terminated, info = env.step(action)
             frame_array_partial.append(np.hstack((state, imagined_state)))
             frame_array_full.append(env.unwrapped.get_frame())

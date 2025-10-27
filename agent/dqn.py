@@ -11,7 +11,7 @@ from PIL import Image
 from torch.nn.utils import clip_grad_norm_
 from agent.agent_utils.networks import CNNCritic
 from agent.agent_utils.buffer import ReplayBuffer, PrioritizedReplayBuffer
-from architectures.common_utils import save_gif, zip_strict, get_train_transform
+from architectures.common_utils import save_gif, zip_strict, get_train_transform_cnn
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -36,11 +36,11 @@ class DQN(nn.Module):
         self.use_per = config.use_per
         self.batch_size = config.batch_size
         if self.use_per:
-            self.buffer = PrioritizedReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device)
+            self.buffer = PrioritizedReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device, train_transform = get_train_transform_cnn())
         else:
-            self.buffer = ReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device)
+            self.buffer = ReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device, train_transform = get_train_transform_cnn())
             
-    def set_training_params(self, config):
+    def set_training_params(self, config, train_transform):
         self.hard_update = config.hard_update
         self.gamma = config.gamma
         if not self.hard_update:
@@ -53,6 +53,7 @@ class DQN(nn.Module):
         self.epsilon_end = config.epsilon_end
         self.epsilon_decay = config.epsilon_decay
         self.epsilon = self.epsilon_start
+        self.train_transform = train_transform
         
     def set_optimizer(self, cfg):
         self.optimizer = optim.AdamW(
@@ -163,7 +164,7 @@ class DQN(nn.Module):
         """Test the agent in the environment."""
         epsilon = self.epsilon
         self.epsilon = 0
-        train_transform = get_train_transform()
+        train_transform = get_train_transform_cnn()
         for episode in range(test_episodes):
             frame_array_partial = []
             frame_array_full = []

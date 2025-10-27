@@ -1,6 +1,8 @@
 import sys
 sys.path.append('.')
-
+import pyglet
+pyglet.options['headless'] = True
+pyglet.options['headless_device'] = 0
 import os
 import wandb
 import pickle
@@ -10,7 +12,6 @@ import warnings
 import gymnasium as gym
 from PIL import Image
 from collections import deque
-from stable_baselines3 import SAC
 from omegaconf import DictConfig, OmegaConf
 from architectures.common_utils import create_dump_directory, save_gif
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
@@ -96,18 +97,18 @@ class VideoRolloutCallback(BaseCallback):
             print(f"\n[INFO] Performing video rollout at step {self.num_timesteps}...")
 
             eval_env = self.training_env.envs[0] if hasattr(self.training_env, "envs") else self.training_env
-
+            obs, info = eval_env.reset()
             for episode in range(5):
                 frame_array = []
-                obs, info = eval_env.reset()
-                frame_array.append(eval_env.render())
-
-                for _ in range(self.episode_length):
+                frame_array.append(eval_env.unwrapped.get_frame())
+                done = False
+                while not done:
                     action, _ = self.model.predict(obs, deterministic=True)
                     obs, reward, terminated, truncated, info = eval_env.step(action)
-                    frame_array.append(eval_env.render())
-
-                    if terminated or truncated:
+                    frame_array.append(eval_env.unwrapped.get_frame())
+                    done = terminated or truncated
+                    if done:
+                        obs, info = eval_env.reset()
                         break
 
                 save_name = f"rollout_step_{self.num_timesteps}"
@@ -133,19 +134,39 @@ def main(args: DictConfig) -> None:
         from env.PickEnv import PickEnv
         def make_env():
             env = PickEnv(args.env, render_mode="rgb_array")
-            env = FrameStackHW(env, k=4)
+            if args.env.observation_mode == "image":
+                env = FrameStackHW(env, k=4)
+            else:
+                from gymnasium.wrappers import FlattenObservation, FrameStackObservation
+                env = FlattenObservation(FrameStackObservation(env, 4))
             return env
-
-        env = DummyVecEnv([make_env])   # <-- SB3 works with this
+        env = DummyVecEnv([make_env])
+    elif args.env.name == "MiniWorld":
+        from env.MiniWorld import PickObjectEnv
+        env = PickObjectEnv(args.env)
+    # from miniworld.envs.pickupobjects import PickupObjects
+    # env = PickupObjects()
+    # env = FrameStackHW(env, k=4)
+    
+   # <-- SB3 works with this
 
     # --- TRAINING ---
     timesteps = args.env.total_timestep
-    if args.env.observation_mode == "feature":
+    if args.env.observation_mode == "feature" and args.agent.name == "SAC":
+        from stable_baselines3 import SAC
         model = SAC("MlpPolicy", env, verbose=0,
                     buffer_size=int(timesteps / 5), learning_starts=5000)
-    else:
+    elif args.env.observation_mode == "image" and args.agent.name == "SAC":
+        from stable_baselines3 import SAC
         model = SAC("CnnPolicy", env, verbose=0,
                     buffer_size=int(timesteps / 5), learning_starts=5000)
+    if args.env.observation_mode == "feature" and args.agent.name == "DQN":
+        from stable_baselines3 import PPO
+        model = PPO("MlpPolicy", env, verbose=0,
+                    buffer_size=int(timesteps / 5), learning_starts=5000)
+    elif args.env.observation_mode == "image" and args.agent.name == "DQN":
+        from stable_baselines3 import PPO
+        model = PPO("CnnPolicy", env, verbose=0)
 
     wandb.watch(model.policy, log="all", log_freq=100)
 

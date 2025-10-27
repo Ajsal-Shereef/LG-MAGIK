@@ -1,6 +1,7 @@
 import torch
 import wandb
 import hydra
+import random
 import warnings
 import numpy as np
 
@@ -17,9 +18,15 @@ def train(args: DictConfig) -> None:
     # random.seed(config.seed)
     # torch.manual_seed(config.seed)
     
+    if args.save_data:
+        paired_data = []
+        if not args.env.verbose:
+            warnings.warn("Env verbose is set to False and data collection is enabled. Changing the verbose to True", UserWarning)
+            args.env.verbose = True
+    
     if args.env.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
-        env = SimplePickup(args.env, mode="Test")
+        env = SimplePickup(args.env)
         from minigrid.wrappers import RGBImgPartialObsWrapper
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
@@ -36,7 +43,12 @@ def train(args: DictConfig) -> None:
     elif args.env.name == "PickEnv":
         from env.PickEnv import PickEnv
         env = PickEnv(args.env)
-        args.agent.training.mission = env.mission
+        from gymnasium.wrappers import FlattenObservation, FrameStackObservation
+        env = FlattenObservation(FrameStackObservation(env, 4))
+        args.agent.training.mission = env.unwrapped.mission
+    elif args.env.name == "MiniWorld":
+        from env.MiniWorld import PickObjectEnv
+        env = PickObjectEnv(args.env)
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -56,35 +68,43 @@ def train(args: DictConfig) -> None:
     agent = hydra.utils.instantiate(args.agent.network)
     agent = agent.to(device)
     
+    if args.env.observation_mode == "image":
+        train_transforms = get_train_transform_cnn()
+    else:
+        train_transforms = get_train_transform_mlp()
+    
     # Initilising buffer
     agent.initialise_buffer(args.agent.hyperparameters)
     
     # Set training params
-    agent.set_training_params(args.agent.training)
+    agent.set_training_params(args.agent.training, train_transforms)
 
     # Initialise the optimizer
     agent.set_optimizer(args.agent.hyperparameters)
     
     model_dir = create_dump_directory(f"model_weights/{args.agent.name}")
     print("[INFO] Dump dir: ", model_dir)
-    
-    # Dumping the training config files
-    config_path = os.path.join(model_dir, "config.yaml")
-    OmegaConf.save(config=args, f=config_path)
-    
-    train_transforms = get_train_transform()
-    
+
     env_total_steps = 0
     env_episode_steps = 0
     env_episodes = 0  
     state, info = env.reset()
+    if args.save_data:
+         paired_data.append({"frame" : state, "description" : info["description"]})
+    args.agent.training.mission = env.unwrapped.mission
+        
+    #Saving the config here to make sure the mission is also saved
+    # Dumping the training config files
+    config_path = os.path.join(model_dir, "config.yaml")
+    OmegaConf.save(config=args, f=config_path)
+    
     cumulative_reward = 0
     average_episodic_return = deque(maxlen=10)
     for i in range(1, args.env.total_timestep+1):
         action = agent.get_action(train_transforms(state), env_total_steps)
         next_state, reward, terminated, truncated, info = env.step(action)
-        if reward > 4.9:
-            print("Success")
+        if args.save_data:
+            paired_data.append({"frame" : next_state, "description" : info["description"]})
         done = terminated or truncated
         agent.add_transition_to_buffer((state, action, reward, next_state, terminated, truncated))
         metric = agent.learn(env_total_steps)
@@ -110,6 +130,10 @@ def train(args: DictConfig) -> None:
             wandb.log(metric)
         if i % args.save_every == 0:
             agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
+    if args.save_data:
+        data_to_save = random.sample(paired_data, int(args.number_data_to_collect))
+        save_dir_train = f"data/{args.env.name}/training_images"
+        save_dataset_for_diffusers(data_to_save, save_dir_train)
     agent.eval()
     dump_dir = args.agent.video_save_path + f"/{args.agent.name}/train"
     agent.test(env, args.env.fps, dump_dir)
