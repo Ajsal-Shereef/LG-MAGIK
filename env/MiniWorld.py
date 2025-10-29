@@ -29,7 +29,7 @@ class MedKit(MeshEnt):
     """
     def __init__(self, height, **kwargs):
         self.color = 'red'
-        super().__init__(mesh_name="medkit", height=height, **kwargs)
+        super().__init__(mesh_name="medkit", height=height, static=False, **kwargs)
         
 class Duckie(MeshEnt):
     """
@@ -37,14 +37,15 @@ class Duckie(MeshEnt):
     """
     def __init__(self, height, **kwargs):
         self.color = 'yellow'
-        super().__init__(mesh_name="duckie", height=height, **kwargs)
+        super().__init__(mesh_name="duckie", height=height, static=False, **kwargs)
         
 class Key(MeshEnt):
     """
     Key the agent can pick up, carry, and use to open doors
     """
 
-    def __init__(self, color, height):
+    def __init__(self, height, color="yellow"):
+        self.color = color
         assert color in COLOR_NAMES
         super().__init__(mesh_name=f"key_{color}", height=height, static=False)
         
@@ -113,11 +114,11 @@ class PickObjectEnv(MiniWorldEnv):
         self.mission = self._gen_mission(self.objects, self.reward_objects, self.layout)
         self.name = config.get("name", "MiniWorld")
         
-        # --- EDIT: Add state for reward shaping and define reward constants ---
+        # --- Add state for reward shaping and define reward constants ---
         self.dist_to_target = None
         self.REWARD_PICK_SUCCESS = 10.0
         self.REWARD_PICK_FAIL = -10.0
-        self.REWARD_TIME_PENALTY = -0.01
+        self.REWARD_TIME_PENALTY = 0.00
         self.REWARD_SHAPING_SCALE = 1.0
         
     def _get_environment_description(self):
@@ -183,7 +184,7 @@ class PickObjectEnv(MiniWorldEnv):
         if self.verbose:
             info["description"] = self.get_frame_description(self.obs)
         self.agent.cam_pitch = -30 * np.pi / 180 #This place the camera -30 degrees downwards and agent can see nearest objects
-        self.agent.cam_height = 1.0
+        self.agent.cam_height = 0.75
         self.reward_object_colors = self.rewarding_object_colors.copy()
         
         # --- EDIT: Reset the distance tracker ---

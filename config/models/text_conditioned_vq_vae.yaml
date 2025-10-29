@@ -44,6 +44,7 @@ model:
     base_channels: 64
     n_layers: 3
     norm: "in"
+  is_perceptual_loss : true
 
 # Core learning hyperparameters
 optimizer:
@@ -74,11 +75,11 @@ training:
   output_dir: model_weights/vq_vae
   experiment_name: ${models.project_name}
   log_media_interval: 8000
-  log_values_and_images: true
+  log_values_and_images: false
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
   save_weight_freequency: 50
 
 test:
-  model_dir: model_weights/TextConditionedVAE/2025-10-26_18-59-18_ZOOCUU/
+  model_dir: model_weights/VQ_VAE/2025-10-28_17-59-47_3Q6WUQ/

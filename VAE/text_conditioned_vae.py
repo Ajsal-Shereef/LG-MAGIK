@@ -46,6 +46,7 @@ class TextConditionedVAE(nn.Module):
             encoder_final_dim = kwargs["encoder_final_dim"]
             latent_channel = kwargs["latent_channel"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
+            self.is_perceptual_loss = kwargs["is_perceptual_loss"]
 
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
             self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
@@ -64,6 +65,9 @@ class TextConditionedVAE(nn.Module):
                 self.image_discriminator = None
                 
             self.train_transform = get_train_transform_cnn()
+            if self.is_perceptual_loss:
+                from architectures.common_utils import VGGLoss
+                self.vgg_loss = VGGLoss(device)
         else:
             input_dim = kwargs["input_dim"]
             encoder_out_dim = kwargs["encoder_output_dim"]
@@ -166,6 +170,11 @@ class TextConditionedVAE(nn.Module):
             recon_loss = recon_loss.sum(dim=-1).mean()
             kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
 
+        if self.is_perceptual_loss:
+            perceptual_loss = self.vgg_loss(original_x, reconstructed_x)
+        else:
+            perceptual_loss = torch.tensor(0.0, device=original_x.device)
+        
         # === Adversarial disentanglement loss ===
         z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
         pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
@@ -180,7 +189,7 @@ class TextConditionedVAE(nn.Module):
         labels = torch.arange(B*T, device=logits.device)
         disc_loss = F.cross_entropy(logits, labels)
 
-        vae_loss = recon_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
+        vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
         
         # === Patch discriminator loss ===
         if self.image_discriminator is not None:
@@ -219,6 +228,7 @@ class TextConditionedVAE(nn.Module):
         return {
             "vae_loss": vae_loss,
             "recon_loss": recon_loss,
+            "perceptual_loss" : perceptual_loss,
             "kl_loss": kl_loss,
             "adversarial_loss": disc_loss,
             "critic_loss": critic_loss,

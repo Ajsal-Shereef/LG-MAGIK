@@ -1,13 +1,13 @@
 defaults:
   - agent: ppo
-  - models: text_conditioned_vq_vae
+  - models: text_conditioned_vae_cnn
   - env: MiniWorld
 
 num_episode: 10
 result_dir: result
 mode: agent
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
-llm_model: "google/gemini-2.5-flash-lite-preview-09-2025" #meta-llama/Meta-Llama-3.1-8B-Instruct
+llm_model: "google/gemini-2.5-pro" #meta-llama/Meta-Llama-3.1-8B-Instruct
 
 system_prompt: |
 
@@ -35,7 +35,7 @@ system_prompt: |
   HOW IMAGINATION WORKS
   ────────────────────────────────
   - The agent performs strictly its known skills (source tasks). 
-  - When the target task differs (Agent absolutely can't perform the target task even if there is a SUBTLE difference. Give extra emphasis on the differences between source and target and map the target to source where ever required), the agent imagines — mentally alters its perception of the scene
+  - When the target task differs (Agent absolutely can't perform the target task even if there is a subtle differences such as object type/color or background. Give extra emphasis on the differences between source and target and map the target to source where ever required), the agent imagines — mentally alters its perception of the scene
     so the new goal is solvable using the same skill.
   - If you determine that there are changes between the target and source and imagination would be necesssary, make the changed description as close as possible to the source task.
   - Imagination occurs strictly in **observation space**, not the physical world.

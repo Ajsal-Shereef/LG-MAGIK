@@ -9,7 +9,7 @@ from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
-from architectures.common_utils import get_train_transform_cnn, save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
+from architectures.common_utils import save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -83,7 +83,16 @@ def main(args: DictConfig) -> None:
         steps = agent.initial_random_samples+1
     else:
         steps = 0
-    agent.set_training_params(args.agent.training)
+    
+    # Get data trasnformer
+    if args.env.get("observation_mode", "image") == "image":
+        from architectures.common_utils import get_train_transform_cnn
+        train_transforms = get_train_transform_cnn() 
+    else:
+        from architectures.common_utils import get_train_transform_mlp
+        train_transforms = get_train_transform_mlp()  
+    
+    agent.set_training_params(args.agent.training, train_transforms)
     
     # Make the vision model
     # Setup Accelerator
@@ -133,9 +142,6 @@ def main(args: DictConfig) -> None:
 
     # Get the mission
     mission = env.unwrapped.mission
-    
-    # Get data trasnformer
-    train_transforms = get_train_transform_cnn()
   
     for episode in range(args.num_episode):
         frame_array_partial = []
@@ -153,7 +159,7 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.agent.training.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if "No objects are visible in the current view." in info['description']:
+                if "No objects are visible in the current view///." in info['description']:
                     llm_reply = info['description']
                 else:
                     llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)

@@ -42,6 +42,7 @@ class TextConditionedVQVAE(nn.Module):
             clip_model = kwargs["text_encoder"]
             discriminator_fc_hidden = kwargs["discriminator_fc_hidden"]
             encoder_final_dim = kwargs["encoder_final_dim"]
+            self.is_perceptual_loss = kwargs["is_perceptual_loss"]
             
             # --- VQ-VAE specific params ---
             embedding_dim = dim*(2**n_downsample) # D
@@ -67,6 +68,9 @@ class TextConditionedVQVAE(nn.Module):
                 self.image_discriminator = PatchDiscriminator(in_channels=in_ch, **disc_params).to(device)
             else:
                 self.image_discriminator = None
+            if self.is_perceptual_loss:
+                from architectures.common_utils import VGGLoss
+                self.vgg_loss = VGGLoss(device)
         else:
             raise NotImplementedError("VQ-VAE is only implemented for image observation model.")
 
@@ -116,7 +120,12 @@ class TextConditionedVQVAE(nn.Module):
             recon_loss = recon_loss.sum(dim=[1,2,3]).mean()
         else:
             raise NotImplementedError("VQ-VAE is only implemented for image observation model.")
-
+        
+        if self.is_perceptual_loss:
+            perceptual_loss = self.vgg_loss(original_x, reconstructed_x)
+        else:
+            perceptual_loss = torch.tensor(0.0, device=original_x.device)
+            
         # --- Adversarial Disentanglement Loss ---
         quantized_latent = forward_output["latent"]
         z_grl = grad_reverse(quantized_latent, kwargs["adv_lambda"])
@@ -134,7 +143,7 @@ class TextConditionedVQVAE(nn.Module):
         
         # --- Total VQ-VAE Loss ---
         # The main loss is recon_loss + vq_loss
-        total_loss = recon_loss + vq_loss + kwargs["adv_weight"] * disc_loss
+        total_loss = recon_loss + perceptual_loss + vq_loss + kwargs["adv_weight"] * disc_loss
 
         # --- Patch Discriminator Loss ---
         img_disc_loss = torch.tensor(0.0, device=original_x.device)
@@ -150,6 +159,7 @@ class TextConditionedVQVAE(nn.Module):
         return {
             "vae_loss": total_loss, # Using "vae_loss" key for consistency with your training loop
             "recon_loss": recon_loss,
+            "perceptual_loss" : perceptual_loss,
             "vq_loss": vq_loss,
             "adversarial_loss": disc_loss,
             "img_disc_loss": img_disc_loss,

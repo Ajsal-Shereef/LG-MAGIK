@@ -39,6 +39,7 @@ model:
     norm: in
   use_weighted_recon: false
   use_mine: false           # Enables mutual information minimization
+  is_perceptual_loss : true
 training:
   num_epochs: 500
   seed: ${models.seed}
@@ -73,4 +74,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/2025-10-26_20-31-17_0G3NVA/
+  model_dir: model_weights/VAE/2025-10-28_18-06-08_QIBDOK/

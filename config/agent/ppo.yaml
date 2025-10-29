@@ -57,4 +57,4 @@ training:
 # Testing and evaluation settings
 evaluation:
   test_episodes: 10
-  checkpoint: model_weights/PPO/2025-10-25_15-51-29_G4KVC1/
+  checkpoint: model_weights/PPO/2025-10-28_14-05-41_6ONTOT/

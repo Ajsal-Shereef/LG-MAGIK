@@ -26,6 +26,7 @@ from torchvision.utils import make_grid
 from datasets import load_dataset
 from omegaconf import DictConfig
 from transformers import CLIPTokenizer
+import torchvision.models as models
 from torch.utils.data import Dataset, DataLoader
 from torch import distributions as pyd
 
@@ -460,7 +461,7 @@ class VGGLoss(nn.Module):
         super(VGGLoss, self).__init__()
         
         # Load pre-trained VGG16 model and set to evaluation mode
-        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features.to(device).eval()
+        vgg = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features.to(device).eval()
         
         # We don't need to train the VGG model, so we freeze its parameters
         for param in vgg.parameters():
@@ -493,7 +494,7 @@ class VGGLoss(nn.Module):
         true_features = self.vgg_feature_extractor(y_true_norm)
 
         # Calculate perceptual loss as the mean squared error between the feature maps
-        perceptual_loss = F.l1_loss(pred_features, true_features)
+        perceptual_loss = F.mse_loss(pred_features, true_features)
         
         return perceptual_loss
 
