@@ -83,7 +83,59 @@ def rollout(env, remaining_steps, collect_data=False):
             break
     return steps, paired_data
 
-def save_dataset_for_diffusers(dataset, save_dir):
+def save_dataset_for_features(dataset, save_dir):
+    """
+    Saves a dataset of feature vectors and captions in a structure
+    compatible with dataset loaders.
+
+    This creates a directory with a 'features' subfolder containing .npy files
+    and a 'metadata.jsonl' file at the root.
+
+    Args:
+        dataset (list): A list of dictionaries, where each dict has "frame" (a numpy array)
+                        and "description".
+        save_dir (str): The path to the root directory where the dataset will be saved.
+    """
+    if not dataset:
+        print("Warning: No data to save.")
+        return
+        
+    features_dir = os.path.join(save_dir, "features")
+    os.makedirs(features_dir, exist_ok=True)
+    
+    metadata_entries = []
+    
+    print(f"Saving {len(dataset)} feature vectors to {save_dir}...")
+    for i, item in enumerate(dataset):
+        try:
+            feature_vector = item["frame"]
+            
+            # Define numpy filename and save it
+            base_filename = f"{i:06d}.npy"
+            feature_path = os.path.join(features_dir, base_filename)
+            np.save(feature_path, feature_vector)
+            
+            # Create metadata entry. The file_name must be relative to the root of the dataset directory.
+            metadata_entry = {
+                "file_name": os.path.join("features", base_filename),
+                "text": item["description"]
+            }
+            metadata_entries.append(metadata_entry)
+
+        except Exception as e:
+            print(f"Error processing item {i}: {e}")
+
+    # Write the metadata.jsonl file
+    metadata_path = os.path.join(save_dir, "metadata.jsonl")
+    with open(metadata_path, "w", encoding='utf-8') as f:
+        for entry in metadata_entries:
+            f.write(json.dumps(entry) + '\n')
+
+    print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
+    print(f"Feature .npy files saved in: {features_dir}")
+    print(f"Metadata saved in: {metadata_path}")
+
+def save_dataset_for_images(dataset, save_dir):
     """
     Saves a dataset of images and captions in the format expected by diffusers.
 

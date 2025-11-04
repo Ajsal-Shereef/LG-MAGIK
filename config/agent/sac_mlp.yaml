@@ -36,6 +36,7 @@ training:
   hard_update: false  # Matches SB3 (soft updates)
   gamma: 0.99  # Matches SB3
   tau: 5.0e-3  # Matches SB3
+  target_update_frequency : 2500
   initial_random_samples: 1000  # Close to SB3 learning_starts=100; higher for better random fill in SAC
   learn_after: 1000  # Aligned with initial_random_samples for SB3-like start
   mission: ???  # Must be specified (e.g., env name or task)

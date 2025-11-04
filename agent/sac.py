@@ -9,7 +9,7 @@ from architectures.stochastic import SquashedNormal
 from torch.nn.utils import clip_grad_norm_
 from architectures.cnn import Conv2d_MLP_Model
 from agent.agent_utils.buffer import ReplayBuffer
-from architectures.common_utils import save_gif, zip_strict, get_train_transform_cnn, get_train_transform_mlp
+from architectures.common_utils import save_gif, zip_strict
 from agent.agent_utils.networks import CNNActor, MLPActor
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -88,8 +88,8 @@ class SAC(nn.Module):
         """Initialize an Agent object.
         """
         super(SAC, self).__init__()
-        
-        if kwargs["observation_mode"] == 'image':
+        self.observation_mode = kwargs["observation_mode"]
+        if self.observation_mode == 'image':
             # Actor with fc_output_actor
             actor_kwargs = kwargs.copy()
             actor_kwargs["fc_output"] = actor_kwargs.pop("fc_output_actor", 64)
@@ -103,15 +103,12 @@ class SAC(nn.Module):
             self.critic_target1 = CNNSACCritic(**critic_kwargs).to(device)
             self.critic_target2 = CNNSACCritic(**critic_kwargs).to(device)
             
-            self.train_transform = get_train_transform_cnn()
         else:
             self.actor = MLPActor(kwargs).to(device)
             self.critic1 = MLPSACCritic(**kwargs).to(device)
             self.critic2 = MLPSACCritic(**kwargs).to(device)
             self.critic_target1 = MLPSACCritic(**kwargs).to(device)
             self.critic_target2 = MLPSACCritic(**kwargs).to(device)
-            
-            self.train_transform = get_train_transform_mlp()
             
         self.critic_target1.load_state_dict(self.critic1.state_dict())
         self.critic_target2.load_state_dict(self.critic2.state_dict())
@@ -127,7 +124,7 @@ class SAC(nn.Module):
         self.batch_size = config.batch_size
         self.buffer = ReplayBuffer(buffer_size=config.buffer_size, batch_size=config.batch_size, device=device, train_transform=self.train_transform)
             
-    def set_training_params(self, config):
+    def set_training_params(self, config, train_transform):
         self.hard_update = config.hard_update
         self.gamma = config.gamma
         if not self.hard_update:
@@ -136,6 +133,7 @@ class SAC(nn.Module):
             self.target_update_frequency = config.target_update_frequency
         self.initial_random_samples = config.initial_random_samples
         self.learn_after = config.learn_after
+        self.train_transform = train_transform
         
     def set_optimizer(self, cfg):
         self.actor_optimizer = optim.Adam(
@@ -172,7 +170,13 @@ class SAC(nn.Module):
         if isinstance(state, np.ndarray):
             state = torch.FloatTensor(state).unsqueeze(0).to(device)
         else:
-            state = state.unsqueeze(0).to(device)
+            # Add batch dimension if not present
+            if state.dim() == 3 and self.observation_mode == 'image':
+                 state = state.unsqueeze(0).to(device)
+            elif state.dim() == 1:
+                 state = state.unsqueeze(0).to(device)
+            else:
+                 state = state.to(device)
             
         original_mode = self.actor.training
         try:
@@ -183,11 +187,13 @@ class SAC(nn.Module):
             self.actor.train(original_mode) # Restore original mode
         
         if not self.is_training:
+            # For testing, we take the deterministic action (mode of the distribution)
             action = torch.tanh(mu)
         else:
+            # For training, we sample from the distribution.
             dist = SquashedNormal(mu, std)
-            x_t = dist.sample()
-            action = torch.tanh(x_t)
+            action = dist.sample() # .sample() ALREADY returns the squashed action
+            
         return action.squeeze(0).cpu().numpy()
     
     def learn(self, timstep):
@@ -208,7 +214,7 @@ class SAC(nn.Module):
             Q_target_next1 = self.critic_target1(next_states, next_actions)
             Q_target_next2 = self.critic_target2(next_states, next_actions)
             min_Q_target_next = torch.min(Q_target_next1, Q_target_next2)
-            Q_targets = rewards + (self.gamma * (1 - done) * (min_Q_target_next - self.alpha * next_log_pi.unsqueeze(-1)))
+            Q_targets = rewards + (self.gamma * (1 - done) * (min_Q_target_next - self.alpha * next_log_pi))
 
         # Get current Q estimates
         current_Q1 = self.critic1(states, actions)
@@ -231,7 +237,7 @@ class SAC(nn.Module):
         
         # --- Detach alpha if it is learnable ---
         alpha = self.alpha.detach() if self.learnable_alpha else self.alpha
-        actor_loss = (alpha * log_pi.unsqueeze(-1) - min_Q_pi).mean()
+        actor_loss = (alpha * log_pi - min_Q_pi).mean()
         
         self.actor_optimizer.zero_grad()
         actor_loss.backward()

@@ -69,15 +69,17 @@ def train(args: DictConfig) -> None:
     agent = agent.to(device)
     
     if args.env.observation_mode == "image":
+        save_dataset = save_dataset_for_images
         train_transforms = get_train_transform_cnn()
     else:
+        save_dataset = save_dataset_for_features
         train_transforms = get_train_transform_mlp()
-    
-    # Initilising buffer
-    agent.initialise_buffer(args.agent.hyperparameters)
     
     # Set training params
     agent.set_training_params(args.agent.training, train_transforms)
+    
+    # Initilising buffer
+    agent.initialise_buffer(args.agent.hyperparameters)
 
     # Initialise the optimizer
     agent.set_optimizer(args.agent.hyperparameters)
@@ -133,12 +135,13 @@ def train(args: DictConfig) -> None:
     if args.save_data:
         data_to_save = random.sample(paired_data, int(args.number_data_to_collect))
         save_dir_train = f"data/{args.env.name}/training_images"
-        save_dataset_for_diffusers(data_to_save, save_dir_train)
+        save_dataset(data_to_save, save_dir_train)
     agent.eval()
     dump_dir = args.agent.video_save_path + f"/{args.agent.name}/train"
-    agent.test(env, args.env.fps, dump_dir)
     #Saving the model
     agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
+    agent.test(env, args.env.fps, dump_dir)
+    
     
 if __name__ == "__main__":
     train()

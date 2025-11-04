@@ -1,8 +1,8 @@
 defaults:
   - env : MiniWorld
-  - agent : ppo
+  - agent : ppo_descrete_cnn
 save_every : 10000
-use_wandb : False
+use_wandb : false
 log_every : 100
 save_data : true
-number_data_to_collect : 1.6e5
+number_data_to_collect : 0.5e6

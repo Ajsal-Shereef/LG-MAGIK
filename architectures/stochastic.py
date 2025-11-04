@@ -51,16 +51,23 @@ class GaussianSample(Stochastic):
         return self
     
 class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
+    """
+    A squashed Normal distribution (Normal + TanhTransform).
+    This is the standard distribution for SAC.
+    """
     def __init__(self, loc, scale):
         self.loc = loc
         self.scale = scale
 
         self.base_dist = pyd.Normal(loc, scale)
+        # The TanhTransform applies the tanh squashing and correctly
+        # calculates the log-determinant of the Jacobian for the log_prob.
         transforms = [TanhTransform()]
         super().__init__(self.base_dist, transforms)
 
     @property
     def mean(self):
+        # This returns the mode of the distribution, which is torch.tanh(mu)
         mu = self.loc
         for tr in self.transforms:
             mu = tr(mu)

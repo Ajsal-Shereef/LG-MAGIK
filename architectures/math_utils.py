@@ -7,62 +7,33 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TanhNormal:
     """
-    Represent distribution of X where
-        X ~ tanh(Z)
-        Z ~ N(mean, std)
-    Note: this is not very numerically stable.
-    Source: https://github.com/vitchyr/rlkit/blob/f136e140a57078c4f0f665051df74dffb1351f33/rlkit/torch/distributions.py
+    Represents a tanh-squashed Normal distribution.
+    a = tanh(raw_action)
     """
-    def __init__(self, normal_mean, normal_std, epsilon=1e-6):
-        """
-        :param normal_mean: Mean of the normal distribution
-        :param normal_std: Std of the normal distribution
-        :param epsilon: Numerical stability epsilon when computing log-prob.
-        """
-        self.normal_mean = normal_mean
-        self.normal_std = normal_std
-        self.normal = Normal(normal_mean, normal_std)
-        self.epsilon = epsilon
-
-    def sample_n(self, n):
-        z = self.normal.sample_n(n)
-        return torch.tanh(z), z
-
-    def log_prob(self, value, pre_tanh_value=None):
-        """
-        :param value (torch.Tensor): some value, x
-        :param pre_tanh_value (torch.Tensor): arctanh(x)
-        :return:
-        """
-        if pre_tanh_value is None:
-            # arctanh(x) = 1/2*log((1+x)/(1-x))
-            pre_tanh_value = torch.log(
-                (1+value) / (1-value)
-            ) / 2.0
-
-        if value is None:
-            value = torch.tanh(pre_tanh_value)
-
-        action = value
-        z = pre_tanh_value
-        log_prob = self.normal.log_prob(z) - torch.log(1 - action.pow(2) + self.epsilon)
-        return log_prob.sum(-1, keepdim=True)
+    def __init__(self, mean, std):
+        self.normal = Normal(mean, std)
 
     def sample(self):
-        """
-        Gradients will and should not pass through this operation.
-        See https://github.com/pytorch/pytorch/issues/4620 for discussion.
-        """
-        z = self.normal.sample().detach()
-        return torch.tanh(z), z
+        z = self.normal.rsample()  # rsample for reparametrization trick
+        action = torch.tanh(z)
+        return action, z
 
-    def rsample(self):
-        """
-        Sampling in the reparameterization case.
-        """
-        z = self.normal.rsample()
-        z.requires_grad_()
-        return torch.tanh(z), z
+    def log_prob(self, action, pre_tanh_value=None):
+        if pre_tanh_value is None:
+            # Invert tanh safely
+            clipped = action.clamp(-1 + 1e-6, 1 - 1e-6)
+            pre_tanh_value = 0.5 * (torch.log1p(clipped) - torch.log1p(-clipped))
+        log_prob = self.normal.log_prob(pre_tanh_value)
+        # Correction term for tanh squashing
+        log_prob -= torch.log(1 - torch.tanh(pre_tanh_value).pow(2) + 1e-6)
+        return log_prob.sum(dim=-1)
+
+    def mean(self):
+        return torch.tanh(self.normal.mean)
+
+    def entropy(self):
+        # Approximate entropy (not exact under tanh)
+        return self.normal.entropy().sum(dim=-1)
 
 
 def normal_log_density(means, stds, actions):

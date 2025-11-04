@@ -21,10 +21,13 @@ class MLPActor(nn.Module):
     def __init__(self, config):
         """
         Initialize parameters and build the model.
-
         """
         super(MLPActor, self).__init__()
 
+        # Ensure config is a dict if it's an object
+        if not isinstance(config, dict):
+             config = vars(config)
+             
         self.input_dim = config["input_dim"]
         self.action_dim = config["action_dim"]
         self.log_std_bounds = config.get("log_std_bounds", [-5, 2])
@@ -46,8 +49,8 @@ class MLPActor(nn.Module):
             state (torch.Tensor): The input state tensor.
 
         Returns:
-            torch.Tensor: The mean of the action distribution.
-            torch.Tensor: The standard deviation of the action distribution.
+            torch.Tensor: The mean of the action distribution (pre-squashing).
+            torch.Tensor: The standard deviation of the action distribution (pre-squashing).
         """
         x = state
         x = self.shared_mlp(x)
@@ -69,26 +72,32 @@ class MLPActor(nn.Module):
         return mu, std
 
     def sample(self, state):
+        """
+        Samples an action and calculates its log-probability.
+        This is used during training (in SAC.learn).
+        """
         # Get mean and standard deviation from the policy network
         mean, std = self.forward(state)
         
-        # Create the distribution
+        # Create the squashed normal distribution
         dist = SquashedNormal(mean, std)
         
-        # Sample an action using the reparameterization trick
-        x_t = dist.rsample()  # Pre-squashed action u
+        # Sample an action using the reparameterization trick.
+        # rsample() on a TransformedDistribution returns the *final, squashed* sample.
+        y_t = dist.rsample() # This IS the final, squashed action 'a'
         
-        # Apply the tanh squashing function to get the final action
-        y_t = torch.tanh(x_t) # Final action a
+        # Calculate the log-probability of this final, squashed action.
+        # The .log_prob() method of SquashedNormal automatically includes
+        # the correction term: log(1 - tanh(u)^2)
+        log_prob = dist.log_prob(y_t)
         
-        # Calculate the log-probability
-        # log_prob = dist.log_prob(x_t)
-        log_prob = dist.log_prob(x_t)
+        # Sum the log-probabilities across the action dimensions.
+        # We use keepdim=True to ensure log_prob has shape [batch_size, 1]
+        # This matches the shape of the Q-values.
+        log_prob = log_prob.sum(dim=-1, keepdim=True)
         
-        # The log_prob from a multivariate normal is per-dimension, so sum it up
-        log_prob = log_prob.sum(dim=-1)
-        
-        return y_t, log_prob, mean # Return squashed action, corrected log_prob, and mean
+        # We don't need to return the mean, but returning it is fine.
+        return y_t, log_prob, mean
 
 class CNNActor(nn.Module):
     """Actor (Policy) Model."""
@@ -135,8 +144,8 @@ class CNNActor(nn.Module):
                                         dropout_prob = dropout_prob,
                                         norm = norm
                                     )
-        self.mu_layer = nn.Linear(fc_output_size, action_dim)
-        self.log_std_layer = nn.Linear(fc_output_size, action_dim)
+        self.mu_layer = Linear(fc_output_size, action_dim)
+        self.log_std_layer = Linear(fc_output_size, action_dim)
 
     def forward(self, state):
         h = self.net(state)[0]
@@ -147,7 +156,7 @@ class CNNActor(nn.Module):
 
     def sample(self, state):
         mu, std = self.forward(state)
-        dist = Normal(mu, std)
+        dist = SquashedNormal(mu, std)
         x_t = dist.rsample()          # reparameterization trick
         y_t = torch.tanh(x_t)
         action = y_t

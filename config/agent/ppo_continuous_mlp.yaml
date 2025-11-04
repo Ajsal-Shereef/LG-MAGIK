@@ -1,0 +1,47 @@
+# General agent and path configuration
+_target_: agents.ppo_continuous.PPOContinuous
+video_save_path: result
+name: PPO_continuous
+
+# Network architecture parameters
+# Note: These parameters configure the CNNCritic (and CNNActor if it is also made configurable)
+network:
+  _target_: agent.ppo_continuous.PPOContinuous # Following your convention, the agent class is the target
+  input_dim: ???           # Must be specified (e.g., 3 for RGB)
+  action_dim: ???          # Must be specified (e.g., 6)
+  shared_fc_hidden_sizes: [256, 256]  # SB3 default net_arch=[256, 256]
+  shared_fc_hidden_activation: tanh
+  shared_fc_out_dim: 256  # Matches SB3 hidden size before policy/Q heads
+  log_std_bounds: [-5, 1]
+  dropout_prob: 0
+  norm: null  # SB3 defaults to no normalization
+  observation_mode: ${env.observation_mode}
+
+# Core learning hyperparameters
+hyperparameters:
+  actor_lr: 3.0e-4
+  critic_lr: 3.0e-4
+  batch_size: 64           # Minibatch size for optimization epochs
+  update_timestep: 2048    # Rollout buffer size (steps to collect before update)
+  clip_grad_param: 0.5
+  betas:
+  - 0.9
+  - 0.999
+  weight_decay: 0.0
+  eps: 1.0e-08             # Epsilon for AdamW optimizer
+
+# Training and exploration strategy
+training:
+  gamma: 0.99              # Discount factor
+  gae_lambda: 0.95         # Lambda for GAE
+  clip_epsilon: 0.2        # PPO clipping parameter
+  epochs: 10               # Number of optimization epochs per rollout
+  ent_coef: 0.00           # Entropy coefficient
+  target_kl : null
+  vf_coef: 0.5             # Value function (critic) loss coefficient
+  mission : ???           # Mission or environment name
+
+# Testing and evaluation settings
+evaluation:
+  test_episodes: 10
+  checkpoint: model_weights/PPO/2025-10-28_14-05-41_6ONTOT/
