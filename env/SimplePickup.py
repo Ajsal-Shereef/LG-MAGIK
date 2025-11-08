@@ -14,7 +14,7 @@ from minigrid.core.grid import Grid
 from collections import Counter, defaultdict
 import sys
 sys.path.append(".")
-from architectures.common_utils import collect_data, save_dataset_for_diffusers
+from architectures.common_utils import collect_data, save_dataset_for_images
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import WorldObj
@@ -95,17 +95,18 @@ class SimplePickup(MiniGridEnv):
         return description
     
     def set_env_name(self):
-        rewarding_objects = ""
-        non_rewarding_object = ""
         reward_objects = self.reward_objects[0]
         objects = self.objects[0]
         if len(reward_objects) == 1:
             rewarding_objects = reward_objects[0].replace(" ", "").capitalize()
-            non_rewarding_object = list(set(objects)-set(reward_objects))[0]
-            non_rewarding_object = non_rewarding_object.replace(" ", "").capitalize()
+            Non_rewarding_object = list(set(objects)-set(reward_objects))[0]
+            non_rewarding_object = Non_rewarding_object.replace(" ", "").capitalize()
         else:
             rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
         room_color = self.wall_colors[0].capitalize()
+        # ---- Add a variable to save and later evaluate the performance of the agent ----
+        self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.reward_objects[0], 0),
+                                  "non_rewarding_objects" : dict.fromkeys([Non_rewarding_object.lower()], 0)}
         if not non_rewarding_object:
            return f"Pick{rewarding_objects}Room{room_color}"
         else:
@@ -341,15 +342,20 @@ class SimplePickup(MiniGridEnv):
                 color = self.carrying.color
                 if color in self.rewarding_objects_color[self.index_id]:
                     reward = 1.0
+                    self.agent_performance["rewarding_objects"][f"{color} {self.carrying.type}"] += 1
                 else:
                     reward = -1.0
+                    self.agent_performance["non_rewarding_objects"][f"{color} {self.carrying.type}"] += 1
             else:
                 reward = -1.0
-            # Drop the ball after reward is given
+            # Drop the object after reward is given
             self.carrying = None
             terminated = True  # Optionally end episode after pickup
 
         return obs, reward, terminated, truncated, info
+    
+    def get_performance_metric(self):
+        return self.agent_performance
     
 
 @hydra.main(version_base=None, config_path="../config/env", config_name="SimplePickup")
@@ -378,14 +384,14 @@ def main(args: DictConfig) -> None:
         
         # Save the training dataset
         print("\n--- Saving Training Dataset ---")
-        save_dataset_for_diffusers(training_data, save_dir_train)
+        save_dataset_for_images(training_data, save_dir_train)
 
         save_dir_val = f"data/{env.unwrapped.name}/validation_images"
         os.makedirs(save_dir_val, exist_ok=True)
         
         # Save the validation dataset
         print("\n--- Saving Validation Dataset ---")
-        save_dataset_for_diffusers(val_data, save_dir_val)
+        save_dataset_for_images(val_data, save_dir_val)
 
         
 if __name__ == "__main__":

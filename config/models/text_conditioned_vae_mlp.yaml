@@ -3,12 +3,13 @@ defaults:
   - _self_
 
 project_name: TextConditionedVAE
+model_name : "VAE"
 seed: 42
 data:
-  train_dir: data/${env.name}/training_features
+  train_dir: data/${env.name}/
   cache_dir: null
   batch_size: 128
-  num_workers: 4
+  num_workers: 8
   image_column: image
   caption_column: text
   text_encoder_path: openai/clip-vit-base-patch32

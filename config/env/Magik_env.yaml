@@ -19,5 +19,5 @@ agent_start:
   dir: null   # 0: right, 1: down, 2: left, 3: up
 
 #Agent training
-total_timestep : 1000000
+total_timestep : 150000
 fps : 2.5

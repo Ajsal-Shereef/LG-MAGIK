@@ -11,7 +11,7 @@ from gymnasium import spaces
 from omegaconf import DictConfig
 import sys
 sys.path.append(".")
-from architectures.common_utils import save_dataset_for_features, collect_data
+from architectures.common_utils import save_dataset_for_features, collect_data, save_dataset_for_images
 
 class PickEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
@@ -595,64 +595,17 @@ class PickEnv(gym.Env):
         self.screen.blit(display_img, (0, 0))
         pygame.display.flip()
         self.clock.tick(self.metadata["render_fps"])
+        
+    def get_performance_metric(self):
+        self.agent_performance = {"brocken" : self.num_broken,
+                                  "picked" : self.num_picked}
+        return self.agent_performance
 
     def close(self):
         if self.screen is not None:
             pygame.quit()
             self.screen = None
             
-def save_dataset_for_diffusers(dataset, save_dir):
-    """
-    Saves a dataset of images and captions in the format expected by diffusers.
-
-    This creates a directory with an 'images' subfolder and a 'metadata.jsonl' file.
-
-    Args:
-        dataset (list): A list of dictionaries, where each dict has "frame" and "description".
-        save_dir (str): The path to the root directory where the dataset will be saved.
-    """
-    if not dataset:
-        print("Warning: No data to save.")
-        return
-        
-    images_dir = os.path.join(save_dir, "images")
-    os.makedirs(images_dir, exist_ok=True)
-    
-    metadata_entries = []
-    
-    print(f"Saving {len(dataset)} items to {save_dir}...")
-    for i, item in enumerate(dataset):
-        try:
-            # Create a Pillow Image from the numpy array
-            img = Image.fromarray(item["frame"])
-            
-            # Define image filename and save it
-            base_filename = f"{i:06d}.png"
-            img_path = os.path.join(images_dir, base_filename)
-            img.save(img_path)
-            
-            # Create metadata entry
-            # The file_name must be relative to the root of the dataset directory
-            metadata_entry = {
-                "file_name": os.path.join("images", base_filename),
-                "text": item["description"]
-            }
-            metadata_entries.append(metadata_entry)
-
-        except Exception as e:
-            print(f"Error processing item {i}: {e}")
-
-    # Write the metadata.jsonl file
-    metadata_path = os.path.join(save_dir, "metadata.jsonl")
-    with open(metadata_path, "w", encoding='utf-8') as f:
-        for entry in metadata_entries:
-            f.write(json.dumps(entry) + '\n')
-
-    print(f"Successfully saved dataset with {len(metadata_entries)} entries.")
-    print(f"Images saved in: {images_dir}")
-    print(f"Metadata saved in: {metadata_path}")
-    
-       
 @hydra.main(version_base=None, config_path="../config/env", config_name="PickEnv")
 def main(cfg: DictConfig) -> None:
     is_collect_data = True
@@ -680,11 +633,11 @@ def main(cfg: DictConfig) -> None:
         if cfg.observation_mode == "image":
             save_dir_train = f"data/{env.name}/training_images"
             print("\n--- Saving Image Training Dataset ---")
-            save_dataset_for_diffusers(training_data, save_dir_train)
+            save_dataset_for_images(training_data, save_dir_train)
 
             save_dir_val = f"data/{env.name}/validation_images"
             print("\n--- Saving Image Validation Dataset ---")
-            save_dataset_for_diffusers(val_data, save_dir_val)
+            save_dataset_for_images(val_data, save_dir_val)
 
         elif cfg.observation_mode == "feature":
             # Call the new numpy saving function

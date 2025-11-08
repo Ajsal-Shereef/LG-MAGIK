@@ -1,13 +1,14 @@
 defaults:
-  - agent: ppo
   - models: text_conditioned_vae_cnn
   - env: MiniWorld
 
+agent_name : PPO
+model_dir : "model_weights/PPO/2025-11-06_10-06-57_ONNDUL/PPO.zip"
 num_episode: 10
 result_dir: result
 mode: agent
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
-llm_model: "google/gemini-2.5-pro" #meta-llama/Meta-Llama-3.1-8B-Instruct
+llm_model: "google/gemini-2.5-pro" #meta-llama/Meta-Llama-3.1-8B-Instruct, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro
 
 system_prompt: |
 

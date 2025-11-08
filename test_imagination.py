@@ -57,32 +57,43 @@ def main(args: DictConfig) -> None:
         raise NotImplementedError("The environment is not implemented yet")
     
     
-    print("[INFO] Agent name: ", args.agent.name)
+    print("[INFO] Agent name: ", args.agent_name)
     print("[INFO] Env:", args.env.name)
     print(f"[INFO] Using device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
     
     #Make the agent
-    args.agent.network.action_dim = int(env.action_space.n)
-    args.agent.network.input_dim = int(env.observation_space.shape[-1])
-    agent_model_dir = args.agent.evaluation.checkpoint
-    if os.path.exists(agent_model_dir + "/config.yaml"):
-        agent_model_args =  OmegaConf.load(agent_model_dir + "/config.yaml")
-        args.agent = agent_model_args.agent
-        args.agent.evaluation.checkpoint = agent_model_dir
-    else:
-        raise FileNotFoundError(f"Config file not found in {agent_model_dir}/config.yaml")
-    agent = instantiate(args.agent.network)
-    agent = agent.to(device)
+    if args.agent_name == "SAC":
+        from stable_baselines3 import SAC
+        agent = SAC.load(args.model_dir)
+    elif args.agent_name == "PPO":
+        from stable_baselines3 import PPO
+        agent = PPO.load(args.model_dir)
+    elif args.agent_name == "DQN":
+        from stable_baselines3 import DQN
+        agent = DQN.load(args.model_dir)
+    # args.agent.network.action_dim = int(env.action_space.n)
+    # args.agent.network.input_dim = int(env.observation_space.shape[-1])
+    # agent_model_dir = args.agent.evaluation.checkpoint
+    # if os.path.exists(agent_model_dir + "/config.yaml"):
+    #     agent_model_args =  OmegaConf.load(agent_model_dir + "/config.yaml")
+    #     args.agent = agent_model_args.agent
+    #     args.agent.evaluation.checkpoint = agent_model_dir
+    # else:
+    #     raise FileNotFoundError(f"Config file not found in {agent_model_dir}/config.yaml")
+    # agent = instantiate(args.agent.network)
+    # agent = agent.to(device)
     
-    #Load the weights
-    agent.load_params(args.agent.evaluation.checkpoint)
+    # #Load the weights
+    # agent.load_params(args.agent.evaluation.checkpoint)
     
-    if args.agent.name == "DQN":
-        # Set agent training params. Changing the epsilon to 0 to choose the acton greeedly
-        args.agent.training.epsilon_start = 0
-        steps = agent.initial_random_samples+1
-    else:
-        steps = 0
+    # if args.agent.name == "DQN":
+    #     # Set agent training params. Changing the epsilon to 0 to choose the acton greeedly
+    #     args.agent.training.epsilon_start = 0
+    #     steps = agent.initial_random_samples+1
+    # else:
+    #     steps = 0
+        
+    # agent.set_training_params(args.agent.training, train_transforms)
     
     # Get data trasnformer
     if args.env.get("observation_mode", "image") == "image":
@@ -91,8 +102,6 @@ def main(args: DictConfig) -> None:
     else:
         from architectures.common_utils import get_train_transform_mlp
         train_transforms = get_train_transform_mlp()  
-    
-    agent.set_training_params(args.agent.training, train_transforms)
     
     # Make the vision model
     # Setup Accelerator
@@ -159,7 +168,7 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.agent.training.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if "No objects are visible in the current view///." in info['description']:
+                if "No objects are visible in the current view." in info['description']:
                     llm_reply = info['description']
                 else:
                     llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)
@@ -170,7 +179,7 @@ def main(args: DictConfig) -> None:
                     changed_state, imagined_state = train_transforms(state), state
             else:
                 changed_state, imagined_state = train_transforms(state), state
-            action = agent.get_action(changed_state, steps)
+            action = agent.predict(imagined_state, deterministic=True)[0]
             next_state, reward, truncated, terminated, info = env.step(action)
             frame_array_partial.append(np.hstack((state, imagined_state)))
             frame_array_full.append(env.unwrapped.get_frame())
@@ -180,11 +189,14 @@ def main(args: DictConfig) -> None:
             episode_step += 1
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
-            save_dir = f"result/{args.agent.name}/{args.env.name}/{env_name}/transfer"
+            save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/transfer"
         else:
-            save_dir = f"result/{args.agent.name}/{args.env.name}/{env_name}/source"
+            save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
+        
+    agent_performance = env.get_performance_metric()
+    print("Agent performance" , agent_performance)
     
 if __name__ == "__main__":
     main()

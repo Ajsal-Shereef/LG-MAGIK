@@ -1,0 +1,48 @@
+# config.yaml
+#
+# This is the main configuration file for the application.
+# You can override any of these settings from the command line.
+# Example: python main.py data.sample_n=10 model.name="google/gemini-pro-vision"
+
+defaults:
+  - architectures.captioner.ImageCaptioner
+
+paths:
+  # The input directory to scan for images
+  source_dir: "./my_raw_images"
+  # The root output directory.
+  # A folder 'images' and 'metadata.jsonl' will be created inside this dir.
+  output_dir: "./vae_dataset"
+
+data:
+  # Number of images to randomly sample from the source_dir
+  sample_n: 50
+  # Valid image extensions to look for
+  image_extensions:
+    - ".png"
+    - ".jpg"
+    - ".jpeg"
+    - ".webp"
+    - ".bmp"
+
+model:
+  # The OpenRouter model name. Must be a multimodal (vision) model.
+  # e.g., "anthropic/claude-3-haiku", "google/gemini-pro-vision", "openai/gpt-4-vision-preview"
+  name: "anthropic/claude-3-haiku"
+  # The prompt to send with each image.
+  prompt: >-
+    You are a scientific image analyst. Your task is to provide a detailed,
+    factual, and concise description of the image. This description will be
+    used to train an image-conditioned VAE. Focus on the key objects,
+    their relationships, and any important attributes.
+    Do not add any preamble or conversational text. Just output the description.
+  # Max tokens for the generated caption.
+  max_tokens: 1024
+
+api:
+  # API request timeout in seconds
+  timeout: 30.0
+  # HTTP-Referer header, recommended by OpenRouter
+  referer: "http://localhost/vae-captioner"
+  # X-Title header, recommended by OpenRouter
+  title: "VAE Captioning App"

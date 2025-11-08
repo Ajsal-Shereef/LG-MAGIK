@@ -157,6 +157,9 @@ class PickObjectEnv(MiniWorldEnv):
         else:
             rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
         room_color = self.layout.capitalize()
+        # ---- Add a variable to save and later evaluate the performance of the agent ----
+        self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.reward_objects, 0),
+                                  "non_rewarding_objects" : dict.fromkeys([non_rewarding_object.lower()], 0)}
         if not non_rewarding_object:
            return f"Pick{rewarding_objects}Room{room_color}"
         else:
@@ -186,8 +189,7 @@ class PickObjectEnv(MiniWorldEnv):
         self.agent.cam_pitch = -30 * np.pi / 180 #This place the camera -30 degrees downwards and agent can see nearest objects
         self.agent.cam_height = 0.75
         self.reward_object_colors = self.rewarding_object_colors.copy()
-        
-        # --- EDIT: Reset the distance tracker ---
+        # --- Reset the distance tracker ---
         self.dist_to_target = None
         
         return self.obs, info
@@ -276,10 +278,12 @@ class PickObjectEnv(MiniWorldEnv):
             if self.agent.carrying.color in self.reward_object_colors:
                 # Overwrite previous rewards with a large success reward
                 reward = self.REWARD_PICK_SUCCESS
+                self.agent_performance["rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
                 self.reward_object_colors.remove(self.agent.carrying.color)
             else:
                 # Overwrite previous rewards with a large failure penalty
                 reward = self.REWARD_PICK_FAIL
+                self.agent_performance["non_rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
 
             # Clean up the picked object
             self.entities.remove(self.agent.carrying)
@@ -294,6 +298,9 @@ class PickObjectEnv(MiniWorldEnv):
         if self.verbose:
             info["description"] = description
         return obs, reward, terminated, truncated, info
+    
+    def get_performance_metric(self):
+        return self.agent_performance
     
     def get_class(self, obs=None, thresholds=None):
         # This function remains unchanged
@@ -321,63 +328,6 @@ class PickObjectEnv(MiniWorldEnv):
             obj_cls[-1] = 1
         return np.array(obj_cls)
 
-    # def get_frame_description(self, obs=None):
-    #     # This function remains unchanged
-    #     if obs is None:
-    #         obs = self.obs
-
-    #     obj_cls = self.get_class(obs)
-    #     color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
-    #     detected_colors = [color for color, idx in color_to_index.items() if obj_cls[idx] == 1]
-
-    #     floor_tex, wall_tex = self.layout.split("/")
-
-    #     description = f"The agent is in a room with {floor_tex} floor and {wall_tex} walls."
-
-    #     if len(detected_colors) == 0:
-    #         description += " No objects are visible in the current view."
-    #         return description
-
-    #     for color in detected_colors:
-    #         ent = None
-    #         for e in self.entities:
-    #             if hasattr(e, 'color') and e.color == color and e is not self.agent:
-    #                 ent = e
-    #                 break
-    #         if ent is None:
-    #             continue 
-
-    #         delta = ent.pos - self.agent.pos
-    #         dist = np.sqrt(delta[0]**2 + delta[2]**2)
-
-    #         bearing_ent = np.arctan2(delta[2], delta[0])
-    #         agent_bearing = np.arctan2(self.agent.dir_vec[2], self.agent.dir_vec[0])
-    #         rel_angle_rad = bearing_ent - agent_bearing
-    #         rel_angle_rad = (rel_angle_rad + np.pi) % (2 * np.pi) - np.pi
-    #         angle_deg = np.degrees(rel_angle_rad)
-
-    #         if abs(angle_deg) < self.agent.cam_fov_y//6:
-    #             dir_str = "in front"
-    #         elif self.agent.cam_fov_y//6 <= abs(angle_deg) < self.agent.cam_fov_y//3:
-    #             if angle_deg > 0:
-    #                 dir_str = "slightly to the right"
-    #             else:
-    #                 dir_str = "slightly to the left"
-    #         elif self.agent.cam_fov_y//3 <= abs(angle_deg) <= self.agent.cam_fov_y//2 + 1:
-    #             if angle_deg > 0:
-    #                 dir_str = "to the right"
-    #             else:
-    #                 dir_str = "to the left"
-    #         else:
-    #             if angle_deg > 0:
-    #                 dir_str = "to the far right"
-    #             else:
-    #                 dir_str = "to the far left"
-    #         object_name = COLOR_TO_OBJECT[color]
-    #         description += f" A {color} {object_name} is found {dir_str} at angle {abs(angle_deg):.3g} at a distance of {dist:.1f} units."
-
-    #     return description
-    
     def get_frame_description(self, obs=None):
         # This function remains unchanged
         if obs is None:
@@ -430,24 +380,81 @@ class PickObjectEnv(MiniWorldEnv):
                     dir_str = "to the far right"
                 else:
                     dir_str = "to the far left"
-            
-            # --- Add distance description ---
-            if dist < 1.0:
-                dist_str = "very close"
-            elif dist < 2.5:
-                dist_str = "nearby"
-            elif dist < 4:
-                dist_str = "at a medium distance"
-            else:
-                dist_str = "far away"
-            # --- End of new block ---
-
             object_name = COLOR_TO_OBJECT[color]
-            
-            # --- Updated description string ---
-            description += f" A {color} {object_name} is found {dist_str}, {dir_str}."
+            description += f" A {color} {object_name} is found {dir_str} at angle {abs(angle_deg):.3g} at a distance of {dist:.1f} units."
 
         return description
+    
+    # def get_frame_description(self, obs=None):
+    #     # This function remains unchanged
+    #     if obs is None:
+    #         obs = self.obs
+
+    #     obj_cls = self.get_class(obs)
+    #     color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
+    #     detected_colors = [color for color, idx in color_to_index.items() if obj_cls[idx] == 1]
+
+    #     floor_tex, wall_tex = self.layout.split("/")
+
+    #     description = f"The agent is in a room with {floor_tex} floor and {wall_tex} walls."
+
+    #     if len(detected_colors) == 0:
+    #         description += " No objects are visible in the current view."
+    #         return description
+
+    #     for color in detected_colors:
+    #         ent = None
+    #         for e in self.entities:
+    #             if hasattr(e, 'color') and e.color == color and e is not self.agent:
+    #                 ent = e
+    #                 break
+    #         if ent is None:
+    #             continue 
+
+    #         delta = ent.pos - self.agent.pos
+    #         dist = np.sqrt(delta[0]**2 + delta[2]**2)
+
+    #         bearing_ent = np.arctan2(delta[2], delta[0])
+    #         agent_bearing = np.arctan2(self.agent.dir_vec[2], self.agent.dir_vec[0])
+    #         rel_angle_rad = bearing_ent - agent_bearing
+    #         rel_angle_rad = (rel_angle_rad + np.pi) % (2 * np.pi) - np.pi
+    #         angle_deg = np.degrees(rel_angle_rad)
+
+    #         if abs(angle_deg) < self.agent.cam_fov_y//6:
+    #             dir_str = "in front"
+    #         elif self.agent.cam_fov_y//6 <= abs(angle_deg) < self.agent.cam_fov_y//3:
+    #             if angle_deg > 0:
+    #                 dir_str = "slightly to the right"
+    #             else:
+    #                 dir_str = "slightly to the left"
+    #         elif self.agent.cam_fov_y//3 <= abs(angle_deg) <= self.agent.cam_fov_y//2 + 1:
+    #             if angle_deg > 0:
+    #                 dir_str = "to the right"
+    #             else:
+    #                 dir_str = "to the left"
+    #         else:
+    #             if angle_deg > 0:
+    #                 dir_str = "to the far right"
+    #             else:
+    #                 dir_str = "to the far left"
+            
+    #         # --- Add distance description ---
+    #         if dist < 1.0:
+    #             dist_str = "very close"
+    #         elif dist < 2.5:
+    #             dist_str = "nearby"
+    #         elif dist < 4:
+    #             dist_str = "at a medium distance"
+    #         else:
+    #             dist_str = "far away"
+    #         # --- End of new block ---
+
+    #         object_name = COLOR_TO_OBJECT[color]
+            
+    #         # --- Updated description string ---
+    #         description += f" A {color} {object_name} is found {dist_str}, {dir_str}."
+
+    #     return description
     
     def get_frame(self):
         top_view = self.render_top_view()

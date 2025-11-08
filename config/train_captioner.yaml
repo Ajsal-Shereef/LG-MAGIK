@@ -1,0 +1,55 @@
+# config.yaml
+
+# --- General ---
+# Can be overridden from the command line: python train.py mode=test
+mode: test # 'train' or 'test'
+
+# --- Paths ---
+paths:
+  dataset_path: "data/MiniWorld/Random"
+  final_model_path: "model_weights/Captioner"
+  test_image_paths:
+    - "frame2.png"
+    - "data/MiniWorld/Random/test/images/000399.png"
+    - "data/MiniWorld/Random/test/images/000144.png"
+    - "data/MiniWorld/Random/test/images/001050.png"
+    - "data/MiniWorld/Random/test/images/000575.png"
+
+# --- Model ---
+model:
+  base_model_id: "Salesforce/blip-image-captioning-base"
+
+# --- Preprocessing ---
+preprocessing:
+  max_length: 64
+
+# --- Training ---
+training:
+  eval_every_n_epochs: 5
+  early_stopping_patience: 3
+
+  # These parameters are passed to Seq2SeqTrainingArguments
+  # You can override any of these from the command line, e.g.:
+  # python train.py training.params.num_train_epochs=100
+  params:
+    output_dir: "./miniworld-captioner-blip-results" # This will be relative to Hydra's output dir
+    per_device_train_batch_size: 64
+    per_device_eval_batch_size: 64
+    num_train_epochs: 50
+    predict_with_generate: False
+    report_to: null
+    dataloader_num_workers: 4
+    save_strategy: "steps"
+    eval_strategy: "steps"
+    logging_strategy: "epoch"
+    save_total_limit: 3
+    load_best_model_at_end: True
+    metric_for_best_model: "eval_loss"
+    greater_is_better: False
+
+# --- Inference (Generation) ---
+inference:
+  test_model_path : model_weights/Captioner/2025-11-04_20-40-02_J8IUCN/final
+  max_length: 50
+  num_beams: 4
+  early_stopping: True

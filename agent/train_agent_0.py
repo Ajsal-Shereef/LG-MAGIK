@@ -1,0 +1,147 @@
+import torch
+import wandb
+import hydra
+import random
+import warnings
+import numpy as np
+
+from PIL import Image
+from collections import deque
+from architectures.common_utils import *
+from omegaconf import DictConfig, OmegaConf
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+@hydra.main(version_base=None, config_path="config", config_name="train_agent")
+def train(args: DictConfig) -> None:
+    # np.random.seed(config.seed)
+    # random.seed(config.seed)
+    # torch.manual_seed(config.seed)
+    
+    if args.save_data:
+        paired_data = []
+        if not args.env.verbose:
+            warnings.warn("Env verbose is set to False and data collection is enabled. Changing the verbose to True", UserWarning)
+            args.env.verbose = True
+    
+    if args.env.name ==  "SimplePickup":
+        from env.SimplePickup import SimplePickup
+        env = SimplePickup(args.env)
+        from minigrid.wrappers import RGBImgPartialObsWrapper
+        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+        args.agent.training.mission = env.unwrapped.mission
+    elif args.env.name ==  "Magik_env":
+        from env.Magik_env import MultiObjectMiniGridEnv
+        env = MultiObjectMiniGridEnv(args.env)
+        from minigrid.wrappers import RGBImgPartialObsWrapper
+        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+        args.agent.training.mission = env.unwrapped.mission
+    elif args.env.name == "PickEnv":
+        from env.PickEnv import PickEnv
+        env = PickEnv(args.env)
+        from gymnasium.wrappers import FlattenObservation, FrameStackObservation
+        env = FlattenObservation(FrameStackObservation(env, 4))
+        args.agent.training.mission = env.unwrapped.mission
+    elif args.env.name == "MiniWorld":
+        from env.MiniWorld import PickObjectEnv
+        env = PickObjectEnv(args.env)
+    else:
+        raise NotImplementedError("The environment is not implemented yet")
+    
+    if args.use_wandb:
+        wandb.init(project="LG-MAGIK", name=f"{args.agent.name}_{args.env.name}", config=OmegaConf.to_container(args, resolve=True))
+
+    print("[INFO] Agent name: ", args.agent.name)
+    print("[INFO] Env:", args.env.name)
+    print(f"[INFO] Using device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
+    
+    #Make the agent
+    if args.env.name == "PickEnv":
+        args.agent.network.action_dim = env.action_space.shape[0]
+    else:
+        args.agent.network.action_dim = int(env.action_space.n)
+    args.agent.network.input_dim = int(env.observation_space.shape[-1])
+    agent = hydra.utils.instantiate(args.agent.network)
+    agent = agent.to(device)
+    
+    if args.env.observation_mode == "image":
+        save_dataset = save_dataset_for_images
+        train_transforms = get_train_transform_cnn()
+    else:
+        save_dataset = save_dataset_for_features
+        train_transforms = get_train_transform_mlp()
+    
+    # Set training params
+    agent.set_training_params(args.agent.training, train_transforms)
+    
+    # Initilising buffer
+    agent.initialise_buffer(args.agent.hyperparameters)
+
+    # Initialise the optimizer
+    agent.set_optimizer(args.agent.hyperparameters)
+    
+    model_dir = create_dump_directory(f"model_weights/{args.agent.name}")
+    print("[INFO] Dump dir: ", model_dir)
+
+    env_total_steps = 0
+    env_episode_steps = 0
+    env_episodes = 0  
+    state, info = env.reset()
+    if args.save_data:
+         paired_data.append({"frame" : state, "description" : info["description"]})
+    args.agent.training.mission = env.unwrapped.mission
+        
+    #Saving the config here to make sure the mission is also saved
+    # Dumping the training config files
+    config_path = os.path.join(model_dir, "config.yaml")
+    OmegaConf.save(config=args, f=config_path)
+    
+    cumulative_reward = 0
+    average_episodic_return = deque(maxlen=10)
+    for i in range(1, args.env.total_timestep+1):
+        action = agent.get_action(train_transforms(state), env_total_steps)
+        next_state, reward, terminated, truncated, info = env.step(action)
+        if args.save_data:
+            paired_data.append({"frame" : next_state, "description" : info["description"]})
+        done = terminated or truncated
+        agent.add_transition_to_buffer((state, action, reward, next_state, terminated, truncated))
+        metric = agent.learn(env_total_steps)
+        state = next_state
+        cumulative_reward += reward
+        env_total_steps += 1
+        env_episode_steps += 1
+        metric["Returns"] = cumulative_reward
+        metric["Average episodic returns"] = np.mean(average_episodic_return) if len(average_episodic_return) > 0 else 0
+        metric["Episode steps"] = env_episode_steps
+        metric["Env total steps"] = env_total_steps
+        metric["Env episode"] = env_episodes
+        metric["Buffer size"] = agent.buffer.__len__()
+        if done:
+            state, info = env.reset()
+            env_episodes += 1
+            average_episodic_return.append(cumulative_reward)
+            env_episode_steps = 0
+            cumulative_reward = 0
+            agent.do_post_episode_processing(env_total_steps)
+            
+        if args.use_wandb and env_total_steps%args.log_every==0:
+            wandb.log(metric)
+        if i % args.save_every == 0:
+            agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
+    if args.save_data:
+        data_to_save = random.sample(paired_data, int(args.number_data_to_collect))
+        save_dir_train = f"data/{args.env.name}/training_images"
+        save_dataset(data_to_save, save_dir_train)
+    agent.eval()
+    dump_dir = args.agent.video_save_path + f"/{args.agent.name}/train"
+    #Saving the model
+    agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
+    agent.test(env, args.env.fps, dump_dir)
+    
+    
+if __name__ == "__main__":
+    train()

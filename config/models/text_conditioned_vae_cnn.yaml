@@ -6,10 +6,10 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: 42
 data:
-  train_dir: data/${env.name}/training_images
+  train_dir: data/${env.name}/
   cache_dir: null
   batch_size: 64
-  num_workers: 4
+  num_workers: 8
   image_column: image
   caption_column: text
   text_encoder_path: openai/clip-vit-base-patch32
@@ -45,12 +45,12 @@ training:
   seed: ${models.seed}
   kl_weight: 1.0
   adv_lambda: 1.0
-  adv_weight: 5.0
+  adv_weight: 10.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
   log_media_interval: 8000
-  log_values_and_images: True
+  log_values_and_images: False
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
   num_images_to_generate: 10
@@ -74,4 +74,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/2025-10-28_18-06-08_QIBDOK/
+  model_dir: model_weights/VAE/2025-11-04_21-41-37_489ERZ/

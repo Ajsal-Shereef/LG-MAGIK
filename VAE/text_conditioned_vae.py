@@ -81,6 +81,7 @@ class TextConditionedVAE(nn.Module):
             latent_dim = kwargs["latent_dim"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
             decoder_hidden_dims = kwargs["decoder_hidden_dims"]
+            self.is_perceptual_loss = None
 
             self.encoder = MLPEncoder(input_dim, hidden_dims, encoder_out_dim, num_resblocks, norm, activ, dropout)
             self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)

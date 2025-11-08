@@ -1,6 +1,6 @@
 name : MiniWorld 
-objects : ["duckie", "ball"]
-reward_objects : ["duckie"]
+objects : ["box", "ball"]
+reward_objects : ["box"]
 layout : "grass/concrete" #options:asphalt/brick_wall, grass/concrete
 max_steps : 100  
 render_mode : "none"
@@ -8,13 +8,14 @@ size : 10
 obs_width : 80
 obs_height : 80
 n_downsample : 3
-total_timestep : 1500000
+total_timestep : 1000000
 fps : 2.5
-verbose : False
+verbose : True
 observation_mode : image
 validation_prompts :
-  - The agent is in a room with grass floor and concrete walls. A blue box is found to the left.
+  - The agent is in a room with grass floor and concrete walls. A blue box is found at a medium distance, to the left. A green ball is found at a medium distance, slightly to the right.
+  - The agent is in a room with grass floor and concrete walls. A green ball is found nearby, in front.
+  - The agent is in a room with grass floor and concrete walls. A blue box is found at a medium distance, to the far left. A green ball is found nearby, to the right.
   - The agent is in a room with grass floor and concrete walls. No objects are visible in the current view.
-  - The agent is in a room with grass floor and concrete walls. A green ball is found to the right.
-  - The agent is in a room with grass floor and concrete walls. A green box is found slightly to the right.
-  - The agent is in a room with grass floor and concrete walls. A blue ball is found slightly to the left.
+  - The agent is in a room with grass floor and concrete walls. A blue ball is found far away, to the right.
+  - The agent is in a room with grass floor and concrete walls. A green box is found far away, to the right.

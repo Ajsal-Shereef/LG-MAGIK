@@ -1,147 +1,327 @@
-import torch
+import sys
+sys.path.append('.')
+import pyglet
+pyglet.options['headless'] = True
+pyglet.options['headless_device'] = 0
+import os
 import wandb
+import pickle
 import hydra
-import random
-import warnings
 import numpy as np
-
+import warnings
+import gymnasium as gym
 from PIL import Image
 from collections import deque
-from architectures.common_utils import *
 from omegaconf import DictConfig, OmegaConf
+from architectures.common_utils import create_dump_directory, save_gif
+from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+class FrameStackHW(gym.Wrapper):
+    """
+    Stack the last k frames along the channel axis.
+    Input:  H x W x C
+    Output: H x W x (C * k)
+    """
+    def __init__(self, env, k):
+        super(FrameStackHW, self).__init__(env)
+        self.k = k
+        self.frames = deque([], maxlen=k)
+
+        obs_shape = env.observation_space.shape  # (H, W, C)
+        assert len(obs_shape) == 3, "FrameStackHW expects image observations (H,W,C)"
+        H, W, C = obs_shape
+
+        # New obs space: (H, W, C*k)
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=(H, W, C * k),
+            dtype=env.observation_space.dtype
+        )
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        for _ in range(self.k):
+            self.frames.append(obs)
+        return self._get_obs(), info
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self.frames.append(obs)
+        return self._get_obs(), reward, terminated, truncated, info
+
+    def _get_obs(self):
+        # Concatenate along the last axis (channel axis)
+        return np.concatenate(list(self.frames), axis=-1)
+
+
+class WandbLoggingCallback(BaseCallback):
+    def __init__(self, episode_length, verbose=1):
+        super(WandbLoggingCallback, self).__init__(verbose)
+        self.episode_length = episode_length
+        self.episode_rewards = []
+        self.episode_count = 0
+
+    def _on_step(self):
+        # This callback is called *after* the env.step()
+        # self.locals["rewards"] is an array of (n_envs,)
+        reward = self.locals.get("rewards", [0])[0] # Get reward for the first env
+        self.episode_rewards.append(reward)
+
+        # Assuming episode_length is for a single env
+        # This logic might need adjustment for multi-env setups
+        if self.num_timesteps > 0 and self.num_timesteps % self.episode_length == 0:
+            episode_reward = np.sum(self.episode_rewards)
+            self.episode_count += 1
+            log_data = {
+                "env_step": self.num_timesteps,
+                "episode_reward": episode_reward,
+                "episode": self.episode_count
+            }
+            wandb.log(log_data, step=self.num_timesteps)
+            self.episode_rewards = []
+        return True
+
+
+class VideoRolloutCallback(BaseCallback):
+    """
+    Record rollout videos during training.
+    """
+    def __init__(self, dump_dir: str, rollout_freq: int, episode_length: int, fps: int = 10):
+        super(VideoRolloutCallback, self).__init__()
+        self.dump_dir = dump_dir
+        self.rollout_freq = rollout_freq
+        self.episode_length = episode_length
+        self.fps = fps
+
+    def _on_step(self) -> bool:
+        if self.n_calls > 0 and self.n_calls % self.rollout_freq == 0:
+            print(f"\n[INFO] Performing video rollout at step {self.num_timesteps}...")
+
+            eval_env = self.training_env.envs[0] if hasattr(self.training_env, "envs") else self.training_env
+            obs, info = eval_env.reset()
+            for episode in range(5):
+                frame_array = []
+                frame_array.append(eval_env.unwrapped.get_frame())
+                done = False
+                while not done:
+                    action, _ = self.model.predict(obs, deterministic=True)
+                    obs, reward, terminated, truncated, info = eval_env.step(action)
+                    frame_array.append(eval_env.unwrapped.get_frame())
+                    done = terminated or truncated
+                    if done:
+                        obs, info = eval_env.reset()
+                        break
+
+                save_name = f"rollout_step_{self.num_timesteps}"
+                save_gif(frame_array, episode, f'{self.dump_dir}/{self.num_timesteps}',
+                         fps=self.fps, save_name=save_name)
+        return True
+
+# --- DATA COLLECTION CALLBACK ---
+class DataCollectorCallback(BaseCallback):
+    """
+    A custom callback to collect and save interaction data
+    (s, info) for all algorithms.
+    """
+    def __init__(self, save_path: str, saving_func, number_data_to_collect, observation_mode, verbose=0):
+        super(DataCollectorCallback, self).__init__(verbose)
+        self.save_path = save_path
+        # We'll store all the data in these lists
+        self.all_states = []
+        self.all_description = []
+        self.saving_func = saving_func
+        self.number_data_to_collect = number_data_to_collect
+        self.observation_mode = observation_mode
+        
+    def _on_step(self) -> bool:
+        """
+        This method is called at every step for all algorithms.
+        """
+        # self.model._last_obs is the state (s_t) *before* the action was taken
+        # self.locals["infos"] is the info dict (info_t+1)
+        
+        # Get data from the environment step
+        s = self.model._last_obs
+        infos = self.locals["infos"] # Get info dictionary
+        description = [info["description"] for info in infos]
+        # Append data. .copy() is important!
+        self.all_states.append(s.copy())
+        self.all_description.append(description) # Append infos
+        
+        return True
+
+    def _on_training_end(self) -> None:
+        """
+        This method is called at the end of training.
+        We'll concatenate and save the data.
+        """
+        if not self.all_states:
+            if self.verbose > 0:
+                print("[DataCollector] No data collected.")
+            return
+            
+        if self.verbose > 0:
+            print(f"[DataCollector] Training ended. Saving collected data to {self.save_path}")
+
+        def process_data(data_list, observation_mode=None):
+            """
+            Helper to process list of (n_envs, *shape) arrays.
+            Converts [ (n_envs, *shape), (n_envs, *shape), ... ]
+            into one large (total_timesteps, *shape) array.
+            """
+            # 1. Stack rollouts along a new time axis
+            data_np = np.stack(data_list, axis=0) # (total_steps, n_envs, *shape)
+            # 2. Swap n_envs and steps axes
+            if observation_mode == "image":
+                data_np = data_np.transpose(1, 0, 3, 4, 2)
+            else:
+                data_np = data_np.swapaxes(0, 1) 
+            # 3. Reshape to (total_timesteps, *shape)
+            # This interleaves the data from different envs (e.g., e1_t1, e2_t1, e1_t2, e2_t2)
+            # Handle cases where shape is (n_envs, total_steps) -> (total_timesteps,)
+            if data_np.ndim == 2:
+                 data_np = data_np.reshape(-1)
+            else:
+                data_np = data_np.reshape(-1, *data_np.shape[2:])
+            return data_np
+
+        try:
+            all_states = process_data(self.all_states, self.observation_mode)
+            all_descriptions = process_data(self.all_description) # Process infos
+            total_samples = len(all_states)
+            
+            # Determine the number of samples to pick
+            num_to_sample = min(self.number_data_to_collect, total_samples)
+            
+            if self.verbose > 0:
+                print(f"[DataCollector] Processing {total_samples} total samples.")
+                print(f"[DataCollector] Randomly sampling {num_to_sample} data points.")
+
+            # Generate random indices without replacement
+            indices = np.random.choice(total_samples, size=num_to_sample, replace=False)
+            
+            # Select the random samples
+            sampled_states = all_states[indices]
+            sampled_descriptions = all_descriptions[indices]
+
+            # Create the paired list
+            paired_data = [
+                {'frame': state, 'description': desc}
+                for state, desc in zip(sampled_states, sampled_descriptions)
+            ]
+
+            # Call the saving function with the paired data and save path
+            if self.verbose > 0:
+                print(f"[DataCollector] Calling saving function to save {len(paired_data)} pairs...")
+            
+            self.saving_func(paired_data, self.save_path) # Call the function
+            
+            if self.verbose > 0:
+                print(f"[DataCollector] Successfully saved data.")
+                print(f"[DataCollector] Total States shape: {all_states.shape}")
+                print(f"[DataCollector] Total Descriptions shape: {all_descriptions.shape}")
+                print(f"[DataCollector] Sampled {len(paired_data)} pairs.")
+        
+        except Exception as e:
+            if self.verbose > 0:
+                print(f"[DataCollector] Error processing or saving data: {e}")
+
 
 @hydra.main(version_base=None, config_path="config", config_name="train_agent")
-def train(args: DictConfig) -> None:
-    # np.random.seed(config.seed)
-    # random.seed(config.seed)
-    # torch.manual_seed(config.seed)
-    
-    if args.save_data:
-        paired_data = []
-        if not args.env.verbose:
-            warnings.warn("Env verbose is set to False and data collection is enabled. Changing the verbose to True", UserWarning)
-            args.env.verbose = True
-    
-    if args.env.name ==  "SimplePickup":
+def main(args: DictConfig) -> None:
+    # Initialize wandb
+    if args.use_wandb:
+        wandb.init(
+            project="LG-MAGIK",
+            name=f"{args.agent_name}_{args.env.name}",
+            config=OmegaConf.to_container(args, resolve=True)
+        )
+
+    model_save_dir = create_dump_directory(f"{args.save_model_dir}/{args.agent_name}")
+    print("[INFO] Model save directory: ", model_save_dir)
+
+    # --- ENVIRONMENT SETUP ---
+    if args.env.name == "PickEnv":
+        from env.PickEnv import PickEnv
+        def make_env():
+            env = PickEnv(args.env, render_mode="rgb_array")
+            # if args.env.observation_mode == "image":
+            #     env = FrameStackHW(env, k=4)
+            # else:
+            #     from gymnasium.wrappers import FlattenObservation, FrameStackObservation
+            #     env = FlattenObservation(FrameStackObservation(env, 4))
+            return env
+        env = DummyVecEnv([make_env])
+    elif args.env.name == "MiniWorld":
+        from env.MiniWorld import PickObjectEnv
+        env = PickObjectEnv(args.env)
+    elif args.env.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
         env = SimplePickup(args.env)
         from minigrid.wrappers import RGBImgPartialObsWrapper
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
-        args.agent.training.mission = env.unwrapped.mission
-    elif args.env.name ==  "Magik_env":
-        from env.Magik_env import MultiObjectMiniGridEnv
-        env = MultiObjectMiniGridEnv(args.env)
-        from minigrid.wrappers import RGBImgPartialObsWrapper
-        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
-        from minigrid.wrappers import ImgObsWrapper
-        env = ImgObsWrapper(env)
-        args.agent.training.mission = env.unwrapped.mission
-    elif args.env.name == "PickEnv":
-        from env.PickEnv import PickEnv
-        env = PickEnv(args.env)
-        from gymnasium.wrappers import FlattenObservation, FrameStackObservation
-        env = FlattenObservation(FrameStackObservation(env, 4))
-        args.agent.training.mission = env.unwrapped.mission
-    elif args.env.name == "MiniWorld":
-        from env.MiniWorld import PickObjectEnv
-        env = PickObjectEnv(args.env)
-    else:
-        raise NotImplementedError("The environment is not implemented yet")
-    
-    if args.use_wandb:
-        wandb.init(project="LG-MAGIK", name=f"{args.agent.name}_{args.env.name}", config=OmegaConf.to_container(args, resolve=True))
 
-    print("[INFO] Agent name: ", args.agent.name)
-    print("[INFO] Env:", args.env.name)
-    print(f"[INFO] Using device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
+    # --- TRAINING ---
+    timesteps = args.env.total_timestep
     
-    #Make the agent
-    if args.env.name == "PickEnv":
-        args.agent.network.action_dim = env.action_space.shape[0]
+    if args.env.observation_mode == "feature":
+        policy = "MlpPolicy"
+        from architectures.common_utils import save_dataset_for_features
+        saving_data_function = save_dataset_for_features
     else:
-        args.agent.network.action_dim = int(env.action_space.n)
-    args.agent.network.input_dim = int(env.observation_space.shape[-1])
-    agent = hydra.utils.instantiate(args.agent.network)
-    agent = agent.to(device)
-    
-    if args.env.observation_mode == "image":
-        save_dataset = save_dataset_for_images
-        train_transforms = get_train_transform_cnn()
-    else:
-        save_dataset = save_dataset_for_features
-        train_transforms = get_train_transform_mlp()
-    
-    # Set training params
-    agent.set_training_params(args.agent.training, train_transforms)
-    
-    # Initilising buffer
-    agent.initialise_buffer(args.agent.hyperparameters)
-
-    # Initialise the optimizer
-    agent.set_optimizer(args.agent.hyperparameters)
-    
-    model_dir = create_dump_directory(f"model_weights/{args.agent.name}")
-    print("[INFO] Dump dir: ", model_dir)
-
-    env_total_steps = 0
-    env_episode_steps = 0
-    env_episodes = 0  
-    state, info = env.reset()
-    if args.save_data:
-         paired_data.append({"frame" : state, "description" : info["description"]})
-    args.agent.training.mission = env.unwrapped.mission
+        policy = "CnnPolicy"
+        from architectures.common_utils import save_dataset_for_images
+        saving_data_function = save_dataset_for_images
         
-    #Saving the config here to make sure the mission is also saved
-    # Dumping the training config files
-    config_path = os.path.join(model_dir, "config.yaml")
-    OmegaConf.save(config=args, f=config_path)
+    if args.agent_name == "SAC":
+        from stable_baselines3 import SAC
+        model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
+    elif args.agent_name == "PPO":
+        from stable_baselines3 import PPO
+        model = PPO(policy, env, verbose=0)
+    elif args.agent_name == "DQN":
+        from stable_baselines3 import DQN
+        model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
+        
+    if args.use_wandb:
+        wandb.watch(model.policy, log="all", log_freq=100)
+
+    # --- CALLBACKS ---
+    wandb_callback = WandbLoggingCallback(episode_length=50)
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path=model_save_dir,
+        name_prefix=args.agent_name
+    )
+    video_callback = VideoRolloutCallback(
+        dump_dir=model_save_dir + '/training_videos/',
+        rollout_freq=50000,
+        episode_length=args.env.max_steps,
+        fps=30
+    )
     
-    cumulative_reward = 0
-    average_episodic_return = deque(maxlen=10)
-    for i in range(1, args.env.total_timestep+1):
-        action = agent.get_action(train_transforms(state), env_total_steps)
-        next_state, reward, terminated, truncated, info = env.step(action)
-        if args.save_data:
-            paired_data.append({"frame" : next_state, "description" : info["description"]})
-        done = terminated or truncated
-        agent.add_transition_to_buffer((state, action, reward, next_state, terminated, truncated))
-        metric = agent.learn(env_total_steps)
-        state = next_state
-        cumulative_reward += reward
-        env_total_steps += 1
-        env_episode_steps += 1
-        metric["Returns"] = cumulative_reward
-        metric["Average episodic returns"] = np.mean(average_episodic_return) if len(average_episodic_return) > 0 else 0
-        metric["Episode steps"] = env_episode_steps
-        metric["Env total steps"] = env_total_steps
-        metric["Env episode"] = env_episodes
-        metric["Buffer size"] = agent.buffer.__len__()
-        if done:
-            state, info = env.reset()
-            env_episodes += 1
-            average_episodic_return.append(cumulative_reward)
-            env_episode_steps = 0
-            cumulative_reward = 0
-            agent.do_post_episode_processing(env_total_steps)
-            
-        if args.use_wandb and env_total_steps%args.log_every==0:
-            wandb.log(metric)
-        if i % args.save_every == 0:
-            agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
-    if args.save_data:
-        data_to_save = random.sample(paired_data, int(args.number_data_to_collect))
-        save_dir_train = f"data/{args.env.name}/training_images"
-        save_dataset(data_to_save, save_dir_train)
-    agent.eval()
-    dump_dir = args.agent.video_save_path + f"/{args.agent.name}/train"
-    #Saving the model
-    agent.save(f"{model_dir}/", save_name=f"{args.agent.name}")
-    agent.test(env, args.env.fps, dump_dir)
+    # --- ADDED DATA COLLECTION CALLBACK ---
+    data_save_path = os.path.join(args.data_dave_dir, args.env.name)
+    data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
+                                                    number_data_to_collect=int(args.number_data_to_collect),  
+                                                    observation_mode=args.env.observation_mode, verbose=1)
+    call_backs = [checkpoint_callback, video_callback, data_collector_callback]
+    all_callbacks = call_backs + [wandb_callback] if args.use_wandb else call_backs
     
-    
+    model.learn(total_timesteps=timesteps,
+                callback=all_callbacks)
+
+    # --- SAVE ---
+    model.save(f"{model_save_dir}/{args.agent_name}")
+
+    env.close()
+    wandb.finish()
+
+
 if __name__ == "__main__":
-    train()
+    main()
