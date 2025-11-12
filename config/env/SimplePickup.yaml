@@ -4,7 +4,7 @@ name : SimplePickup
 # test_allowed_types : [[2,1]]
 objects : [["red ball", "green ball"]]
 reward_objects : [["red ball"]]
-wall_color : ["blue"]
+wall_color : ["grey"]
 tile_size : 8
 max_steps : 50
 agent_view_size : 7
@@ -16,6 +16,7 @@ total_timestep : 1000000
 fps : 2.5
 verbose : True
 observation_mode : image
+mission : ???
 validation_prompts :
   - Agent is in a room surrounded by blue walls. Agent sees to the bottom left,
     a blue ball which is 2 units apart at (2,5).

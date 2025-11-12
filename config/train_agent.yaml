@@ -2,9 +2,9 @@ defaults:
   - env : PickEnv
 agent_name : SAC
 save_every : 10000
-use_wandb : true
+use_wandb : false
 log_every : 100
 save_data : true
 data_dave_dir : data
 save_model_dir : model_weights
-number_data_to_collect : 0.5e6
+number_data_to_collect : 50000

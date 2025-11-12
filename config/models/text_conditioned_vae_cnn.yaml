@@ -15,7 +15,7 @@ data:
   text_encoder_path: openai/clip-vit-base-patch32
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
-  n_downsample: 4
+  n_downsample: 3
   encoder_n_res: 3
   input_dim: 3
   dim: 32
@@ -23,8 +23,8 @@ model:
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
-  - 5
-  - 5
+  - 7
+  - 7
   latent_channel: 4
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
@@ -45,7 +45,7 @@ training:
   seed: ${models.seed}
   kl_weight: 1.0
   adv_lambda: 1.0
-  adv_weight: 10.0
+  adv_weight: 5.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
@@ -74,4 +74,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/2025-11-04_21-41-37_489ERZ/
+  model_dir: model_weights/VAE/2025-11-10_00-28-35_1O1NQI/

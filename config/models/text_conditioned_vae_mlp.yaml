@@ -42,7 +42,7 @@ model:
 training:
   num_epochs: 500
   seed: 42
-  kl_weight: 0.1
+  kl_weight: 0.01
   adv_lambda: 1.0
   adv_weight: 1.0
   logs: logs
@@ -71,5 +71,5 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/TextConditionedVAE/2025-09-26_19-37-26_F2QPO6
+  model_dir: model_weights/VAE/2025-11-12_00-30-05_VQ5EAN
 

@@ -251,8 +251,11 @@ class TextConditionedVAE(nn.Module):
         
     def imagine(self, state, description):
         train_transforms = self.train_transform
-        images = [Image.fromarray(image).convert("RGB") for image in np.expand_dims(state, axis=0)]
-        states_tensors = [train_transforms(image) for image in images]
+        if self.observation_model == "image":
+            images = [Image.fromarray(image).convert("RGB") for image in np.expand_dims(state, axis=0)]
+            states_tensors = [train_transforms(image) for image in images]
+        else:
+            states_tensors = [train_transforms(data) for data in np.expand_dims(state, axis=0)]
         state_tensor = torch.stack(states_tensors)
         
         tokeniser = self.decoder.tokenizer
@@ -262,7 +265,10 @@ class TextConditionedVAE(nn.Module):
         out = self({"pixel_values" : state_tensor,
                     "input_ids" : captions_tokenised,
                     "attention_masks" : attention_mask})
-        imagined_state = ((out["reconstructed_x"].squeeze().detach().cpu().numpy()*0.5+0.5).transpose(1,2,0)* 255).astype(np.uint8)
+        if self.observation_model == "image":
+            imagined_state = ((out["reconstructed_x"].squeeze().detach().cpu().numpy()*0.5+0.5).transpose(1,2,0)* 255).astype(np.uint8)
+        else:
+            imagined_state = ((out["reconstructed_x"].squeeze().detach().cpu().numpy()))
         return out["reconstructed_x"], imagined_state
         
     def test(self, data, changed_captions, save_dir):

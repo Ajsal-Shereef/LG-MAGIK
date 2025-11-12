@@ -12,10 +12,12 @@ approach_reward_coeff : 1
 force_penalty_coeff : 0.1
 verbose : true
 observation_mode : "feature" #feature/image
+mission : ???
+mode : test
 fps : 3
 
 # New key for mode control
-total_timestep : 1000000
+total_timestep : 200000
 validation_prompts :
   - Agent sees nothing.
   - Agent sees a light circle at bearing 161 degrees which is 14.7 units apart.

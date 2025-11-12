@@ -15,7 +15,6 @@ from collections import deque
 from omegaconf import DictConfig, OmegaConf
 from architectures.common_utils import create_dump_directory, save_gif
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 
 class FrameStackHW(gym.Wrapper):
@@ -118,6 +117,7 @@ class VideoRolloutCallback(BaseCallback):
                 save_name = f"rollout_step_{self.num_timesteps}"
                 save_gif(frame_array, episode, f'{self.dump_dir}/{self.num_timesteps}',
                          fps=self.fps, save_name=save_name)
+            print("Roll out saved in ", self.dump_dir)
         return True
 
 # --- DATA COLLECTION CALLBACK ---
@@ -144,7 +144,7 @@ class DataCollectorCallback(BaseCallback):
         # self.locals["infos"] is the info dict (info_t+1)
         
         # Get data from the environment step
-        s = self.model._last_obs
+        s = self.locals["new_obs"]
         infos = self.locals["infos"] # Get info dictionary
         description = [info["description"] for info in infos]
         # Append data. .copy() is important!
@@ -232,6 +232,27 @@ class DataCollectorCallback(BaseCallback):
 
 @hydra.main(version_base=None, config_path="config", config_name="train_agent")
 def main(args: DictConfig) -> None:
+    # --- ENVIRONMENT SETUP ---
+    if args.env.name == "PickEnv":
+        from env.PickEnv import PickEnv
+        env = PickEnv(args.env, mode=args.env.mode, render_mode="rgb_array")
+        mission = env.mission
+    elif args.env.name == "MiniWorld":
+        from env.MiniWorld import PickObjectEnv
+        env = PickObjectEnv(args.env)
+        mission = env.unwrapped.mission
+    elif args.env.name ==  "SimplePickup":
+        from env.SimplePickup import SimplePickup
+        env = SimplePickup(args.env)
+        from minigrid.wrappers import RGBImgPartialObsWrapper
+        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+        mission = env.unwrapped.mission
+    
+    # Setting the mission string
+    args.env.mission = mission
+     
     # Initialize wandb
     if args.use_wandb:
         wandb.init(
@@ -242,29 +263,10 @@ def main(args: DictConfig) -> None:
 
     model_save_dir = create_dump_directory(f"{args.save_model_dir}/{args.agent_name}")
     print("[INFO] Model save directory: ", model_save_dir)
-
-    # --- ENVIRONMENT SETUP ---
-    if args.env.name == "PickEnv":
-        from env.PickEnv import PickEnv
-        def make_env():
-            env = PickEnv(args.env, render_mode="rgb_array")
-            # if args.env.observation_mode == "image":
-            #     env = FrameStackHW(env, k=4)
-            # else:
-            #     from gymnasium.wrappers import FlattenObservation, FrameStackObservation
-            #     env = FlattenObservation(FrameStackObservation(env, 4))
-            return env
-        env = DummyVecEnv([make_env])
-    elif args.env.name == "MiniWorld":
-        from env.MiniWorld import PickObjectEnv
-        env = PickObjectEnv(args.env)
-    elif args.env.name ==  "SimplePickup":
-        from env.SimplePickup import SimplePickup
-        env = SimplePickup(args.env)
-        from minigrid.wrappers import RGBImgPartialObsWrapper
-        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
-        from minigrid.wrappers import ImgObsWrapper
-        env = ImgObsWrapper(env)
+    
+    # SAving the training config
+    config_path = os.path.join(model_save_dir, "config.yaml")
+    OmegaConf.save(config=args, f=config_path)
 
     # --- TRAINING ---
     timesteps = args.env.total_timestep
@@ -283,10 +285,12 @@ def main(args: DictConfig) -> None:
         model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
-        model = PPO(policy, env, verbose=0)
+        model = PPO(policy, env, verbose=0, ent_coef = 0.01)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
+    else:
+        raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC")
         
     if args.use_wandb:
         wandb.watch(model.policy, log="all", log_freq=100)
@@ -302,7 +306,7 @@ def main(args: DictConfig) -> None:
         dump_dir=model_save_dir + '/training_videos/',
         rollout_freq=50000,
         episode_length=args.env.max_steps,
-        fps=30
+        fps=args.env.fps
     )
     
     # --- ADDED DATA COLLECTION CALLBACK ---

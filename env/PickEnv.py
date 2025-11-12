@@ -75,7 +75,7 @@ class PickEnv(gym.Env):
         self.num_broken = 0
         self.mission = self._get_mission()
         
-    def _get_environment_description(self):
+    def env_description(self):
         description = (
             "Environment context:\n"
             "- The agent need to pick up either a ball or a box. \n"
@@ -88,9 +88,9 @@ class PickEnv(gym.Env):
     
     def _get_mission(self):
         if self.mode == "train":
-            self.mission = f"Pick the light circle and heavy square without breaking it by applying required force."
+            self.mission = f"Pick the light circle or heavy square without breaking it by applying required force."
         elif self.mode == "test":
-            self.mission = f"Pick the heavy circle and light square without breaking it by applying required force."
+            self.mission = f"Pick the heavy circle or light square without breaking it by applying required force."
         else:
             self.mission = "No mission specified" 
         return self.mission   
@@ -304,7 +304,7 @@ class PickEnv(gym.Env):
             if mapped_force >= threshold:
                 # Break: High penalty
                 self.object["broken"] = True
-                reward += -2.0
+                reward += -5.0
                 terminated = True
                 self.last_action_status = "broken"
                 self.num_broken += 1

@@ -43,7 +43,7 @@ def main(args: DictConfig) -> None:
         if args.mode == "transfer":
             args.env.verbose = True
         from env.PickEnv import PickEnv
-        env = PickEnv(args.env, mode="test")
+        env = PickEnv(args.env, mode=args.env.mode)
         env_name = "PickEnv"
         env_description = env.env_description
     elif args.env.name == "MiniWorld":
@@ -71,29 +71,13 @@ def main(args: DictConfig) -> None:
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         agent = DQN.load(args.model_dir)
-    # args.agent.network.action_dim = int(env.action_space.n)
-    # args.agent.network.input_dim = int(env.observation_space.shape[-1])
-    # agent_model_dir = args.agent.evaluation.checkpoint
-    # if os.path.exists(agent_model_dir + "/config.yaml"):
-    #     agent_model_args =  OmegaConf.load(agent_model_dir + "/config.yaml")
-    #     args.agent = agent_model_args.agent
-    #     args.agent.evaluation.checkpoint = agent_model_dir
-    # else:
-    #     raise FileNotFoundError(f"Config file not found in {agent_model_dir}/config.yaml")
-    # agent = instantiate(args.agent.network)
-    # agent = agent.to(device)
-    
-    # #Load the weights
-    # agent.load_params(args.agent.evaluation.checkpoint)
-    
-    # if args.agent.name == "DQN":
-    #     # Set agent training params. Changing the epsilon to 0 to choose the acton greeedly
-    #     args.agent.training.epsilon_start = 0
-    #     steps = agent.initial_random_samples+1
-    # else:
-    #     steps = 0
         
-    # agent.set_training_params(args.agent.training, train_transforms)
+    agent_model_dir = args.model_dir
+    if os.path.exists(os.path.dirname(agent_model_dir) + "/config.yaml"):
+        agent_model_args =  OmegaConf.load(os.path.dirname(agent_model_dir) + "/config.yaml")
+        args.env = agent_model_args.env
+    else:
+        raise FileNotFoundError(f"Config file not found in {os.path.dirname(agent_model_dir)}/config.yaml")
     
     # Get data trasnformer
     if args.env.get("observation_mode", "image") == "image":
@@ -131,6 +115,9 @@ def main(args: DictConfig) -> None:
         # --- 5. Prepare agent for inference ---
         vision_model = accelerator.prepare(vision_model)
         
+        #Setting the VAE model to eval mode
+        vision_model.eval()
+        
         system_prompt = args.system_prompt
         # Load the .env file
         load_dotenv(dotenv_path="config/.env")
@@ -165,7 +152,7 @@ def main(args: DictConfig) -> None:
                 first_user_prompt = (
                                 f"Environment description : {env_description}\n"
                                 f"Target task : {mission}\n"
-                                f"What agent knows : {args.agent.training.mission}.\n"
+                                f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
                 if "No objects are visible in the current view." in info['description']:
@@ -179,7 +166,7 @@ def main(args: DictConfig) -> None:
                     changed_state, imagined_state = train_transforms(state), state
             else:
                 changed_state, imagined_state = train_transforms(state), state
-            action = agent.predict(imagined_state, deterministic=True)[0]
+            action = agent.predict(imagined_state, deterministic=False)[0]
             next_state, reward, truncated, terminated, info = env.step(action)
             frame_array_partial.append(np.hstack((state, imagined_state)))
             frame_array_full.append(env.unwrapped.get_frame())
@@ -194,8 +181,11 @@ def main(args: DictConfig) -> None:
             save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
-        
-    agent_performance = env.get_performance_metric()
+    
+    if args.env.name ==  "SimplePickup":
+        agent_performance = env.unwrapped.get_performance_metric()
+    else:
+        agent_performance = env.get_performance_metric()
     print("Agent performance" , agent_performance)
     
 if __name__ == "__main__":
