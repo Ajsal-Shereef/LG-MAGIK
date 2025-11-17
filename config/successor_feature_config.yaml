@@ -1,0 +1,55 @@
+defaults:
+  - agent: baselines/sf/sf_simple
+  - env : MiniWorld
+  - _self_ # this yaml file is overriding configs from the Defaults List (eg. {agent}.yaml)
+  - resources: null  
+
+# task settings
+obs_type: pixels # [states, pixels]
+action_repeat: 1
+
+#Epsilon-greedy only if discrete action
+epsilon_start : 1.0
+epsilon_decay_after : 4000
+epsilon_end : 0.05
+epsilon_decay : 0.999
+
+# train settings
+#num_train_frames: 2000010
+num_train_frames: 2000000
+num_seed_frames: 4000
+update_encoder: true
+# eval
+eval_every_frames: 2500
+num_eval_episodes: 10
+#transfer
+transfer_interaction_step : 100000
+#Save checkpoint
+save_checkpoint_every : 25000
+# snapshot
+snapshot_dir: model_weights/${agent.name}/
+# replay buffer
+replay_buffer_size: 100000
+batch_size: ${agent.batch_size}
+# misc
+seed: 1
+device: cuda
+use_wandb: true
+wandb_dir: ./wandb
+mode: full_train
+
+
+hydra:
+  run:
+    dir: ./exp_local/${now:%Y.%m.%d}/${now:%H%M%S}_${agent.name}
+  sweep:
+    dir: ./exp_sweep/${now:%Y.%m.%d}/${now:%H%M}_${agent.name}_${experiment}
+    subdir: ${hydra.job.num}
+  # launcher:
+  #   timeout_min: 4300
+  #   cpus_per_task: 10
+  #   gpus_per_node: 1
+  #   tasks_per_node: 1
+  #   mem_gb: 160
+  #   nodes: 1
+  #   submitit_folder: ./exp_sweep/${now:%Y.%m.%d}/${now:%H%M}_${agent.name}_${experiment}/.slurm

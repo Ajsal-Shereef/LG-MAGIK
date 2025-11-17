@@ -155,7 +155,7 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if "No objects are visible in the current view." in info['description']:
+                if "No objects are visible in the current view/." in info['description']:
                     llm_reply = info['description']
                 else:
                     llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)

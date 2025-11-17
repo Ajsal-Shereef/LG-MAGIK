@@ -14,14 +14,80 @@ from minigrid.core.grid import Grid
 from collections import Counter, defaultdict
 import sys
 sys.path.append(".")
-from architectures.common_utils import collect_data, save_dataset_for_images
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.mission import MissionSpace
-from minigrid.core.world_object import WorldObj
-from minigrid.core.world_object import  Ball, Box, Key, Wall
+from minigrid.core.world_object import WorldObj, Wall
 from minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
-from minigrid.utils.rendering import fill_coords, point_in_rect
+from architectures.common_utils import collect_data, save_dataset_for_images
+from minigrid.utils.rendering import fill_coords, point_in_rect, point_in_circle
 from minigrid.core.constants import OBJECT_TO_IDX, COLORS, COLOR_TO_IDX, STATE_TO_IDX
+
+class Key(WorldObj):
+    def __init__(self, color: str = "blue"):
+        super().__init__("key", color)
+
+    def can_pickup(self):
+        return True
+    
+    def can_overlap(self) -> bool:
+        """Can the agent overlap with this?"""
+        return True
+
+    def render(self, img):
+        c = COLORS[self.color]
+
+        # Vertical quad
+        fill_coords(img, point_in_rect(0.50, 0.63, 0.31, 0.88), c)
+
+        # Teeth
+        fill_coords(img, point_in_rect(0.38, 0.50, 0.59, 0.66), c)
+        fill_coords(img, point_in_rect(0.38, 0.50, 0.81, 0.88), c)
+
+        # Ring
+        fill_coords(img, point_in_circle(cx=0.56, cy=0.28, r=0.190), c)
+        fill_coords(img, point_in_circle(cx=0.56, cy=0.28, r=0.064), (0, 0, 0))
+
+
+class Ball(WorldObj):
+    def __init__(self, color="blue"):
+        super().__init__("ball", color)
+
+    def can_pickup(self):
+        return True
+    
+    def can_overlap(self) -> bool:
+        """Can the agent overlap with this?"""
+        return True
+
+    def render(self, img):
+        fill_coords(img, point_in_circle(0.5, 0.5, 0.31), COLORS[self.color])
+
+class Box(WorldObj):
+    def __init__(self, color, contains: WorldObj | None = None):
+        super().__init__("box", color)
+        self.contains = contains
+
+    def can_pickup(self):
+        return True
+    
+    def can_overlap(self) -> bool:
+        """Can the agent overlap with this?"""
+        return True
+
+    def render(self, img):
+        c = COLORS[self.color]
+
+        # Outline
+        fill_coords(img, point_in_rect(0.12, 0.88, 0.12, 0.88), c)
+        fill_coords(img, point_in_rect(0.18, 0.82, 0.18, 0.82), (0, 0, 0))
+
+        # Horizontal slit
+        fill_coords(img, point_in_rect(0.16, 0.84, 0.47, 0.53), c)
+
+    def toggle(self, env, pos):
+        # Replace the box by its contents
+        env.grid.set(pos[0], pos[1], self.contains)
+        return True
 
 
 NAME_TO_OBJECT = {"ball" : Ball, "key" : Key, "box" : Box}

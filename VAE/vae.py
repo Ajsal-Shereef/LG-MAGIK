@@ -38,7 +38,7 @@ class VAE(AutoencoderKL):
         latents = posterior.sample()
         
         # Decode the latents to reconstruct the image
-        # .sample is used to get the mean of the decoded output distribution
+        # Sample is used to get the mean of the decoded output distribution
         if self.training:
             reconstructed_x = self.decode(latents).sample
         else:

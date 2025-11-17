@@ -11,10 +11,10 @@ import torch.optim as optim
 from architectures.mlp import MLP
 from torchvision.utils import make_grid
 from architectures.common_utils import grad_reverse
+from architectures.vae_utils import PatchDiscriminator, MINECritic
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
 from architectures.mlp import MLPEncoder, MLPTextConditionedDecoder
 from architectures.stochastic import GaussianSampleSpatial, GaussianSample
-from architectures.vae_utils import PatchDiscriminator, MINECritic
 from architectures.common_utils import tokenize_captions, get_train_transform_cnn, get_train_transform_mlp
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

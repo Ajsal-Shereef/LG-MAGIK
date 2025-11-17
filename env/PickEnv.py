@@ -80,8 +80,8 @@ class PickEnv(gym.Env):
             "Environment context:\n"
             "- The agent need to pick up either a ball or a box. \n"
             "- Each object can be either light or heavy. \n"
-            "- The agent must learn to apply minimum force and navigate near the object to succesfully pick up the object. \n"
-            "- If the object applies force beyond objects threshold, the object breaks and the episode ends with a penalty. \n"
+            "- The agent must learn to apply minimum and required force and navigate near the object to succesfully pick up the object. \n"
+            "- If the object applies force beyond the objects can withstand (Applying heavy force on light object), the object breaks and the episode ends with a penalty. \n"
             "- The agent is penalised for applying a weak force (force less than required to pick the object) and wasting the timesteps. \n"
             "- Each episode ends once the Target task is completed or a maximum step limit is reached.")
         return description

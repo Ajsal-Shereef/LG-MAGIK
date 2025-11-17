@@ -10,6 +10,7 @@ import torch
 import requests
 import traceback
 import torch.nn as nn
+import gymnasium as gym
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torch.optim.lr_scheduler as lr_scheduler
@@ -1497,4 +1498,38 @@ def discrete_action_to_one_hot(action_id, action_dim):
     action[action_id] = 1.0
     # in the format of one-hot-vector
     return action
+
+class SwitchChannel(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+        old_shape = self.observation_space.shape  # (num_stack, H, W, C)
+
+        height, width, channels = old_shape
+
+        new_shape = (channels, height, width)
+
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=new_shape,
+            dtype=np.uint8
+        )
+
+    def observation(self, observation):
+        """
+        Converts (num_stack, H, W, C) → (num_stack * C, H, W)
+        """
+        obs = np.transpose(observation, (2, 0, 1))  # (N, C, H, W)
+        return obs
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        obs = self.observation(obs)
+        return obs, reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        obs = self.observation(obs)
+        return obs, info
 

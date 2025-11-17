@@ -1,14 +1,14 @@
 defaults:
-  - models: text_conditioned_vae_mlp
-  - env: PickEnv
+  - models: text_conditioned_vae_cnn
+  - env: MiniWorld
 
-agent_name : SAC
-model_dir : "model_weights/SAC/2025-11-11_20-34-24_42Z5OE/SAC.zip"
+agent_name : PPO
+model_dir : "model_weights/PPO/2025-11-11_10-40-31_A3DTZY/PPO.zip"
 num_episode: 10
 result_dir: result
 mode: transfer
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
-llm_model: "google/gemini-2.5-pro" #meta-llama/Meta-Llama-3.1-8B-Instruct, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro
+llm_model: "qwen/qwen-2.5-coder-32b-instruct:free" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro
 
 system_prompt: |
 

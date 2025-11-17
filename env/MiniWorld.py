@@ -82,7 +82,7 @@ class PickObjectEnv(MiniWorldEnv):
     - Dense reward based on distance to the red box; episode terminates when near any box.
     """
     
-    def __init__(self, config, **kwargs):
+    def __init__(self, config, is_collect_data=False, **kwargs):
         """
         Initialize the environment.
         
@@ -91,27 +91,31 @@ class PickObjectEnv(MiniWorldEnv):
             size (int): Size of the room (default: 10).
             **kwargs: Additional arguments passed to the parent class.
         """
-        size = config["size"]
-        max_steps=config.get("max_steps")
-        if max_steps is None:
-            self.max_steps = 4 * size * size
-        else:
-            self.max_steps = max_steps
-        self.objects = list(config.objects)
-        self.reward_objects = list(config.reward_objects)
-        self.rewarding_object_colors = [OBJECT_TO_ENITTY[obj].color for obj in self.reward_objects]
-        self.layout = config.layout
         self.size = config["size"]
+        max_steps=config.get("max_steps")
         kwargs["obs_width"] = config["obs_width"]
         kwargs["obs_height"] = config["obs_height"]
         kwargs["window_width"] = config["obs_width"]*10
         kwargs["window_height"] = config["obs_height"]*10
         self.verbose = config.get("verbose", False)
+        self.is_collect_data = is_collect_data
+        if max_steps is None:
+            self.max_steps = 4 * self.size * self.size
+        else:
+            self.max_steps = max_steps
+        self.objects = list(config.objects)
+        self.reward_objects = list(config.reward_objects)
+        self.rewarding_object_colors = [OBJECT_TO_ENITTY[obj[0]].color for obj in self.reward_objects]
+        self.layout = config.layout
+        
         super().__init__(max_episode_steps=self.max_steps, **kwargs)
         self.action_space = spaces.Discrete(self.actions.pickup + 1)
-        self.env_description = self._get_environment_description()
-        self.env_name = self.set_env_name()
-        self.mission = self._gen_mission(self.objects, self.reward_objects, self.layout)
+        if not is_collect_data:
+            if len(self.layout) > 1 or len(self.objects) > 1:
+                raise ValueError("Object list contain more than one value. Check the is_collect_data flag")
+            self.env_description = self._get_environment_description()
+            self.env_name = self.set_env_name()
+            self.mission = self._gen_mission(self.objects[0], self.reward_objects[0], self.layout[0])
         self.name = config.get("name", "MiniWorld")
         
         # --- Add state for reward shaping and define reward constants ---
@@ -145,18 +149,19 @@ class PickObjectEnv(MiniWorldEnv):
         return description
     
     def set_env_name(self):
-        for obj in self.reward_objects: assert obj in self.objects, f"Reward object {obj} must be in {self.objects}"
+        reward_objects = self.reward_objects[0]
+        objects = self.objects[0]
+        layout = self.layout[0]
+        for obj in reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
         rewarding_objects = ""
         non_rewarding_object = ""
-        reward_objects = self.reward_objects
-        objects = self.objects
         if len(reward_objects) == 1:
             rewarding_objects = reward_objects[0].replace(" ", "").capitalize()
             non_rewarding_object = list(set(objects)-set(reward_objects))[0]
             non_rewarding_object = non_rewarding_object.replace(" ", "").capitalize()
         else:
             rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
-        room_color = self.layout.capitalize()
+        room_color = layout.capitalize()
         # ---- Add a variable to save and later evaluate the performance of the agent ----
         self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.reward_objects, 0),
                                   "non_rewarding_objects" : dict.fromkeys([non_rewarding_object.lower()], 0)}
@@ -195,7 +200,8 @@ class PickObjectEnv(MiniWorldEnv):
         return self.obs, info
     
     def _add_layout(self):
-        floor, wall = self.layout.split("/")
+        layout = random.choice(self.layout)
+        floor, wall = layout.split("/")
         self.add_rect_room(
             min_x=0,
             max_x=self.size,
@@ -211,7 +217,8 @@ class PickObjectEnv(MiniWorldEnv):
         Generate the world with a room, floor type, and objects.
         """
         self._add_layout()
-        for obj in self.objects:
+        objects = random.choice(self.objects)
+        for obj in objects:
             if obj in OBJECT_TO_ENITTY:
                 self.place_entity(OBJECT_TO_ENITTY[obj])
             else:
@@ -278,12 +285,14 @@ class PickObjectEnv(MiniWorldEnv):
             if self.agent.carrying.color in self.reward_object_colors:
                 # Overwrite previous rewards with a large success reward
                 reward = self.REWARD_PICK_SUCCESS
-                self.agent_performance["rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
+                if not self.is_collect_data:
+                    self.agent_performance["rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
                 self.reward_object_colors.remove(self.agent.carrying.color)
             else:
                 # Overwrite previous rewards with a large failure penalty
                 reward = self.REWARD_PICK_FAIL
-                self.agent_performance["non_rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
+                if not self.is_collect_data:
+                    self.agent_performance["non_rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
 
             # Clean up the picked object
             self.entities.remove(self.agent.carrying)
@@ -336,8 +345,9 @@ class PickObjectEnv(MiniWorldEnv):
         obj_cls = self.get_class(obs)
         color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
         detected_colors = [color for color, idx in color_to_index.items() if obj_cls[idx] == 1]
-
-        floor_tex, wall_tex = self.layout.split("/")
+        
+        layout = random.choice(self.layout)
+        floor_tex, wall_tex = layout.split("/")
 
         description = f"The agent is in a room with {floor_tex} floor and {wall_tex} walls."
 
@@ -466,32 +476,32 @@ def main(args: DictConfig) -> None:
     # type_list = [(i, j) for i in range(0, 6) for j in range(0, 2)]
     is_collect_data = True
     args.verbose = True
-    env = PickObjectEnv(args)
+    env = PickObjectEnv(args, is_collect_data)
     # Total number of timesteps to collect
-    total_training_data = 50000
-    validation_data = 5000
+    total_training_data = 100000
+    validation_data = 0
     paired_data, episode = collect_data(env, total_training_data + validation_data)
     env.close()
     
     # --- Dataset Saving Logic ---
     if is_collect_data:
         training_data = paired_data[:total_training_data]
-        val_data = paired_data[total_training_data:]
+        # val_data = paired_data[total_training_data:]
 
         # --- Save the training dataset in the required image/text pair format ---
-        save_dir_train = f"data/{env.name}/Random/train"
+        save_dir_train = f"data/{env.name}/Random/vae"
         os.makedirs(save_dir_train, exist_ok=True)
         
         # Save the training dataset
         print("\n--- Saving Training Dataset ---")
         save_dataset_for_images(training_data, save_dir_train)
 
-        save_dir_val = f"data/{env.name}/Random/test"
-        os.makedirs(save_dir_val, exist_ok=True)
+        # save_dir_val = f"data/{env.name}/Random/test"
+        # os.makedirs(save_dir_val, exist_ok=True)
         
-        # Save the validation dataset
-        print("\n--- Saving Validation Dataset ---")
-        save_dataset_for_images(val_data, save_dir_val)
+        # # Save the validation dataset
+        # print("\n--- Saving Validation Dataset ---")
+        # save_dataset_for_images(val_data, save_dir_val)
 
         
 if __name__ == "__main__":

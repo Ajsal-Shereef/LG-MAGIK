@@ -1,4 +1,4 @@
 defaults:
   - env : PickEnv
-  - models : text_conditioned_vae_mlp
+  - models : vae
 save_path : model_weights

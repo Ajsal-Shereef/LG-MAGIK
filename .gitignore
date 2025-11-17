@@ -5,8 +5,13 @@ Videos
 logs
 outputs
 videos
+exp_local
 model_weights
 result
+miniworld-captioner-final
+miniworld-captioner-results
+miniworld-captioner-clip-results
+miniworld-captioner-clip-final
 *__pycache__
 *.pyc
 *.pth

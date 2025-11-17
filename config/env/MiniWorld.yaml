@@ -1,7 +1,7 @@
 name : MiniWorld 
-objects : ["box", "ball"]
-reward_objects : ["box"]
-layout : "grass/concrete" #options:asphalt/brick_wall, grass/concrete
+objects : [["box", "ball"]]
+reward_objects : [["box"]]
+layout : ["asphalt/brick_wall"] #options:asphalt/brick_wall, grass/concrete
 max_steps : 100  
 render_mode : "none"
 size : 10
@@ -16,7 +16,7 @@ mission : ???
 validation_prompts :
   - The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 4.7 at a distance of 3.4 units.
   - The agent is in a room with grass floor and concrete walls. A blue box is found to the right at angle 15.9 at a distance of 4.7 units. A green ball is found in front at angle 1.73 at a distance of 5.7 units.
-  - The agent is in a room with grass floor and concrete walls. A blue box is found to the left at angle 28.7 at a distance of 3.3 units..
+  - The agent is in a room with grass floor and concrete walls. A blue box is found to the left at angle 28.7 at a distance of 3.3 units.
   - The agent is in a room with grass floor and concrete walls. No objects are visible in the current view.
-  - The agent is in a room with grass floor and concrete walls. A blue ball is found to the right at angle 22.7 at a distance of 2.5 units..
-  - The agent is in a room with grass floor and concrete walls. A green box is found to the left at angle 28.7 at a distance of 1.3 units..
+  - The agent is in a room with grass floor and concrete walls. A blue ball is found to the right at angle 22.7 at a distance of 2.5 units.
+  - The agent is in a room with grass floor and concrete walls. A green box is found to the left at angle 28.7 at a distance of 1.3 units.
