@@ -310,7 +310,7 @@ def main(args: DictConfig) -> None:
     )
     
     # --- ADDED DATA COLLECTION CALLBACK ---
-    data_save_path = os.path.join(args.data_dave_dir, args.env.name)
+    data_save_path = os.path.join(args.data_dave_dir, args.env.name, "agent")
     data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
                                                     number_data_to_collect=int(args.number_data_to_collect),  
                                                     observation_mode=args.env.observation_mode, verbose=1)

@@ -2,16 +2,17 @@ defaults:
   - _self_
 
 project_name: TextConditionedVAE
-model_name : "VAE"
+model_name : "DARLA"
 # --- Data Configuration ---
 data:
-  train_dir: data/${env.name}/
+  train_dir: data/${env.name}/Random/vae
   image_column: "image"
-  caption_column: null # Although not used by VAE, good practice to define
+  cache_dir: null
   resolution: 112
   batch_size: 64
-  num_workers: 4 
-  cache_dir: null 
+  num_workers: 8 
+  caption_column: text
+  text_encoder_path: openai/clip-vit-base-patch32
 
 # --- VAE Model Architecture ---
 model:
@@ -28,15 +29,16 @@ model:
 # --- Training Hyperparameters ---
 training:
   num_epochs: 50 # Increased for more realistic training
-  seed: 42
-  kl_weight: 0.5
+  seed: null
+  kl_weight: 1
   logs : "logs"
   output_dir: "model_weights/vae"
   experiment_name: "VAE"
   log_media_interval: 8000 # Log images every N steps
-  log_values_and_images: False
+  log_values_and_images: True
   generate_interval : 8000
   num_images_to_generate : 8
+  save_weight_freequency: 50
 
 # --- Optimizer Configuration (AdamW) ---
 optimizer:

@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import wandb
 import torch.nn.functional as F
-
 from hydra.utils import instantiate
 from collections import defaultdict
 from omegaconf import DictConfig, OmegaConf
@@ -22,7 +21,7 @@ def train(args: DictConfig) -> None:
     """
     cfg = args.models
     # Creating the directory to save the model weights and configs. Placed at the top to generate different dir name before seeding
-    save_dir = create_dump_directory(os.path.join(args.save_path, cfg.model_name))
+    save_dir = create_dump_directory(os.path.join(args.save_path, cfg.model_name, args.env.name))
     # --- 1. Initialization and Setup ---
     if cfg.training.seed is not None:
         set_seed(cfg.training.seed)
@@ -30,7 +29,7 @@ def train(args: DictConfig) -> None:
     # Check for the logging flag in the config. Defaults to True if not present.
     log_values_and_images = cfg.training.get("log_values_and_images", True)
     
-    # Conditionally set the logger based on the flag
+    # Conditionally set the logger based on the flag. 
     log_with = cfg.accelerator.log_with if log_values_and_images else None
 
     # Setup Accelerator
@@ -131,9 +130,10 @@ def train(args: DictConfig) -> None:
                         #Generate sample images
                         if global_step % cfg.training.generate_interval == 0:
                             validation_prompts = cfg.training.get("validation_prompts", [])
-                            generated_images = vae.generate(output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
-                            if args.models.model.observation_mode == "image":
-                                tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
+                            if validation_prompts:
+                                generated_images = vae.generate(output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
+                                if args.models.model.observation_mode == "image":
+                                    tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
         if epoch % args.models.training.save_weight_freequency == 0:
             vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")       

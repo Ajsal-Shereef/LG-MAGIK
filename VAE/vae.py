@@ -1,10 +1,12 @@
-# In a file like architectures/vae.py
 
+import os
 import torch
+import torch.optim as optim
 import torch.nn.functional as F
-from diffusers import AutoencoderKL
-from diffusers import AutoencoderKL
+from diffusers.models import AutoencoderKL
 from typing import Dict
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class VAE(AutoencoderKL):
     """
@@ -49,6 +51,14 @@ class VAE(AutoencoderKL):
             "posterior": posterior,
             "latent" : latents
         }
+        
+    def set_optimizers(self, parms):
+        self.vae_optim = optim.AdamW(self.parameters(),
+                                lr=parms.lr,
+                                betas=tuple(parms.betas),
+                                weight_decay=parms.weight_decay,
+                                eps=parms.eps,
+                               )
 
     def loss_function(
         self,
@@ -89,6 +99,11 @@ class VAE(AutoencoderKL):
             "recon_loss": recon_loss,
             "kl_loss": kl_loss,
         }
+        
+    def optimize(self, losses, accelerator):
+        self.vae_optim.zero_grad()
+        accelerator.backward(losses["total_loss"])
+        self.vae_optim.step()
 
     def generate(self, sampler, num_samples: int, device: torch.device, *args) -> torch.Tensor:
         """
@@ -123,3 +138,20 @@ class VAE(AutoencoderKL):
         # generated_images = generated_images*0.5 + 0.5
         
         # return generated_images
+        
+    def load_params(self, path):
+        """Load model and optimizer parameters."""
+        params = torch.load(path, map_location=device)
+        self.load_state_dict(params["network"])
+        print("[INFO] loaded the Text Conditioned VAE model", path)
+
+    def save(self, dump_dir, save_name):
+        """Save model and optimizer parameters."""
+        params = {
+                "network": self.state_dict(),
+                }
+        save_dir = dump_dir
+        os.makedirs(save_dir, exist_ok=True)
+        checkpoint_path = save_dir + save_name + '.tar'
+        torch.save(params, checkpoint_path)
+        print("[INFO] Text Conditioned VAE model saved to: ", checkpoint_path)

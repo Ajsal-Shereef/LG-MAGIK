@@ -1,4 +1,4 @@
 defaults:
-  - env : PickEnv
+  - env : MiniWorld
   - models : vae
 save_path : model_weights

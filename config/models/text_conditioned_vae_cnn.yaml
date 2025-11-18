@@ -4,9 +4,9 @@ defaults:
 
 project_name: TextConditionedVAE
 model_name : "VAE"
-seed: 42
+seed: null
 data:
-  train_dir: data/${env.name}/
+  train_dir: data/${env.name}/agent
   cache_dir: null
   batch_size: 64
   num_workers: 8

@@ -163,7 +163,7 @@ class PickObjectEnv(MiniWorldEnv):
             rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
         room_color = layout.capitalize()
         # ---- Add a variable to save and later evaluate the performance of the agent ----
-        self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.reward_objects, 0),
+        self.agent_performance = {"rewarding_objects" : dict.fromkeys(reward_objects, 0),
                                   "non_rewarding_objects" : dict.fromkeys([non_rewarding_object.lower()], 0)}
         if not non_rewarding_object:
            return f"Pick{rewarding_objects}Room{room_color}"

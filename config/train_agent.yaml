@@ -1,6 +1,6 @@
 defaults:
-  - env : PickEnv
-agent_name : SAC
+  - env : MiniWorld
+agent_name : PPO
 save_every : 10000
 use_wandb : false
 log_every : 100
