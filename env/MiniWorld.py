@@ -82,7 +82,7 @@ class PickObjectEnv(MiniWorldEnv):
     - Dense reward based on distance to the red box; episode terminates when near any box.
     """
     
-    def __init__(self, config, is_collect_data=False, **kwargs):
+    def __init__(self, config, **kwargs):
         """
         Initialize the environment.
         
@@ -98,24 +98,19 @@ class PickObjectEnv(MiniWorldEnv):
         kwargs["window_width"] = config["obs_width"]*10
         kwargs["window_height"] = config["obs_height"]*10
         self.verbose = config.get("verbose", False)
-        self.is_collect_data = is_collect_data
         if max_steps is None:
             self.max_steps = 4 * self.size * self.size
         else:
             self.max_steps = max_steps
         self.objects = list(config.objects)
         self.reward_objects = list(config.reward_objects)
-        self.rewarding_object_colors = [OBJECT_TO_ENITTY[obj[0]].color for obj in self.reward_objects]
         self.layout = config.layout
         
         super().__init__(max_episode_steps=self.max_steps, **kwargs)
         self.action_space = spaces.Discrete(self.actions.pickup + 1)
-        if not is_collect_data:
-            if len(self.layout) > 1 or len(self.objects) > 1:
-                raise ValueError("Object list contain more than one value. Check the is_collect_data flag")
-            self.env_description = self._get_environment_description()
-            self.env_name = self.set_env_name()
-            self.mission = self._gen_mission(self.objects[0], self.reward_objects[0], self.layout[0])
+        self.env_description = self._get_environment_description()
+        self.env_name = self.set_env_name()
+        self.mission = self._gen_mission()
         self.name = config.get("name", "MiniWorld")
         
         # --- Add state for reward shaping and define reward constants ---
@@ -149,19 +144,21 @@ class PickObjectEnv(MiniWorldEnv):
         return description
     
     def set_env_name(self):
-        reward_objects = self.reward_objects[0]
-        objects = self.objects[0]
-        layout = self.layout[0]
+        reward_objects = [item for sublist in self.reward_objects for item in sublist]
+        objects = [item for sublist in self.objects for item in sublist]
+        layout = self.layout
         for obj in reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
+        non_rewarding_obj_list = list(set(objects)-set(reward_objects))
         rewarding_objects = ""
         non_rewarding_object = ""
-        if len(reward_objects) == 1:
-            rewarding_objects = reward_objects[0].replace(" ", "").capitalize()
-            non_rewarding_object = list(set(objects)-set(reward_objects))[0]
-            non_rewarding_object = non_rewarding_object.replace(" ", "").capitalize()
-        else:
-            rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
-        room_color = layout.capitalize()
+        for obj in reward_objects:
+            rewarding_objects += obj.capitalize()
+        for obj in non_rewarding_obj_list:
+            non_rewarding_object += obj.capitalize()
+
+        room_color = ""
+        for room in layout:
+            room_color += room.capitalize()
         # ---- Add a variable to save and later evaluate the performance of the agent ----
         self.agent_performance = {"rewarding_objects" : dict.fromkeys(reward_objects, 0),
                                   "non_rewarding_objects" : dict.fromkeys([non_rewarding_object.lower()], 0)}
@@ -170,21 +167,59 @@ class PickObjectEnv(MiniWorldEnv):
         else:
             return f"Pick{rewarding_objects}Avoid{non_rewarding_object}Room{room_color}"
 
-    def _gen_mission(self, objects:list[str], reward_objects:list[str], layout:str) -> str:
-        rewarding_objects = ""
-        non_rewarding_object = ""
-        for rewarding_object in reward_objects: assert rewarding_object in objects, f"{rewarding_object} must be in {objects}"
-        if len(reward_objects) == 1:
-            rewarding_objects = reward_objects[0]
-            non_rewarding_object = list(set(objects)-set(reward_objects))[0]
+    def _gen_mission(self) -> str:
+        # Flatten lists
+        reward_objects_flat = [item for sublist in self.reward_objects for item in sublist]
+        objects_flat = [item for sublist in self.objects for item in sublist]
+        
+        # --- LAYOUT LOGIC UPDATE ---
+        # We iterate through self.layout (the list) to handle 1 or multiple rooms
+        location_descriptions = []
+        for layout_option in self.layout:
+            floor, wall = layout_option.split("/")
+            location_descriptions.append(f"{floor} floor and {wall} wall")
+        
+        # Join descriptions with " or " if there are multiple, otherwise it's just the one.
+        # Example: "grass floor and concrete wall or asphalt floor and brick_wall wall"
+        location_str = " or ".join(location_descriptions)
+        
+        # --- OBJECT LOGIC ---
+        non_rewarding_obj_list = list(set(objects_flat) - set(reward_objects_flat))
+        
+        for rewarding_object in reward_objects_flat: 
+            assert rewarding_object in objects_flat, f"{rewarding_object} must be in {objects_flat}"
+            
+        rewarding_object_description = []
+        for obj in reward_objects_flat:
+            rewarding_object_description.append(f"{OBJECT_TO_COLOR[obj]} {obj}")
+            
+        rewarding_object_str = " and ".join(rewarding_object_description)
+        
+        non_rewarding_object_description = []
+        for obj in non_rewarding_obj_list:
+            non_rewarding_object_description.append(f"{OBJECT_TO_COLOR[obj]} {obj}")
+            
+        non_rewarding_object_str = " and ".join(non_rewarding_object_description)
+        
+        if not non_rewarding_obj_list:
+            # Scenario: Pick two reward objects
+            return f"Pick {rewarding_object_str} from the room with {location_str}"
         else:
-            rewarding_objects = f"{reward_objects[0]} and {reward_objects[1]}"
-        floor, wall = layout.split("/")
-        if not non_rewarding_object:
-           return f"Pick {OBJECT_TO_COLOR[rewarding_objects[0]]} {rewarding_objects[0]} and {OBJECT_TO_COLOR[rewarding_objects[1]]} {rewarding_objects[1]} from {floor} floor and {wall} wall"
-        else:
-            return f"Pick the {OBJECT_TO_COLOR[rewarding_objects]} {rewarding_objects} and avoid {OBJECT_TO_COLOR[non_rewarding_object]} {non_rewarding_object} from {floor} floor and {wall} wall"
+            # Scenario: Pick one reward, avoid distractor
+            return f"Pick the {rewarding_object_str} and avoid {non_rewarding_object_str} from the room with {location_str}"
 
+    def reset(self):
+        """
+        Resets the environment and generates a new mission.
+        """
+        # 1. Reset internal state or randomize objects/layout here if necessary
+        # self.randomize_layout() 
+        
+        # 2. Generate the new mission string using the function above
+        mission_string = self._gen_mission(self.objects, self.reward_objects, self.layout)
+        
+        # 3. Return initial observation or mission (depending on your gym setup)
+        return mission_string
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> Tuple[ObsType, dict]:
@@ -193,7 +228,6 @@ class PickObjectEnv(MiniWorldEnv):
             info["description"] = self.get_frame_description(self.obs)
         self.agent.cam_pitch = -30 * np.pi / 180 #This place the camera -30 degrees downwards and agent can see nearest objects
         self.agent.cam_height = 0.75
-        self.reward_object_colors = self.rewarding_object_colors.copy()
         # --- Reset the distance tracker ---
         self.dist_to_target = None
         
@@ -217,13 +251,17 @@ class PickObjectEnv(MiniWorldEnv):
         Generate the world with a room, floor type, and objects.
         """
         self._add_layout()
-        objects = random.choice(self.objects)
+        index = random.randint(0,len(self.objects)-1)
+        objects = self.objects[index]
         for obj in objects:
             if obj in OBJECT_TO_ENITTY:
                 self.place_entity(OBJECT_TO_ENITTY[obj])
             else:
                 raise ValueError(f"Object {obj} not recognized. Available objects: {list(OBJECT_TO_ENITTY.keys())}")
         self.place_agent()
+        
+        self.reward_object_colors = [OBJECT_TO_COLOR[obj] for obj in self.reward_objects[index]]
+        
         # Calculate the center of the room
         center_x = self.size / 2
         center_z = self.size / 2 
@@ -285,14 +323,12 @@ class PickObjectEnv(MiniWorldEnv):
             if self.agent.carrying.color in self.reward_object_colors:
                 # Overwrite previous rewards with a large success reward
                 reward = self.REWARD_PICK_SUCCESS
-                if not self.is_collect_data:
-                    self.agent_performance["rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
+                self.agent_performance["rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
                 self.reward_object_colors.remove(self.agent.carrying.color)
             else:
                 # Overwrite previous rewards with a large failure penalty
                 reward = self.REWARD_PICK_FAIL
-                if not self.is_collect_data:
-                    self.agent_performance["non_rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
+                self.agent_performance["non_rewarding_objects"][f"{COLOR_TO_OBJECT[self.agent.carrying.color]}"] += 1
 
             # Clean up the picked object
             self.entities.remove(self.agent.carrying)
@@ -476,7 +512,7 @@ def main(args: DictConfig) -> None:
     # type_list = [(i, j) for i in range(0, 6) for j in range(0, 2)]
     is_collect_data = True
     args.verbose = True
-    env = PickObjectEnv(args, is_collect_data)
+    env = PickObjectEnv(args)
     # Total number of timesteps to collect
     total_training_data = 100000
     validation_data = 0
