@@ -1,6 +1,6 @@
 defaults:
-  - env : MiniWorld
-agent_name : PPO
+  - env : SimplePickup
+agent_name : DQN
 save_every : 10000
 use_wandb : false
 log_every : 100

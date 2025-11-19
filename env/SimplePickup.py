@@ -121,7 +121,6 @@ class SimplePickup(MiniGridEnv):
             
         mission_space = MissionSpace(
             mission_func=self._gen_mission,
-            ordered_placeholders=[self.objects, self.reward_objects, self.wall_colors],
         )
         
         super().__init__(
@@ -133,6 +132,7 @@ class SimplePickup(MiniGridEnv):
             mission_space=mission_space,
             highlight=config.highlight
         )
+        self.mission = self.get_mission()
         self.action_space = spaces.Discrete(4)
         self.env_description = self._get_environment_description()
         self.env_name = self.set_env_name()
@@ -161,38 +161,68 @@ class SimplePickup(MiniGridEnv):
         return description
     
     def set_env_name(self):
-        reward_objects = self.reward_objects[0]
-        objects = self.objects[0]
-        if len(reward_objects) == 1:
-            rewarding_objects = reward_objects[0].replace(" ", "").capitalize()
-            Non_rewarding_object = list(set(objects)-set(reward_objects))[0]
-            non_rewarding_object = Non_rewarding_object.replace(" ", "").capitalize()
-        else:
-            rewarding_objects = f"{reward_objects[0].replace(' ', '').capitalize()}{reward_objects[1].replace(' ', '').capitalize()}"
-        room_color = self.wall_colors[0].capitalize()
+        reward_objects = [item for sublist in self.reward_objects for item in sublist]
+        objects = [item for sublist in self.objects for item in sublist]
+        for obj in reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
+        non_rewarding_obj_list = list(set(objects)-set(reward_objects))
+        rewarding_objects = ""
+        non_rewarding_object = ""
+        for obj in reward_objects:
+            rewarding_objects += obj.capitalize().replace(" ", "")
+        for obj in non_rewarding_obj_list:
+            non_rewarding_object += obj.capitalize().replace(" ", "")
+            
+        room_color = ""
+        for room in self.wall_colors:
+            room_color += room.capitalize()
         # ---- Add a variable to save and later evaluate the performance of the agent ----
-        self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.reward_objects[0], 0),
-                                  "non_rewarding_objects" : dict.fromkeys([Non_rewarding_object.lower()], 0)}
+        self.agent_performance = {"rewarding_objects" : dict.fromkeys(reward_objects, 0),
+                                  "non_rewarding_objects" : dict.fromkeys(non_rewarding_obj_list, 0)}
         if not non_rewarding_object:
            return f"Pick{rewarding_objects}Room{room_color}"
         else:
             return f"Pick{rewarding_objects}Avoid{non_rewarding_object}Room{room_color}"
 
     @staticmethod
-    def _gen_mission(objects:list[str], reward_objects:list[str], wall_colors:list[str]) -> str:
-        rewarding_objects = ""
-        non_rewarding_object = ""
-        for rewarding_object in reward_objects: assert rewarding_object in objects, f"{rewarding_object} must be in {objects}"
-        if len(reward_objects) == 1:
-            rewarding_objects = reward_objects[0]
-            non_rewarding_object = list(set(objects)-set(reward_objects))[0]
+    def _gen_mission() -> str:
+        return " "
+        
+    def get_mission(self):
+        reward_objects_flat = [item for sublist in self.reward_objects for item in sublist]
+        objects_flat = [item for sublist in self.objects for item in sublist]
+        
+        # --- LAYOUT LOGIC UPDATE ---
+        # We iterate through self.layout (the list) to handle 1 or multiple rooms
+        location_descriptions = []
+        for layout_option in self.wall_colors:
+            location_descriptions.append(f"{layout_option} wall")
+            
+        # Join descriptions with " or " if there are multiple, otherwise it's just the one.
+        location_str = " or ".join(location_descriptions)
+        # --- OBJECT LOGIC ---
+        non_rewarding_obj_list = list(set(objects_flat) - set(reward_objects_flat))
+        
+        for rewarding_object in reward_objects_flat: 
+            assert rewarding_object in objects_flat, f"{rewarding_object} must be in {objects_flat}"
+        
+        rewarding_object_description = []
+        for obj in reward_objects_flat:
+            rewarding_object_description.append(obj)
+            
+        rewarding_object_str = " and ".join(rewarding_object_description)
+        
+        non_rewarding_object_description = []
+        for obj in non_rewarding_obj_list:
+            non_rewarding_object_description.append(obj)
+            
+        non_rewarding_object_str = " and ".join(non_rewarding_object_description)
+        
+        if not non_rewarding_obj_list:
+            # Scenario: Pick two reward objects
+            return f"Pick {rewarding_object_str} from the room with {location_str}"
         else:
-            rewarding_objects = f"{reward_objects[0]} and {reward_objects[1]}"
-        room_color = wall_colors
-        if not non_rewarding_object:
-           return f"Pick {rewarding_objects} from {room_color} room"
-        else:
-            return f"Pick the {rewarding_objects} and avoid {non_rewarding_object} from {room_color} room"
+            # Scenario: Pick one reward, avoid distractor
+            return f"Pick the {rewarding_object_str} and avoid {non_rewarding_object_str} from the room with {location_str}"
 
     def reset(self, *, seed=None, options=None):
         obs, info = super().reset(seed=seed, options=options)
@@ -228,15 +258,7 @@ class SimplePickup(MiniGridEnv):
         self.grid = Grid(width, height)
         # self.grid.wall_rect(0, 0, width, height)
         self.wall_color = random.choice(self.wall_colors) 
-        self.index_id = random.randint(0, len(self.objects)-1)
-
-        for color in self.objects[self.index_id]:assert color in self.objects[self.index_id], f"Reward color {color} must be in {self.objects[self.index_id]}"
-        if len(self.reward_objects[self.index_id]) == 1:
-            rewarding_color = self.reward_objects[self.index_id][0]
-            non_rewarding_colors = list(set(self.objects[self.index_id]) - set(self.reward_objects[self.index_id]))[0]
-            self.mission = f"Pick the {rewarding_color} ball and avoid {non_rewarding_colors} ball from {self.wall_color} room"
-        else:
-            self.mission = f"Pick both {self.reward_objects[self.index_id][0]} and {self.reward_objects[self.index_id][1]} ball from {self.wall_color} room"
+        index_id = random.randint(0, len(self.objects)-1)
             
         self._add_layout_walls(self.wall_color, width, height)
         # Place agent
@@ -244,14 +266,14 @@ class SimplePickup(MiniGridEnv):
     
         self.rewarding_objects_class = []
         self.rewarding_objects_color = []
-        for obj in self.reward_objects[self.index_id]:
+        for obj in self.reward_objects[index_id]:
             color, object_name = obj.split(" ")
             object_class = NAME_TO_OBJECT.get(object_name.lower())
             self.rewarding_objects_class.append(type(object_class(color)))
             self.rewarding_objects_color.append(color)
         
         # Place objects at random positions
-        for object in self.objects[self.index_id]:
+        for object in self.objects[index_id]:
             color, object_name = object.split(" ")
             object_class = NAME_TO_OBJECT.get(object_name.lower())
             self.place_obj(
@@ -406,7 +428,7 @@ class SimplePickup(MiniGridEnv):
         if action == self.actions.pickup and self.carrying is not None:
             if type(self.carrying) in self.rewarding_objects_class:
                 color = self.carrying.color
-                if color in self.rewarding_objects_color[self.index_id]:
+                if color in self.rewarding_objects_color:
                     reward = 1.0
                     self.agent_performance["rewarding_objects"][f"{color} {self.carrying.type}"] += 1
                 else:
