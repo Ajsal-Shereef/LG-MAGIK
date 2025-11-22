@@ -3,7 +3,7 @@ import math
 import torch.nn as nn
 import math
 import numpy as np
-
+import torch.nn.init as init
 # from architectures.m2_vae.vae import FiLM
 from architectures.common_utils import identity, get_activation, get_normalisation_2d
 from architectures.mlp import MLP, GaussianDist, CategoricalDistParams, TanhGaussianDistParams
@@ -453,6 +453,19 @@ class CrossAttentionFiLMSpatial(nn.Module):
 
         # Activation
         self.act = nn.GELU()
+        
+        self._reset_parameters()
+        
+    def _reset_parameters(self):
+        # Initialize weights as per the original Transformer paper
+        nn.init.xavier_uniform_(self.z_conv.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.film.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.conv.weight, gain=1 / math.sqrt(2))
+        
+        
+        nn.init.constant_(self.z_conv.bias, 0)
+        nn.init.constant_(self.film.bias, 0)
+        nn.init.constant_(self.conv.bias, 0)
 
     def forward(self, x, z, text_feat, attention):
         B, C, H, W = x.shape
@@ -517,6 +530,7 @@ class CNNTextConditionedDecoder(nn.Module):
         self.dim = dim
         #Conv layer to map latent channel to dim
         self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
+        init.xavier_uniform_(self.mapping_conv.weight)
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
@@ -637,6 +651,7 @@ class Conv2dBlock(nn.Module):
 
         # initialize convolution
         self.conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
+        init.xavier_uniform_(self.conv.weight)
 
     def forward(self, x):
         x = self.conv(self.pad(x))

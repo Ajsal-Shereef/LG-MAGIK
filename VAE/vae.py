@@ -4,7 +4,9 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from diffusers.models import AutoencoderKL
-from typing import Dict
+from typing import Dictf
+from architectures.common_utils import VGGLoss
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -20,6 +22,7 @@ class VAE(AutoencoderKL):
         # and passes them directly to the parent class constructor.
         # This makes it fully compatible with Hydra's instantiation.
         super().__init__(*args, **kwargs)
+        self.vgg_loss = VGGLoss(device)
 
     def forward(self, x: torch.Tensor):
         """
@@ -86,13 +89,15 @@ class VAE(AutoencoderKL):
         # We flatten the image dimensions and sum over them, then take the mean over the batch.
         recon_loss = F.mse_loss(reconstructed_x, original_x, reduction="none")
         recon_loss = recon_loss.view(recon_loss.size(0), -1).sum(dim=1).mean()
+        
+        perceptual_loss = self.vgg_loss(original_x, reconstructed_x)
 
         # KL Divergence Loss
         # This is the standard formula for KL divergence between the posterior and a standard normal prior.
         kl_loss = -0.5 * torch.sum(1 + posterior.logvar - posterior.mean.pow(2) - posterior.logvar.exp(), dim=[1, 2, 3]).mean()
 
         # Total Loss
-        total_loss = recon_loss + kwargs["kl_weight"] * kl_loss
+        total_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss
 
         return {
             "total_loss": total_loss,

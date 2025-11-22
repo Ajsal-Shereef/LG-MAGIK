@@ -155,7 +155,7 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if "No objects are visible in the current view/." in info['description']:
+                if "No objects are visible in the current view." in info['description']:
                     llm_reply = info['description']
                 else:
                     llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)
@@ -174,6 +174,7 @@ def main(args: DictConfig) -> None:
             cumulative_reward += reward
             state = next_state
             episode_step += 1
+            print(f"Episode step done: {episode_step}")
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
             save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/transfer"
@@ -181,6 +182,7 @@ def main(args: DictConfig) -> None:
             save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
+        print(f"----------- Episode done:  {episode} ----------------")
     
     if args.env.name ==  "SimplePickup":
         agent_performance = env.unwrapped.get_performance_metric()

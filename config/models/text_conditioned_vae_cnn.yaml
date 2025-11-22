@@ -15,21 +15,21 @@ data:
   text_encoder_path: openai/clip-vit-base-patch32
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
-  n_downsample: 3
+  n_downsample: 4
   encoder_n_res: 3
   input_dim: 3
-  dim: 32
+  dim: 64
   norm: ln
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
-  - 7
-  - 7
-  latent_channel: 4
+  - 5
+  - 5
+  latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
-  - 32
   - 64
+  - 128
   - 128
   observation_mode : ${env.observation_mode}
   use_image_discriminator: true
@@ -45,7 +45,7 @@ training:
   seed: ${models.seed}
   kl_weight: 1.0
   adv_lambda: 1.0
-  adv_weight: 5.0
+  adv_weight: 10.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
@@ -53,8 +53,8 @@ training:
   log_values_and_images: False
   validation_prompts: ${env.validation_prompts}
   generate_interval: 8000
-  num_images_to_generate: 10
-  save_weight_freequency: 50
+  num_images_to_generate : 10
+  save_weight_freequency : 50
   img_adv_weight : 5.0
   img_adv_lambda : 1
   mine_weight: 1           # Weight for MINE loss term
@@ -74,4 +74,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/2025-11-11_20-33-02_8TIQ77/
+  model_dir: model_weights/VAE/MiniWorld/2025-11-20_22-51-34_4ER8KG/

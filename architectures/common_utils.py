@@ -1183,8 +1183,8 @@ def initialize_llm_hf_pipeline(model_id):
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             device_map="auto",
-            torch_dtype="auto",  # <-- IMPROVED: More specific and efficient than "auto"
-            trust_remote_code=True      # <-- CRUCIAL FIX: Allows execution of model-specific code
+            torch_dtype="auto",  
+            trust_remote_code=True 
         )
         
         print("Model and tokenizer loaded successfully. ✅")
@@ -1238,7 +1238,7 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline, mode: str) -> tu
         }
         structured_system_prompt = f"""{system}
         
-        Please structure your response in two parts.
+        Structure your response in two parts.
         First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
         Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
         """
@@ -1268,11 +1268,16 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline, mode: str) -> tu
             raise RuntimeError(f"OpenRouter failed: {response.status_code}: {response.text}")
     
     elif mode == "huggingface":
-        # --- Your existing HuggingFace code (unchanged) ---
         tokenizer = pipeline[0]
         model = pipeline[1]
+        structured_system_prompt = f"""{system}
+        
+        Structure your response in two parts.
+        First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
+        Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
+        """
         messages = [
-            {"role": "system", "content": system},
+            {"role": "system", "content": structured_system_prompt},
             {"role": "user", "content": prompt},
         ]
 

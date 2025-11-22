@@ -113,7 +113,7 @@ def train(args: DictConfig) -> None:
                         recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
 
                         # Create a single grid for comparison
-                        if not cfg.model.use_weighted_recon:
+                        if not cfg.model.get("use_weighted_recon", False):
                             comparison_tensor = torch.cat([img_to_log, recon_to_log])
                         else:
                             text_aligned_to_log = (output["text_aligned_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
@@ -135,8 +135,8 @@ def train(args: DictConfig) -> None:
                                 if args.models.model.observation_mode == "image":
                                     tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
-        if epoch % args.models.training.save_weight_freequency == 0:
-            vae.save(f"{save_dir}/", save_name=f"{args.models.project_name}")       
+        if epoch % cfg.training.save_weight_freequency == 0:
+            vae.save(f"{save_dir}/", save_name=f"{cfg.project_name}")       
         
 
         # Print epoch summary

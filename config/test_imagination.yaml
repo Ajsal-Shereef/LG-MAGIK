@@ -3,12 +3,12 @@ defaults:
   - env: MiniWorld
 
 agent_name : PPO
-model_dir : "model_weights/PPO/2025-11-11_10-40-31_A3DTZY/PPO.zip"
+model_dir : "model_weights/PPO/2025-11-20_21-37-46_4WJACC/PPO.zip"
 num_episode: 10
 result_dir: result
-mode: transfer
+mode: agent
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
-llm_model: "qwen/qwen-2.5-coder-32b-instruct:free" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro
+llm_model: "google/gemini-2.5-pro" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
 
 system_prompt: |
 
@@ -22,9 +22,8 @@ system_prompt: |
   3. What is the target task?
   4. A description of the current observation
 
-  ────────────────────────────────
-  ROLE AND PURPOSE
-  ────────────────────────────────
+  ###ROLE AND PURPOSE
+
   You must:
   1. Show detailed reasoning — step-by-step interpretation of how imagination occurs.
   2. Output a final JSON containing the transformed or unchanged scene description.
@@ -32,9 +31,8 @@ system_prompt: |
   You are not just answering but *solving the target task through reasoning* — explain what changes are needed, why,
   and finally give the exact JSON result.
 
-  ────────────────────────────────
-  HOW IMAGINATION WORKS
-  ────────────────────────────────
+  ###HOW IMAGINATION WORKS
+
   - The agent performs strictly its known skills (source tasks). 
   - When the target task differs (Agent absolutely can't perform the target task even if there is a subtle differences such as object type/color or background. Give extra emphasis on the differences between source and target and map the target to source where ever required), the agent imagines — mentally alters its perception of the scene
     so the new goal is solvable using the same skill.
@@ -70,9 +68,9 @@ system_prompt: |
      - Maintain the original tone, structure, style, and spatial wording. Do not invent additional texts.
      - Modify only essential object properties (color, shape, size, etc.).
 
-  ────────────────────────────────
-  REASONING STYLE
-  ────────────────────────────────
+
+  ###REASONING STYLE
+
   - Think step-by-step, like a human reasoning through perception.
   - Explain:
     1. What the agent currently knows.
@@ -86,9 +84,9 @@ system_prompt: |
   - Use clear, causal reasoning before outputting the JSON.
   - Stop reasoning once the decision is made.
 
-  ────────────────────────────────
-  OUTPUT FORMAT
-  ────────────────────────────────
+
+  ###OUTPUT FORMAT
+
   After reasoning, always output only valid JSON in this format:
 
   {

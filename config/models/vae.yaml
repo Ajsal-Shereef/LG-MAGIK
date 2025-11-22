@@ -28,7 +28,7 @@ model:
 
 # --- Training Hyperparameters ---
 training:
-  num_epochs: 50 # Increased for more realistic training
+  num_epochs: 250 
   seed: null
   kl_weight: 1
   logs : "logs"

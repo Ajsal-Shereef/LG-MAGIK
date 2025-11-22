@@ -1,7 +1,7 @@
 name : "PickEnv"
 width : 128
 height : 128
-max_steps : 200
+max_steps : 100
 ssaa_scale : 3          # 1 disables supersampling; 2–3 recommended
 render_scale : 2        # window scale for human view (e.g., 2x)
 agent_shape : "triangle" # "triangle" or "disk"

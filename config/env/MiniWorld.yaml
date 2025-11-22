@@ -8,7 +8,7 @@ size : 10
 obs_width : 80
 obs_height : 80
 n_downsample : 3
-total_timestep : 200000
+total_timestep : 300000
 fps : 2.5
 verbose : True
 observation_mode : image

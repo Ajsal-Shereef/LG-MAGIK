@@ -1,0 +1,31 @@
+defaults:
+  - _self_
+
+hydra:
+  job:
+    chdir: false  # Keeps relative paths relative to the script, not the hydra output folder
+
+paths:
+  source_dir: "data/MiniWorld/agent/images"
+  output_dir: "cached_data/MiniWorld"
+
+model:
+  name: "x-ai/grok-4.1-fast" # or "x-ai/grok-4.1-fast"
+  mode: "openrouter"
+  temperature: 0.1
+
+api:
+  env_var_name: "OPENROUTER_API_KEY" # The name of the variable in your .env file
+
+prompt:
+  system: >
+    You are an assistant helping to caption the visual observation of a Reinforcement Learning agent.
+    The room contains interactable object(s) of different type(s) and color(s) (e.g., box, ball).
+    Describe the observation in a plain-text sentence, detailing the interactable object(s), their color(s), and the background features (e.g., floor, wall, ceiling etc if present).
+    Describe the position of interactable object if any relative to the agent using these specific constraints:
+    1. Angle:
+    2. Distance:
+       - 'Close': Object appears very large in size and occupies significant portion of the view.
+       - 'Medium': Object is of moderate size in the view and occupies moderate portion of the view.
+       - 'Far': Object appears small in size and occupies fewer portion of the view.
+    Output only the description. Do not use markdown.

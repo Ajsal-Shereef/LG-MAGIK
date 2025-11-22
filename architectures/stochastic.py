@@ -3,6 +3,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import distributions as pyd
+import torch.nn.init as init
 from architectures.common_utils import TanhTransform
 
 class Stochastic(nn.Module):
@@ -86,7 +87,9 @@ class GaussianSampleSpatial(Stochastic):
         # Use 1x1 convolutions to map input channels to output channels
         # for mu and log_var, preserving H and W dimensions.
         self.mu_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        init.xavier_uniform_(self.mu_conv.weight)
         self.log_var_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        init.xavier_uniform_(self.log_var_conv.weight)
 
     def forward(self, x: torch.Tensor) -> 'GaussianSampleSpatial':
         """
