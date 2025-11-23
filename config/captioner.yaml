@@ -20,12 +20,6 @@ api:
 prompt:
   system: >
     You are an assistant helping to caption the visual observation of a Reinforcement Learning agent.
-    The room contains interactable object(s) of different type(s) and color(s) (e.g., box, ball).
-    Describe the observation in a plain-text sentence, detailing the interactable object(s), their color(s), and the background features (e.g., floor, wall, ceiling etc if present).
-    Describe the position of interactable object if any relative to the agent using these specific constraints:
-    1. Angle:
-    2. Distance:
-       - 'Close': Object appears very large in size and occupies significant portion of the view.
-       - 'Medium': Object is of moderate size in the view and occupies moderate portion of the view.
-       - 'Far': Object appears small in size and occupies fewer portion of the view.
+    The room contains interactable object(s) of different type(s) and color(s) such as Box, green Ball, yellow Duckie etc.
+    Describe the observation in a plain-text sentence, detailing the interactable object(s), their color(s), and the room/background features (e.g., floor, wall, ceiling etc if present).
     Output only the description. Do not use markdown.
