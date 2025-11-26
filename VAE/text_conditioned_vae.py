@@ -117,6 +117,41 @@ class TextConditionedVAE(nn.Module):
                                 weight_decay=parms.weight_decay,
                                 eps=parms.eps,
                                )
+        
+        # Initialize schedulers
+        self.scheduler = self._get_scheduler(self.vae_optim, parms.scheduler)
+        if self.use_mine:
+            self.mine_scheduler = self._get_scheduler(self.mine_optim, parms.scheduler)
+        else:
+            self.mine_scheduler = None
+
+    def _get_scheduler(self, optimizer, scheduler_params):
+        if scheduler_params.type == "cosine":
+            return optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, 
+                T_max=scheduler_params.T_max, 
+                eta_min=scheduler_params.eta_min
+            )
+        elif scheduler_params.type == "step":
+            return optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=scheduler_params.step_size,
+                gamma=scheduler_params.gamma
+            )
+        else:
+            return None
+
+    def step_schedulers(self):
+        if self.scheduler:
+            self.scheduler.step()
+        if self.mine_scheduler:
+            self.mine_scheduler.step()
+
+    def get_lr(self):
+        lrs = {"lr": self.vae_optim.param_groups[0]["lr"]}
+        if self.use_mine:
+            lrs["lr_mine"] = self.mine_optim.param_groups[0]["lr"]
+        return lrs
     
     def forward(self, x):
         """

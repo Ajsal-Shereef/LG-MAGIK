@@ -100,6 +100,7 @@ def train(args: DictConfig) -> None:
                     # Create the log payload, including dynamic losses and static values
                     log_payload = {
                         **reduced_losses,
+                        **vae.get_lr(),
                         "epoch": epoch,
                         "step": global_step,
                     }
@@ -144,6 +145,9 @@ def train(args: DictConfig) -> None:
         # Create a dynamic string for printing the epoch summary
         loss_summary_str = " | ".join([f"{key}: {value:.4f}" for key, value in avg_epoch_losses.items()])
         accelerator.print(f"Epoch {epoch+1}/{cfg.training.num_epochs} | {loss_summary_str}")
+        
+        # Step the scheduler
+        vae.step_schedulers()
 
     accelerator.wait_for_everyone()
 

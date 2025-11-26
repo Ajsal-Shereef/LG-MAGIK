@@ -285,7 +285,7 @@ def main(args: DictConfig) -> None:
         model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
-        model = PPO(policy, env, verbose=0, ent_coef = 0.01)
+        model = PPO(policy, env, verbose=0, ent_coef = 0.00)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
