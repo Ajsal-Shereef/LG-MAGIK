@@ -1,14 +1,14 @@
 name : MiniWorld 
-objects : [["box", "ball"]]
-reward_objects : [["box"]]
-layout : ["grass/concrete"] #options:asphalt/brick_wall, grass/concrete
+objects : [["duckie", "ball"]]
+reward_objects : [["duckie"]]
+layout : ["asphalt/brick_wall"] #options:asphalt/brick_wall, grass/concrete
 max_steps : 100  
 render_mode : "none"
 size : 10
 obs_width : 80
 obs_height : 80
 n_downsample : 3
-total_timestep : 300000
+total_timestep : 400000
 fps : 2.5
 verbose : True
 observation_mode : image

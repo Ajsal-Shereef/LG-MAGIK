@@ -43,7 +43,7 @@ model:
 training:
   num_epochs: 500
   seed: ${models.seed}
-  kl_weight: 1.0
+  kl_weight: 2.0
   adv_lambda: 1.0
   adv_weight: 10.0
   logs: logs
@@ -74,4 +74,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2025-11-20_22-51-34_4ER8KG/
+  model_dir: model_weights/VAE/MiniWorld/2025-11-21_14-30-53_VRWC07/

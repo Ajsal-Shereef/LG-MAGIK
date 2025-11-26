@@ -2,7 +2,7 @@ defaults:
   - env : MiniWorld
 agent_name : PPO
 save_every : 10000
-use_wandb : false
+use_wandb : true
 log_every : 100
 save_data : true
 data_dave_dir : data

@@ -126,15 +126,18 @@ def main(args: DictConfig) -> None:
             # Access the API key
             api_key = os.getenv('OPEN_ROUTER_API_KEY')
             pipe = args.llm_model
+            alternative_pipe = args.alternate_llm_model
         elif args.querry_mode == "huggingface":
             api_key = None
             pipe = initialize_llm_hf_pipeline(args.llm_model)
+            alternative_pipe = None
         elif args.querry_mode == "google":
             # Access the API key
             api_key = os.getenv('GOOGLE_API_KEY')
             import google.generativeai as genai
             genai.configure(api_key=api_key)
             pipe = genai.GenerativeModel(args.llm_model)
+            alternative_pipe = None
 
     # Get the mission
     mission = env.unwrapped.mission
@@ -158,7 +161,7 @@ def main(args: DictConfig) -> None:
                 if "No objects are visible in the current view." in info['description']:
                     llm_reply = info['description']
                 else:
-                    llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, args.querry_mode)
+                    llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, alternative_pipe, args.querry_mode)
                 llm_reply_json = preprocess_llm_output(llm_reply)
                 if llm_reply_json.get("imagine", False):
                     changed_state, imagined_state = vision_model.imagine(state, llm_reply_json.get("description", ""))

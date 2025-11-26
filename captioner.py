@@ -39,7 +39,7 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, cfg: Di
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://localhost:3000", # Required by some OpenRouter models
+            "HTTP-Referer": "https://localhost:3000", 
         }
         
         structured_system_prompt = f"""{system}

@@ -16,9 +16,30 @@ from typing import Optional, Tuple
 from gymnasium.core import ObsType
 from gymnasium import utils
 
-from miniworld.entity import Ball, Box, MeshEnt, COLOR_NAMES
+from miniworld.entity import Entity, Ball, Box, MeshEnt, COLOR_NAMES
+from miniworld.math import X_VEC, Y_VEC, Z_VEC, gen_rot_matrix
 from miniworld.envs.roomobjects import RoomObjects
 from miniworld.miniworld import MiniWorldEnv
+# Map of color names to RGB values
+from pyglet.gl import (
+    GL_LINES,
+    GL_QUADS,
+    GL_TEXTURE_2D,
+    GL_TRIANGLES,
+    glBegin,
+    glColor3f,
+    glDisable,
+    glEnable,
+    glEnd,
+    glNormal3f,
+    glPopMatrix,
+    glPushMatrix,
+    glRotatef,
+    glScalef,
+    glTexCoord2f,
+    glTranslatef,
+    glVertex3f,
+)
 import sys
 sys.path.append(".")
 from architectures.common_utils import collect_data, save_dataset_for_images
@@ -58,10 +79,11 @@ class Ball(MeshEnt):
         self.color = color
         assert color in COLOR_NAMES
         super().__init__(mesh_name=f"ball_{color}", height=size, static=False)
-        
+
+
 OBJECT_TO_ENITTY = {"box" : Box(color="blue", size=0.6),
                     "ball" : Ball(color="green", size=0.8),
-                    "duckie" : Duckie(height=0.8),
+                    "duckie" : Duckie(height=0.6),
                     "medkit" : MedKit(height=0.8)}
 
 COLOR_TO_OBJECT = {"blue" : "box",
@@ -75,6 +97,104 @@ OBJECT_TO_COLOR = {"box" : "blue",
                    "medkit" : "red"}
 
 INDEX_TO_COLOR = {0: 'blue', 1: 'green', 2: 'yellow', 3: 'red'}
+
+class Agent(Entity):
+    def __init__(self):
+        super().__init__()
+
+        # Distance between the camera and the floor
+        self.cam_height = 0.75
+
+        # Camera up/down angles in degrees
+        # Positive angles tilt the camera upwards
+        self.cam_pitch = -30 * np.pi / 180
+
+        # Vertical field of view in degrees
+        self.cam_fov_y = 60
+
+        # Bounding cylinder size for the agent
+        self.radius = 0.4
+        self.height = 1.6
+
+        # Object currently being carried by the agent
+        self.carrying = None
+
+    @property
+    def cam_pos(self):
+        """
+        Camera position in 3D space
+        """
+
+        rot_y = gen_rot_matrix(Y_VEC, self.dir)
+        cam_disp = np.array([self.cam_fwd_disp, self.cam_height, 0])
+        cam_disp = np.dot(cam_disp, rot_y)
+
+        return self.pos + cam_disp
+
+    @property
+    def cam_dir(self):
+        """
+        Camera direction (lookat) vector
+
+        Note: this is useful even if just for slight domain
+        randomization of camera angle
+        """
+
+        rot_z = gen_rot_matrix(Z_VEC, self.cam_pitch * math.pi / 180)
+        rot_y = gen_rot_matrix(Y_VEC, self.dir)
+
+        dir = np.dot(X_VEC, rot_z)
+        dir = np.dot(dir, rot_y)
+
+        return dir
+
+    def randomize(self, params, rng):
+        params.sample_many(
+            rng,
+            self,
+            [
+                "cam_height",
+                "cam_fwd_disp",
+                "cam_pitch",
+                "cam_fov_y",
+            ],
+        )
+        # self.radius = params.sample(rng, 'bot_radius')
+
+    def render(self):
+        """
+        Draw the agent
+        """
+
+        # Note: this is currently only used in the top view
+        # Eventually, we will want a proper 3D model
+
+        p = self.pos + Y_VEC * self.height
+        dv = self.dir_vec * self.radius
+        rv = self.right_vec * self.radius
+
+        p0 = p + dv
+        p1 = p + 0.75 * (rv - dv)
+        p2 = p + 0.75 * (-rv - dv)
+
+        glColor3f(1, 0, 0)
+        glBegin(GL_TRIANGLES)
+        glVertex3f(*p0)
+        glVertex3f(*p2)
+        glVertex3f(*p1)
+        glEnd()
+
+        """
+        glBegin(GL_LINE_STRIP)
+        for i in range(20):
+            a = (2 * math.pi * i) / 20
+            pc = p + dv * math.cos(a) + rv * math.sin(a)
+            glVertex3f(*pc)
+        glEnd()
+        """
+
+    def step(self, delta_time):
+        pass
 
 class PickObjectEnv(MiniWorldEnv):
     """
@@ -208,26 +328,72 @@ class PickObjectEnv(MiniWorldEnv):
             # Scenario: Pick one reward, avoid distractor
             return f"Pick the {rewarding_object_str} and avoid {non_rewarding_object_str} from the room with {location_str}"
 
-    def reset(self):
-        """
-        Resets the environment and generates a new mission.
-        """
-        # 1. Reset internal state or randomize objects/layout here if necessary
-        # self.randomize_layout() 
-        
-        # 2. Generate the new mission string using the function above
-        mission_string = self._gen_mission(self.objects, self.reward_objects, self.layout)
-        
-        # 3. Return initial observation or mission (depending on your gym setup)
-        return mission_string
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> Tuple[ObsType, dict]:
-        self.obs, info = super().reset(seed=seed, options=options)
+        """
+        Reset the simulation at the start of a new episode
+        This also randomizes many environment parameters (domain randomization)
+        """
+
+        # Step count since episode start
+        self.step_count = 0
+
+        # Create the agent
+        self.agent = Agent()
+
+        # List of entities contained
+        self.entities = []
+
+        # List of rooms in the world
+        self.rooms = []
+
+        # Wall segments for collision detection
+        # Shape is (N, 2, 3)
+        self.wall_segs = []
+
+        # Generate the world
+        self._gen_world()
+
+        # Check if domain randomization is enabled or not
+        rand = self.np_random if self.domain_rand else None
+
+        # Randomize elements of the world (domain randomization)
+        self.params.sample_many(
+            rand, self, ["sky_color", "light_pos", "light_color", "light_ambient"]
+        )
+
+        # Get the max forward step distance
+        self.max_forward_step = self.params.get_max("forward_step")
+
+        # Randomize parameters of the entities
+        for ent in self.entities:
+            ent.randomize(self.params, rand)
+            
+        self.agent.cam_height = 0.75
+
+        # Camera up/down angles in degrees
+        # Positive angles tilt the camera upwards
+        self.agent.cam_pitch = -30 * np.pi / 180
+
+        # Compute the min and max x, z extents of the whole floorplan
+        self.min_x = min(r.min_x for r in self.rooms)
+        self.max_x = max(r.max_x for r in self.rooms)
+        self.min_z = min(r.min_z for r in self.rooms)
+        self.max_z = max(r.max_z for r in self.rooms)
+
+        # Generate static data
+        if len(self.wall_segs) == 0:
+            self._gen_static_data()
+
+        # Pre-compile static parts of the environment into a display list
+        self._render_static()
+
+        # Generate the first camera image
+        self.obs = self.render_obs()
+        info = {}
         if self.verbose:
             info["description"] = self.get_frame_description(self.obs)
-        self.agent.cam_pitch = -30 * np.pi / 180 #This place the camera -30 degrees downwards and agent can see nearest objects
-        self.agent.cam_height = 0.75
         # --- Reset the distance tracker ---
         self.dist_to_target = None
         

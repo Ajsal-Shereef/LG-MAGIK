@@ -10,7 +10,7 @@ paths:
   output_dir: "cached_data/MiniWorld"
 
 model:
-  name: "x-ai/grok-4.1-fast" # or "x-ai/grok-4.1-fast"
+  name: "x-ai/grok-4.1-fast:free" # or "x-ai/grok-4.1-fast"
   mode: "openrouter"
   temperature: 0.1
 

@@ -1224,48 +1224,82 @@ def split_gptoss_analysis_final(text: str):
 
     return analysis, final_output
     
-def query_llm(system: str, prompt: str, api_key: str, pipeline, mode: str) -> tuple[str, dict]:
+def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative_pipe: str = None, mode: str = "openrouter") -> tuple[str, dict]:
     """
     Query LLM via OpenRouter, HuggingFace pipeline, or Google API 
     with CONSISTENT formatting.
+    
+    :param alternative_pipe: An optional second model to try if the first one fails 
+                             in 'openrouter' mode.
     """
+    
+    # ... (other mode handling code, e.g., for "huggingface" or "google") ...
+    
     if mode == "openrouter":
-        # --- Your existing OpenRouter code (unchanged) ---
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        structured_system_prompt = f"""{system}
         
-        Structure your response in two parts.
-        First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
-        Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
-        """
-        payload = {
-            "model": pipeline,
-            "temperature": 0.1,
-            "messages": [
-                {"role": "system", "content": structured_system_prompt},
-                {"role": "user", "content": prompt}
-            ],
-            "stream": False,
-        }
+        # Function to execute the OpenRouter API call
+        def execute_openrouter_query(model_name: str, system_prompt: str, user_prompt: str, api_key: str):
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": model_name,
+                "temperature": 0.1,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "stream": False,
+            }
 
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            result = response.json()
-            # 2. Use your existing parser on the Gemini output
-            analysis, final = split_gptoss_analysis_final(result["choices"][0]["message"]["content"])
+            response = requests.post(url, headers=headers, json=payload)
+            return response
+
+        # Define the structured system prompt
+        structured_system_prompt = f"""{system}
+        """
+        # --- Attempt 1: Primary Model ---
+        try:
+            response = execute_openrouter_query(pipeline, structured_system_prompt, prompt, api_key)
             
-            # The 'analysis' can be returned as the reasoning dictionary
-            return final, {"reasoning": analysis} if analysis else {}
-            # return (
-            #     result["choices"][0]["message"]["content"], 
-            #     result["choices"][0]["message"].get("reasoning", {})
-            # )
-        else:
-            raise RuntimeError(f"OpenRouter failed: {response.status_code}: {response.text}")
+            if response.status_code == 200:
+                result = response.json()
+                # 2. Use your existing parser on the LLM output
+                final = result["choices"][0]["message"]["content"]
+                
+                # The 'analysis' can be returned as the reasoning dictionary
+                return final, None
+            
+            # If status code is NOT 200, it falls to the except block for a potential retry.
+            # We raise an error here to catch the non-200 status and move to the retry logic.
+            raise RuntimeError(f"OpenRouter failed with primary model ({pipeline}): {response.status_code}: {response.text}")
+            
+        except RuntimeError as e:
+            print(f"Primary model failure: {e}")
+            
+            # --- Attempt 2: Alternative Model (if provided) ---
+            if alternative_pipe:
+                print(f"Retrying with alternative model: {alternative_pipe}")
+                try:
+                    response = execute_openrouter_query(alternative_pipe, structured_system_prompt, prompt, api_key)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        final = result["choices"][0]["message"]["content"]
+                        return final, None
+                    
+                    # If alternative also fails (non-200 status)
+                    raise RuntimeError(f"OpenRouter failed with alternative model ({alternative_pipe}): {response.status_code}: {response.text}")
+                
+                except Exception as inner_e:
+                    # If the alternative model attempt fails (API error or non-200 status)
+                    raise RuntimeError(f"Both OpenRouter attempts failed. Primary error: {e}. Alternative error: {inner_e}")
+            
+            else:
+                # If no alternative is provided, re-raise the original error
+                raise e
     
     elif mode == "huggingface":
         tokenizer = pipeline[0]
