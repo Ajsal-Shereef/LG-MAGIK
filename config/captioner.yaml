@@ -13,6 +13,7 @@ model:
   name: "x-ai/grok-4.1-fast:free" # or "x-ai/grok-4.1-fast"
   mode: "openrouter"
   temperature: 0.1
+  batch_size: 10
 
 api:
   env_var_name: "OPENROUTER_API_KEY" # The name of the variable in your .env file

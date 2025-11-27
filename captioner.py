@@ -4,6 +4,8 @@ import base64
 import shutil
 import requests
 import hydra
+import concurrent.futures
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Union, List
@@ -114,47 +116,66 @@ def process_dataset(cfg: DictConfig, api_key: str):
 
     print(f"Found {len(all_files)} total images in source.")
 
-    # Open in append mode
-    with open(metadata_path, "a", encoding="utf-8") as jsonl_file:
+    # Lock for writing to the metadata file
+    write_lock = threading.Lock()
+
+    def process_single_image(file_path):
+        filename = file_path.name
         
-        for idx, file_path in enumerate(all_files):
-            filename = file_path.name
+        # Double check inside the thread (though we filter before submitting too)
+        if filename in processed_files:
+            return
+
+        print(f"Processing: {filename}...")
+
+        try:
+            base64_image = encode_image(file_path)
+
+            vision_prompt = [
+                {"type": "text", "text": "Describe this image for a text-to-image training dataset."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+            ]
+
+            # Pass cfg to query_llm to access model configs
+            caption = query_llm(
+                system=cfg.prompt.system,
+                prompt=vision_prompt,
+                api_key=api_key,
+                cfg=cfg, 
+            )
+
+            destination_path = images_output_path / filename
+            shutil.copy(file_path, destination_path)
+
+            entry = {
+                "file_name": filename,
+                "text": caption
+            }
             
-            if filename in processed_files:
+            with write_lock:
+                with open(metadata_path, "a", encoding="utf-8") as jsonl_file:
+                    jsonl_file.write(json.dumps(entry) + "\n")
+                    jsonl_file.flush()
+            
+            print(f"   -> Completed {filename}")
+
+        except Exception as e:
+            print(f"   -> Error processing {filename}: {e}")
+            # raise e # Optional: re-raise if you want to stop everything, but usually better to log and continue
+
+    # Use ThreadPoolExecutor for concurrent processing
+    batch_size = cfg.model.get("batch_size", 5) # Default to 5 if not set
+    print(f"Starting processing with batch size (concurrency): {batch_size}")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
+        futures = []
+        for file_path in all_files:
+            if file_path.name in processed_files:
                 continue
-
-            print(f"Processing: {filename}...")
-
-            try:
-                base64_image = encode_image(file_path)
-
-                vision_prompt = [
-                    {"type": "text", "text": "Describe this image for a text-to-image training dataset."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]
-
-                # Pass cfg to query_llm to access model configs
-                caption = query_llm(
-                    system=cfg.prompt.system,
-                    prompt=vision_prompt,
-                    api_key=api_key,
-                    cfg=cfg, 
-                )
-
-                destination_path = images_output_path / filename
-                shutil.copy(file_path, destination_path)
-
-                entry = {
-                    "file_name": filename,
-                    "text": caption
-                }
-                
-                jsonl_file.write(json.dumps(entry) + "\n")
-                jsonl_file.flush() 
-
-            except Exception as e:
-                print(f"   -> Error processing {filename}: {e}")
-                # break # Uncomment to stop on error
+            futures.append(executor.submit(process_single_image, file_path))
+        
+        # Wait for all futures to complete (optional, context manager does this anyway)
+        concurrent.futures.wait(futures)
 
 # --- 5. Hydra Entry Point ---
 @hydra.main(version_base=None, config_path="config", config_name="captioner")

@@ -78,4 +78,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2025-11-21_14-30-53_VRWC07/
+  model_dir: model_weights/VAE/MiniWorld/2025-11-26_23-47-34_8D5KD8/

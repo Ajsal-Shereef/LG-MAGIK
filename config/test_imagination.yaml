@@ -6,7 +6,7 @@ agent_name : PPO
 model_dir : model_weights/PPO/2025-11-26_21-36-25_A9ISEK/PPO.zip #"model_weights/PPO/2025-11-22_15-10-14_XBCH2T/PPO.zip"
 num_episode: 10
 result_dir: result
-mode: agent
+mode: transfer
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
 llm_model: "x-ai/grok-4.1-fast" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
 alternate_llm_model : google/gemini-2.5-flash-lite-preview-09-2025

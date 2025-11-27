@@ -1,6 +1,6 @@
 name : MiniWorld 
-objects : [["box", "ball"]]
-reward_objects : [["box"]]
+objects : [["duckie", "ball"]]
+reward_objects : [["duckie"]]
 layout : ["grass/concrete"] #options:asphalt/brick_wall, grass/concrete
 max_steps : 100  
 render_mode : "none"
