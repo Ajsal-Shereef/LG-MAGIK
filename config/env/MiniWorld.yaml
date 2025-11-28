@@ -1,5 +1,5 @@
 name : MiniWorld 
-objects : [["duckie", "ball"]]
+objects : [["duckie", "box"]]
 reward_objects : [["duckie"]]
 layout : ["grass/concrete"] #options:asphalt/brick_wall, grass/concrete
 max_steps : 100  

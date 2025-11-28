@@ -8,7 +8,7 @@ class PatchDiscriminator(nn.Module):
     """
     PatchGAN-style discriminator.
     Input: image tensor in range [-1, 1], shape [B, C, H, W]
-    Output: patch logits [B, 1, H', W'] (no sigmoid) - use hinge loss.
+    Output: patch logits [B, 1, H', W']
     """
     def __init__(self, in_channels=3, base_channels=64, n_layers=3, norm='in'):
         super().__init__()

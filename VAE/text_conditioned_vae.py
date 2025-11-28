@@ -28,8 +28,6 @@ class TextConditionedVAE(nn.Module):
         # ---- Base configs ----
         self.observation_model = kwargs["observation_mode"]
         self.use_image_discriminator = kwargs.get("use_image_discriminator", False)
-        self.use_weighted_recon = kwargs.get("use_weighted_recon", False)
-        self.recon_mix_weight = kwargs.get("recon_mix_weight", 0.5)
         self.use_mine = kwargs.get("use_mine", False)
         disc_params = kwargs.get("disc_params", {})
 
@@ -100,16 +98,28 @@ class TextConditionedVAE(nn.Module):
             self.mine_critic = None
             
     def set_optimizers(self, parms):
+        # VAE parameters (Encoder, Bottleneck, Decoder, Caption Discriminator)
         vae_params = list(self.encoder.parameters()) + list(self.bottleneck.parameters()) + list(self.decoder.parameters()) + \
                           list(self.caption_discriminator.parameters())
-        if self.image_discriminator:
-            vae_params += list(self.image_discriminator.parameters())
+        
         self.vae_optim = optim.AdamW(vae_params,
                                 lr=parms.lr,
                                 betas=tuple(parms.betas),
                                 weight_decay=parms.weight_decay,
                                 eps=parms.eps,
                                )
+        
+        # Image Discriminator parameters (Separate Optimizer)
+        if self.image_discriminator:
+            self.disc_optim = optim.AdamW(self.image_discriminator.parameters(),
+                                    lr=parms.lr, # Using same LR for now, could be separate
+                                    betas=tuple(parms.betas),
+                                    weight_decay=parms.weight_decay,
+                                    eps=parms.eps,
+                                   )
+        else:
+            self.disc_optim = None
+
         if self.use_mine:
             self.mine_optim = optim.AdamW(self.mine_critic.parameters(),
                                 lr=parms.lr_mine,
@@ -120,6 +130,11 @@ class TextConditionedVAE(nn.Module):
         
         # Initialize schedulers
         self.scheduler = self._get_scheduler(self.vae_optim, parms.scheduler)
+        if self.disc_optim:
+            self.disc_scheduler = self._get_scheduler(self.disc_optim, parms.scheduler)
+        else:
+            self.disc_scheduler = None
+            
         if self.use_mine:
             self.mine_scheduler = self._get_scheduler(self.mine_optim, parms.scheduler)
         else:
@@ -144,11 +159,15 @@ class TextConditionedVAE(nn.Module):
     def step_schedulers(self):
         if self.scheduler:
             self.scheduler.step()
+        if self.disc_scheduler:
+            self.disc_scheduler.step()
         if self.mine_scheduler:
             self.mine_scheduler.step()
 
     def get_lr(self):
         lrs = {"lr": self.vae_optim.param_groups[0]["lr"]}
+        if self.disc_optim:
+             lrs["lr_disc"] = self.disc_optim.param_groups[0]["lr"]
         if self.use_mine:
             lrs["lr_mine"] = self.mine_optim.param_groups[0]["lr"]
         return lrs
@@ -165,32 +184,14 @@ class TextConditionedVAE(nn.Module):
         sampler = self.bottleneck(hidden)
         latent = sampler.latent
 
-        # === Classifier-free guidance dropout ===
-        if self.use_weighted_recon:
-            dummy_text_tokens, _ = tokenize_captions(self.decoder.tokenizer, [""]*text_tokens.size(0))
-            dummy_text_tokens = dummy_text_tokens.to(device)
-            dummy_attention_mask = torch.ones_like(attention_mask)
-            text_agnostic_reconstructed_x = self.decoder(latent, dummy_text_tokens, dummy_attention_mask)
-            text_aligned_reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
-            reconstructed_x = (1 - self.recon_mix_weight) * text_aligned_reconstructed_x + self.recon_mix_weight * text_agnostic_reconstructed_x
-        else:
-            reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
-        if self.use_weighted_recon:
-            return {
-                    "x": images,
-                    "reconstructed_x": reconstructed_x,
-                    "text_aligned_reconstructed_x" : text_aligned_reconstructed_x,
-                    "text_agnostic_reconstructed_x" : text_agnostic_reconstructed_x,
-                    "posterior": sampler,
-                    "latent": latent
-                    }
-        else:
-            return {
-                    "x": images,
-                    "reconstructed_x": reconstructed_x,
-                    "posterior": sampler,
-                    "latent": latent
-                    }
+        reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
+
+        return {
+                "x": images,
+                "reconstructed_x": reconstructed_x,
+                "posterior": sampler,
+                "latent": latent
+                }
 
     def loss_function(self, original_x, forward_output, **kwargs):
         original_x = original_x["pixel_values"]
@@ -227,17 +228,27 @@ class TextConditionedVAE(nn.Module):
 
         vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
         
-        # === Patch discriminator loss ===
+        # Store core VAE loss (without image GAN loss) for generator optimization
+        vae_loss_core = vae_loss
+        
+        # === Patch discriminator loss (Refactored for GAN) ===
+        img_disc_loss = torch.tensor(0.0, device=original_x.device)
+        gen_adv_loss = torch.tensor(0.0, device=original_x.device)
+
         if self.image_discriminator is not None:
+            # 1. Discriminator Loss: Minimize D(fake.detach) - D(real)
+            # We detach reconstructed_x so gradients don't flow to generator during D update
             D_real = self.image_discriminator(original_x)
-            reconstructed_grl = grad_reverse(reconstructed_x, kwargs.get("img_adv_lambda", kwargs["adv_lambda"]))
-            D_fake = self.image_discriminator(reconstructed_grl)
-            loss_D_real = F.relu(1.0 - D_real).mean()
-            loss_D_fake = F.relu(1.0 + D_fake).mean()
-            img_disc_loss = loss_D_real + loss_D_fake
-            vae_loss += kwargs.get("img_adv_weight", kwargs["adv_weight"]) * img_disc_loss
-        else:
-            img_disc_loss = torch.tensor(0.0, device=original_x.device)
+            D_fake_detached = self.image_discriminator(reconstructed_x.detach())
+            img_disc_loss = D_fake_detached.mean() - D_real.mean()
+            
+            # 2. Generator Loss: Minimize -D(fake)
+            # We use the attached reconstructed_x here
+            D_fake = self.image_discriminator(reconstructed_x)
+            gen_adv_loss = -D_fake.mean()
+            
+            # Add generator adversarial loss to total VAE loss (for logging/legacy)
+            vae_loss = vae_loss + kwargs.get("img_adv_weight", kwargs["adv_weight"]) * gen_adv_loss
 
         # === MINE loss ===
         if self.use_mine and self.mine_critic is not None:
@@ -253,7 +264,10 @@ class TextConditionedVAE(nn.Module):
             mi_estimate = joint - marginal_log
             # For VAE: minimize MI with unbiased gradient (detach marginal)
             mi_for_vae = joint - marginal_log.detach()
-            vae_loss += kwargs.get("mine_weight", 0.1) * mi_for_vae
+            
+            vae_loss = vae_loss + kwargs.get("mine_weight", 0.1) * mi_for_vae
+            vae_loss_core = vae_loss_core + kwargs.get("mine_weight", 0.1) * mi_for_vae
+            
             # For critic: maximize the bound, i.e., minimize -mi_estimate
             critic_loss = -mi_estimate
             mine_loss = mi_estimate  # The MI estimate for logging
@@ -263,26 +277,56 @@ class TextConditionedVAE(nn.Module):
 
         return {
             "vae_loss": vae_loss,
+            "vae_loss_core": vae_loss_core,
             "recon_loss": recon_loss,
             "perceptual_loss" : perceptual_loss,
             "kl_loss": kl_loss,
             "adversarial_loss": disc_loss,
             "critic_loss": critic_loss,
             "mine_loss" : mine_loss,
-            "img_disc_loss" : img_disc_loss
+            "img_disc_loss" : img_disc_loss,
+            "gen_adv_loss": gen_adv_loss
         }
         
-    def optimize(self, losses, accelerator):
+    def optimize_generator(self, losses, accelerator, forward_output=None, **kwargs):
         self.vae_optim.zero_grad()
         if self.use_mine:
             self.mine_optim.zero_grad()
-        accelerator.backward(losses["vae_loss"], retain_graph=True if self.use_mine else False)
+            
+        # Use vae_loss_core and re-compute GAN loss if needed
+        total_loss = losses["vae_loss_core"]
+        
+        if self.image_discriminator and forward_output is not None:
+            # Re-compute generator adversarial loss with updated discriminator
+            reconstructed_x = forward_output["reconstructed_x"]
+            D_fake = self.image_discriminator(reconstructed_x)
+            gen_adv_loss = -D_fake.mean()
+            total_loss = total_loss + kwargs.get("img_adv_weight", kwargs.get("adv_weight", 1.0)) * gen_adv_loss
+        elif self.image_discriminator:
+             # Fallback if forward_output not provided (shouldn't happen in new loop)
+             # This might fail if D was updated inplace
+             total_loss = losses["vae_loss"]
+
+        accelerator.backward(total_loss, retain_graph=True if self.use_mine else False)
+        
         if self.use_mine:
             self.mine_optim.zero_grad()  # Clear unwanted grads from vae_loss on critic params
             accelerator.backward(losses["critic_loss"])
+            
         self.vae_optim.step()
         if self.use_mine:
             self.mine_optim.step()
+
+    def optimize_discriminator(self, losses, accelerator):
+        if self.image_discriminator:
+            self.disc_optim.zero_grad()
+            accelerator.backward(losses["img_disc_loss"])
+            self.disc_optim.step()
+
+    def optimize(self, losses, accelerator):
+        # Legacy method if needed, but we should use specific ones
+        self.optimize_generator(losses, accelerator)
+        self.optimize_discriminator(losses, accelerator)
         
     def imagine(self, state, description):
         train_transforms = self.train_transform
@@ -297,9 +341,21 @@ class TextConditionedVAE(nn.Module):
         captions_tokenised, attention_mask = tokenize_captions(tokeniser, [description])
         captions_tokenised = captions_tokenised.to(device)
         attention_mask = attention_mask.to(device)
-        out = self({"pixel_values" : state_tensor,
-                    "input_ids" : captions_tokenised,
-                    "attention_masks" : attention_mask})
+        
+        with torch.no_grad():
+            hidden = self.encoder(state_tensor.to(device))
+            sampler = self.bottleneck(hidden)
+            latent = sampler.latent # Sampled latent
+            
+            # Decode conditional
+            reconstructed_x = self.decoder(latent, captions_tokenised, attention_mask)
+            
+            # Prepare output dict similar to forward
+            out = {
+                "reconstructed_x": reconstructed_x,
+                "latent": latent
+            }
+
         if self.observation_model == "image":
             imagined_state = ((out["reconstructed_x"].squeeze().detach().cpu().numpy()*0.5+0.5).transpose(1,2,0)* 255).astype(np.uint8)
         else:
@@ -460,13 +516,18 @@ class TextConditionedVAE(nn.Module):
         input_ids = tokenised_text["input_ids"].to(device)
         attention_mask = tokenised_text["attention_mask"].to(device)
 
-        # Expand latents and embeddings to create all (z, prompt) pairs
+        # Expand latents
+        # z_expanded: [num_samples * num_prompts, ...]
         z_expanded = latents.repeat_interleave(num_prompts, dim=0)
+        
+        # Expand text inputs
+        # text_embeddings_expanded: [num_samples * num_prompts, ...]
         text_embeddings_expanded = input_ids.repeat(num_samples, 1)
         attention_mask_expanded = attention_mask.repeat(num_samples, 1)
-
-        # Decode the pairs to generate new images
+        
+        # Decode conditional
         generated_images = self.decoder(z_expanded, text_embeddings_expanded, attention_mask_expanded.float())
+        
         # Normalize generated images for visualization
         if self.observation_model == "image":
             generated_images = (generated_images.detach() * 0.5 + 0.5).clamp(0, 1)

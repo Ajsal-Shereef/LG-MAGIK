@@ -18,25 +18,25 @@ model:
   n_downsample: 4
   encoder_n_res: 3
   input_dim: 3
-  dim: 128
+  dim: 64
   norm: ln
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
   - 5
   - 5
-  latent_channel: 16
+  latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
   - 64
   - 128
   - 128
   observation_mode : ${env.observation_mode}
-  use_image_discriminator: true
   disc_params:
     base_channels: 64
     n_layers: 3
     norm: in
+  use_image_discriminator: true
   use_weighted_recon: false
   use_mine: false           # Enables mutual information minimization
   is_perceptual_loss : true
@@ -54,7 +54,7 @@ training:
     n_cycles: 1
     ratio: 0.5
   adv_lambda: 1.0
-  adv_weight: 15.0
+  adv_weight: 10.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
@@ -67,9 +67,10 @@ training:
   img_adv_weight : 10.0
   img_adv_lambda : 1
   mine_weight: 1           # Weight for MINE loss term
+  critic_updates: 5        # Number of discriminator updates per generator update
   recon_mix_weight: 0.5
 optimizer:
-  lr: 0.0001
+  lr: 0.0002
   betas:
   - 0.9
   - 0.999

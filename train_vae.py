@@ -132,16 +132,23 @@ def train(args: DictConfig) -> None:
                 # Calculate losses
                 losses = vae.loss_function(batch, output, **loss_kwargs)
                 
-                # Backward pass and optimization
-                vae.optimize(losses, accelerator)
+                # --- Optimization Steps ---
                 
-                # Gradient Clipping
-                if cfg.model.get("max_grad_norm", None):
-                    accelerator.clip_grad_norm_(vae.parameters(), cfg.model.max_grad_norm)
+                # 1. Update Discriminator (Every Step)
+                vae.optimize_discriminator(losses, accelerator)
                 
-                # Update EMA
-                if use_ema:
-                    ema_model.update_parameters(vae)
+                # 2. Update Generator (Every critic_updates steps)
+                critic_updates = cfg.training.get("critic_updates", 5)
+                if global_step % critic_updates == 0:
+                    vae.optimize_generator(losses, accelerator, forward_output=output, **loss_kwargs)
+                    
+                    # Gradient Clipping (Only for generator/VAE params)
+                    if cfg.model.get("max_grad_norm", None):
+                        accelerator.clip_grad_norm_(vae.parameters(), cfg.model.max_grad_norm)
+                    
+                    # Update EMA (Only when generator updates)
+                    if use_ema:
+                        ema_model.update_parameters(vae)
                 
                 # Reduce all loss components across processes and convert to scalar
                 reduced_losses = {
