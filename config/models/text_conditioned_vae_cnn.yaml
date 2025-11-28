@@ -18,14 +18,14 @@ model:
   n_downsample: 4
   encoder_n_res: 3
   input_dim: 3
-  dim: 64
+  dim: 128
   norm: ln
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
   - 5
   - 5
-  latent_channel: 8
+  latent_channel: 16
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
   - 64
@@ -54,7 +54,7 @@ training:
     n_cycles: 1
     ratio: 0.5
   adv_lambda: 1.0
-  adv_weight: 10.0
+  adv_weight: 15.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
@@ -64,7 +64,7 @@ training:
   generate_interval: 8000
   num_images_to_generate : 10
   save_weight_freequency : 50
-  img_adv_weight : 5.0
+  img_adv_weight : 10.0
   img_adv_lambda : 1
   mine_weight: 1           # Weight for MINE loss term
   recon_mix_weight: 0.5
@@ -87,4 +87,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2025-11-27_15-01-52_5DQEXD/TextConditionedVAE_ema.tar
+  model_dir: model_weights/VAE/MiniWorld/2025-11-27_15-01-52_5DQEXD/TextConditionedVAE.tar

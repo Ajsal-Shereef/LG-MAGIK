@@ -168,7 +168,7 @@ class TextConditionedVAE(nn.Module):
         # === Classifier-free guidance dropout ===
         if self.use_weighted_recon:
             dummy_text_tokens, _ = tokenize_captions(self.decoder.tokenizer, [""]*text_tokens.size(0))
-            dummy_text_tokens = text_tokens.to(device)
+            dummy_text_tokens = dummy_text_tokens.to(device)
             dummy_attention_mask = torch.ones_like(attention_mask)
             text_agnostic_reconstructed_x = self.decoder(latent, dummy_text_tokens, dummy_attention_mask)
             text_aligned_reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
