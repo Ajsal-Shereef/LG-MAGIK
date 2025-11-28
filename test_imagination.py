@@ -101,16 +101,17 @@ def main(args: DictConfig) -> None:
     )
     if args.mode == "transfer":
         #Load the vision models
-        vison_model_dir = args.models.test.model_dir
+        vision_model_path = args.models.test.model_dir
+        vison_model_dir = os.path.dirname(args.models.test.model_dir)
         if os.path.exists(vison_model_dir + "/config.yaml"):
             vision_model_args =  OmegaConf.load(vison_model_dir + "/config.yaml")
             cfg = vision_model_args.models
-            args.models.test.model_dir = vison_model_dir
+            args.models.test.model_dir = vision_model_path
         else:
             raise FileNotFoundError(f"Config file not found in {vison_model_dir}/config.yaml")
         accelerator.print("Initializing VAE model...")
         vision_model = instantiate(cfg.model)
-        vision_model.load_params(args.models.test.model_dir + f"/{cfg.project_name}.tar")
+        vision_model.load_params(vision_model_path)
 
         # --- 5. Prepare agent for inference ---
         vision_model = accelerator.prepare(vision_model)
