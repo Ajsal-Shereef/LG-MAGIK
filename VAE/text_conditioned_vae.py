@@ -184,19 +184,22 @@ class TextConditionedVAE(nn.Module):
         sampler = self.bottleneck(hidden)
         latent = sampler.latent
 
-        reconstructed_x = self.decoder(latent, text_tokens, attention_mask)
+        # Store text features from the decoder for later use (e.g., caption discriminator)
+        reconstructed_x, text_feats = self.decoder(latent, text_tokens, attention_mask, return_text_feats=True)
 
         return {
                 "x": images,
                 "reconstructed_x": reconstructed_x,
                 "posterior": sampler,
-                "latent": latent
+                "latent": latent,
+                "text_feats": text_feats # Add text features to the output
                 }
 
     def loss_function(self, original_x, forward_output, **kwargs):
         original_x = original_x["pixel_values"]
         reconstructed_x = forward_output["reconstructed_x"]
         posterior = forward_output["posterior"]
+        text_feats = forward_output["text_feats"] # Retrieve text features
 
         recon_loss = F.mse_loss(reconstructed_x, original_x, reduction="none")
 
@@ -215,9 +218,9 @@ class TextConditionedVAE(nn.Module):
         # === Adversarial disentanglement loss ===
         z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
         pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
-        pred = pred.view_as(self.decoder.text_feats)
+        pred = pred.view_as(text_feats) # Use retrieved text_feats for view_as
         pred_n = F.normalize(pred, dim=-1)
-        tgt_n = F.normalize(self.decoder.text_feats.detach(), dim=-1)
+        tgt_n = F.normalize(text_feats.detach(), dim=-1) # Use retrieved text_feats
 
         B, T, Fd = pred_n.shape
         pred_flat = pred_n.reshape(B*T, Fd)
@@ -236,13 +239,16 @@ class TextConditionedVAE(nn.Module):
         gen_adv_loss = torch.tensor(0.0, device=original_x.device)
 
         if self.image_discriminator is not None:
-            # 1. Discriminator Loss: Minimize D(fake.detach) - D(real)
+            # 1. Discriminator Loss: Hinge Loss
             # We detach reconstructed_x so gradients don't flow to generator during D update
             D_real = self.image_discriminator(original_x)
             D_fake_detached = self.image_discriminator(reconstructed_x.detach())
-            img_disc_loss = D_fake_detached.mean() - D_real.mean()
             
-            # 2. Generator Loss: Minimize -D(fake)
+            loss_real = torch.mean(F.relu(1.0 - D_real))
+            loss_fake = torch.mean(F.relu(1.0 + D_fake_detached))
+            img_disc_loss = 0.5 * (loss_real + loss_fake)
+            
+            # 2. Generator Loss: Hinge Loss
             # We use the attached reconstructed_x here
             D_fake = self.image_discriminator(reconstructed_x)
             gen_adv_loss = -D_fake.mean()
@@ -253,7 +259,7 @@ class TextConditionedVAE(nn.Module):
         # === MINE loss ===
         if self.use_mine and self.mine_critic is not None:
             z_flat = posterior.latent.view(posterior.latent.size(0), -1)
-            t_flat = self.decoder.text_feats.mean(dim=1)
+            t_flat = text_feats.mean(dim=1) # Use retrieved text_feats
             # Positive pairs
             joint = self.mine_critic(z_flat, t_flat).mean()
             # Negative pairs (shuffle)
@@ -348,7 +354,7 @@ class TextConditionedVAE(nn.Module):
             latent = sampler.latent # Sampled latent
             
             # Decode conditional
-            reconstructed_x = self.decoder(latent, captions_tokenised, attention_mask)
+            reconstructed_x, _ = self.decoder(latent, captions_tokenised, attention_mask, return_text_feats=True)
             
             # Prepare output dict similar to forward
             out = {
@@ -410,14 +416,14 @@ class TextConditionedVAE(nn.Module):
                 # 2. ADD RECONSTRUCTION
                 original_tokens = captions_tokenised[i].unsqueeze(0)
                 original_mask = attention_mask[i].unsqueeze(0)
-                recon_original = self.decoder(latent_z, original_tokens, original_mask)
+                recon_original, _ = self.decoder(latent_z, original_tokens, original_mask, return_text_feats=True)
                 grid_images.append(recon_original.squeeze(0).cpu())
 
                 # 3. ADD GENERATED IMAGES
                 changed_tokens = changed_captions_tokenised[i]
                 changed_captions_mask = changed_caption_attention_mask[i]
                 latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
-                recons_changed = self.decoder(latent_z_expanded, changed_tokens, changed_captions_mask)
+                recons_changed, _ = self.decoder(latent_z_expanded, changed_tokens, changed_captions_mask, return_text_feats=True)
                 grid_images.extend(list(recons_changed.cpu()))
 
         # --- 4. CREATE GRID, ADD NUMBERS, AND SAVE ---
@@ -516,17 +522,13 @@ class TextConditionedVAE(nn.Module):
         input_ids = tokenised_text["input_ids"].to(device)
         attention_mask = tokenised_text["attention_mask"].to(device)
 
-        # Expand latents
-        # z_expanded: [num_samples * num_prompts, ...]
+        # Expand latents and embeddings to create all (z, prompt) pairs
         z_expanded = latents.repeat_interleave(num_prompts, dim=0)
-        
-        # Expand text inputs
-        # text_embeddings_expanded: [num_samples * num_prompts, ...]
         text_embeddings_expanded = input_ids.repeat(num_samples, 1)
         attention_mask_expanded = attention_mask.repeat(num_samples, 1)
-        
-        # Decode conditional
-        generated_images = self.decoder(z_expanded, text_embeddings_expanded, attention_mask_expanded.float())
+
+        # Decode the pairs to generate new images
+        generated_images, _ = self.decoder(z_expanded, text_embeddings_expanded, attention_mask_expanded.float(), return_text_feats=True)
         
         # Normalize generated images for visualization
         if self.observation_model == "image":

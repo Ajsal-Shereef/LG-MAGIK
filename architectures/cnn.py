@@ -534,12 +534,14 @@ class CNNTextConditionedDecoder(nn.Module):
         #Text encoder and tockenizer
         self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
         self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
-        #Freeze the CLIP model parameters
+        
+        #Freeze the CLIP model parameters first
         for params in self.text_encoder.parameters():
             params.requires_grad = False
+            
         self.text_encoder.eval()
         self.text_dim=self.text_encoder.config.hidden_size
-        self.text_adapter = MLP(self.text_dim, self.text_dim, [64, 256], hidden_activation = 'gelu', norm='ln')
+        self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation = 'gelu', norm='ln')
         self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=2)
         # self.text_to_latent = nn.Linear(self.text_dim, latent_channel)
         
@@ -554,7 +556,7 @@ class CNNTextConditionedDecoder(nn.Module):
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
-    def forward(self,z,text_tockens, attention_mask):
+    def forward(self,z,text_tockens, attention_mask, return_text_feats=False):
         self.text_feats = self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)
@@ -572,7 +574,11 @@ class CNNTextConditionedDecoder(nn.Module):
             x=blk(x,z,self.text_feats, attention_mask)
             x=up(x)
             x=conv(x)
-        return self.final(x, self.text_feats, attention_mask)
+        
+        out = self.final(x, self.text_feats, attention_mask)
+        if return_text_feats:
+            return out, self.text_feats
+        return out
     
 class CNNTwoLatentDecoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, y_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10]):
