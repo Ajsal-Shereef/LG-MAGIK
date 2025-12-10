@@ -351,15 +351,15 @@ class TextConditionedVAE(nn.Module):
         with torch.no_grad():
             hidden = self.encoder(state_tensor.to(device))
             sampler = self.bottleneck(hidden)
-            latent = sampler.latent # Sampled latent
+            mean = sampler.mean # Sampled latent
             
             # Decode conditional
-            reconstructed_x, _ = self.decoder(latent, captions_tokenised, attention_mask, return_text_feats=True)
+            reconstructed_x, _ = self.decoder(mean, captions_tokenised, attention_mask, return_text_feats=True)
             
             # Prepare output dict similar to forward
             out = {
                 "reconstructed_x": reconstructed_x,
-                "latent": latent
+                "mean": mean
             }
 
         if self.observation_model == "image":
