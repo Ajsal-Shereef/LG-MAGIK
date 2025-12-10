@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VAE Imagination</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #bb86fc;
+            --secondary-color: #03dac6;
+            --text-color: #e0e0e0;
+            --input-bg: #2d2d2d;
+            --border-color: #333;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .main-layout {
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+            max-width: 1400px;
+            height: 90vh;
+            gap: 20px;
+        }
+
+        .panels-container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            min-height: 0;
+            /* Important for flex nested scrolling */
+        }
+
+        .panel {
+            background-color: var(--surface-color);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            z-index: 10;
+        }
+
+        h2 {
+            margin: 0;
+            font-weight: 300;
+            color: var(--primary-color);
+            font-size: 1.2rem;
+        }
+
+        .controls-container {
+            background-color: var(--surface-color);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            /* Align textarea and button vertically */
+        }
+
+        .caption-group {
+            flex-grow: 1;
+        }
+
+        label {
+            font-weight: 500;
+            color: #aaa;
+            font-size: 0.9rem;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        textarea {
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            color: var(--text-color);
+            font-size: 1rem;
+            width: 100%;
+            height: 80px;
+            /* Fixed height for footer */
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+            resize: none;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .file-upload {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            background-color: var(--input-bg);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-upload:hover {
+            border-color: var(--primary-color);
+            background-color: #252525;
+        }
+
+        /* The result area is just a div but styled similar to file-upload minus handling interaction */
+        .image-display-area {
+            border: 2px solid transparent;
+            /* To match spacing */
+            border-radius: 8px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            background-color: #171717;
+        }
+
+        .file-upload input {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        #preview-image,
+        #result-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: none;
+            border-radius: 4px;
+            transition: transform 0.2s ease-out;
+            transform-origin: center center;
+        }
+
+        .upload-text {
+            pointer-events: none;
+            text-align: center;
+            color: #888;
+        }
+
+        .placeholder-text {
+            color: #444;
+            text-align: center;
+        }
+
+        button.btn {
+            background-color: var(--primary-color);
+            color: #000;
+            border: none;
+            padding: 0 40px;
+            height: 80px;
+            /* Match textarea height */
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+            white-space: nowrap;
+        }
+
+        button.btn:hover {
+            filter: brightness(1.1);
+        }
+
+        button.btn:active {
+            transform: scale(0.98);
+        }
+
+        button.btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            filter: none;
+        }
+
+        /* Loader */
+        .loader {
+            border: 4px solid #333;
+            border-top: 4px solid var(--secondary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Zoom Control Group */
+        .zoom-controls {
+            display: none;
+            /* Hidden by default */
+            gap: 10px;
+        }
+
+        .zoom-btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            border-radius: 4px;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            line-height: 1;
+        }
+
+        .zoom-btn:hover {
+            background-color: var(--primary-color);
+            color: #000;
+        }
+
+        @media (max-width: 768px) {
+            .panels-container {
+                flex-direction: column;
+            }
+
+            .controls-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            button.btn {
+                height: 50px;
+            }
+
+            .main-layout {
+                height: auto;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="main-layout">
+        <div class="panels-container">
+            <!-- Input Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Input Image</h2>
+                    <div class="zoom-controls" id="input-zoom-controls">
+                        <button class="zoom-btn" onclick="zoomImage('input', -1)">-</button>
+                        <button class="zoom-btn" onclick="zoomImage('input', 1)">+</button>
+                    </div>
+                </div>
+
+                <div class="file-upload" id="drop-zone">
+                    <div class="upload-text" id="upload-text">
+                        <span>Click or Drag to Upload</span>
+                    </div>
+                    <img id="preview-image" src="" alt="Preview">
+                    <input type="file" id="image-input" accept="image/*">
+                </div>
+            </div>
+
+            <!-- Output Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2 style="color: var(--secondary-color);">Result</h2>
+                    <div class="zoom-controls" id="result-zoom-controls">
+                        <button class="zoom-btn" onclick="zoomImage('result', -1)">-</button>
+                        <button class="zoom-btn" onclick="zoomImage('result', 1)">+</button>
+                    </div>
+                </div>
+
+                <div class="image-display-area">
+                    <div class="placeholder-text" id="placeholder">Generated image will appear here</div>
+                    <div class="loader" id="loader"></div>
+                    <img id="result-image" src="" alt="Generated Result">
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-container">
+            <div class="caption-group">
+                <label>Caption Prompt</label>
+                <textarea id="caption-input"
+                    placeholder="e.g. A red ball on a blue floor...">The agent is in a room with grass floor and concrete walls. A blue box is found slightly to the left at angle 18 at a distance of 2.8 units. A green ball is found in front at angle 0.705 at a distance of 2.1 units.</textarea>
+            </div>
+            <button class="btn" id="generate-btn" onclick="generateImage()">
+                Imagine
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('image-input');
+        const previewImage = document.getElementById('preview-image');
+        const uploadText = document.getElementById('upload-text');
+        const generateBtn = document.getElementById('generate-btn');
+        const captionInput = document.getElementById('caption-input');
+
+        // Zoom Logic
+        let scales = {
+            'input': 1.0,
+            'result': 1.0
+        };
+
+        function zoomImage(target, direction) {
+            let newScale = scales[target] + (direction * 0.2);
+            if (newScale < 0.4) newScale = 0.4;
+            if (newScale > 5.0) newScale = 5.0;
+
+            scales[target] = newScale;
+
+            const imgId = target === 'input' ? 'preview-image' : 'result-image';
+            const img = document.getElementById(imgId);
+            if (img) {
+                img.style.transform = `scale(${newScale})`;
+            }
+        }
+
+        // Preview logic
+        imageInput.addEventListener('change', function (e) {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    previewImage.src = e.target.result;
+                    previewImage.style.display = 'block';
+                    uploadText.style.display = 'none';
+
+                    document.getElementById('input-zoom-controls').style.display = 'flex';
+                    scales['input'] = 1.0;
+                    previewImage.style.transform = 'scale(1.0)';
+                }
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        async function generateImage() {
+            if (!imageInput.files || !imageInput.files[0]) {
+                alert("Please select an image first.");
+                return;
+            }
+
+            const file = imageInput.files[0];
+            const caption = captionInput.value;
+
+            if (!caption) {
+                alert("Please enter a caption.");
+                return;
+            }
+
+            // UI State: Loading
+            const loader = document.getElementById('loader');
+            const resultImage = document.getElementById('result-image');
+            const placeholder = document.getElementById('placeholder');
+            const resultControls = document.getElementById('result-zoom-controls');
+
+            generateBtn.disabled = true;
+            generateBtn.innerText = "Imagining...";
+            loader.style.display = 'block';
+            resultImage.style.display = 'none';
+            resultControls.style.display = 'none';
+            placeholder.style.display = 'none';
+
+            scales['result'] = 1.0;
+            resultImage.style.transform = 'scale(1.0)';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('caption', caption);
+
+            try {
+                const response = await fetch('/imagine', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Failed to generate image");
+                }
+
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+
+                resultImage.src = imageUrl;
+                resultImage.onload = () => {
+                    resultImage.style.display = 'block';
+                    resultImage.style.opacity = '1';
+                    loader.style.display = 'none';
+                    resultControls.style.display = 'flex';
+                };
+
+            } catch (error) {
+                console.error(error);
+                alert("Error: " + error.message);
+                placeholder.style.display = 'block';
+                placeholder.innerText = "Error generating image.";
+                loader.style.display = 'none';
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerText = "Imagine";
+            }
+        }
+    </script>
+
+</body>
+
+</html>
