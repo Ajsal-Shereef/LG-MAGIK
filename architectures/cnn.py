@@ -525,7 +525,7 @@ class FinalTextConditionedOutput(nn.Module):
         return torch.tanh(self.conv(refined))
     
 class CNNTextConditionedDecoder(nn.Module):
-    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel):
+    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         #Conv layer to map latent channel to dim
@@ -542,7 +542,7 @@ class CNNTextConditionedDecoder(nn.Module):
         self.text_encoder.eval()
         self.text_dim=self.text_encoder.config.hidden_size
         self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation = 'gelu', norm='ln')
-        self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=2)
+        self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=nhead)
         # self.text_to_latent = nn.Linear(self.text_dim, latent_channel)
         
         self.blocks=nn.ModuleList()
