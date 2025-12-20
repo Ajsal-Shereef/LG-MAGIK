@@ -17,9 +17,13 @@ class PixelsReconstruction(nn.Module):
         super().__init__()
 
         assert len(obs_shape) == 3
-        assert obs_shape == (3, 40, 40), "Expected output shape to be (3, 40, 40)"
-
-        self.repr_dim = 32 * 10 * 10  # We'll reshape to [B, 32, 10, 10] before upsampling
+        # Calculate initial spatial dimensions (before 2x upsampling layers)
+        # We have 2 upsampling layers with stride 2, so div by 4
+        assert obs_shape[1] % 4 == 0 and obs_shape[2] % 4 == 0, f"obs_shape {obs_shape} dimensions must be divisible by 4"
+        self.init_h = obs_shape[1] // 4
+        self.init_w = obs_shape[2] // 4
+        
+        self.repr_dim = 32 * self.init_h * self.init_w
 
         self.decompress = nn.Sequential(
             nn.Linear(sf_dim, feature_dim),
@@ -29,19 +33,19 @@ class PixelsReconstruction(nn.Module):
         )
 
         self.deconvnet = nn.Sequential(
-            nn.ConvTranspose2d(32, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # 10 → 20
+            nn.ConvTranspose2d(32, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 20 → 40
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(16, obs_shape[0], kernel_size=3, stride=1, padding=1),          # Keep 40x40, adjust channels
+            nn.ConvTranspose2d(16, obs_shape[0], kernel_size=3, stride=1, padding=1),
         )
 
         self.apply(utils.weight_init)
 
     def forward(self, x):
-        x = self.decompress(x)               # (B, 256) → (B, 32*10*10)
-        x = x.view(-1, 32, 10, 10)           # (B, 32, 10, 10)
-        return self.deconvnet(x)             # (B, 3, 40, 40)
+        x = self.decompress(x)
+        x = x.view(-1, 32, self.init_h, self.init_w)
+        return self.deconvnet(x)
 
 
 class SFReconstructAgent(SFSimpleAgent):
@@ -104,7 +108,7 @@ class SFReconstructAgent(SFSimpleAgent):
             else:
                 next_basis_features = next_obs
 
-        if self.use_tb or self.use_wandb:
+        if self.use_wandb:
             metrics["batch_reward"] = reward.mean().item()
 
         if not self.update_encoder:
@@ -203,7 +207,7 @@ class SFReconstructAgent(SFSimpleAgent):
 
         total_loss = critic_loss + (self.w_reconstruction * reconstruction_loss)
 
-        if self.use_tb or self.use_wandb:
+        if self.use_wandb:
             metrics["critic_target_q"] = target_Q.mean().item()
             metrics["critic_q1"] = current_Q1.mean().item()
             metrics["critic_q2"] = current_Q2.mean().item()

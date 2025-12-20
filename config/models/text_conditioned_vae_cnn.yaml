@@ -6,7 +6,7 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: null
 data:
-  train_dir: data/${env.name}/agent
+  train_dir: cached_data/MiniWorld
   cache_dir: null
   batch_size: 64
   num_workers: 8
@@ -15,7 +15,7 @@ data:
   text_encoder_path: openai/clip-vit-base-patch32 #openai/clip-vit-base-patch32
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
-  n_downsample: 3
+  n_downsample: 4
   encoder_n_res: 3
   input_dim: 3
   dim: 64
@@ -23,8 +23,8 @@ model:
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
-  - 7
-  - 7
+  - 5
+  - 5
   latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
@@ -36,8 +36,8 @@ model:
     base_channels: 64
     n_layers: 3
     norm: in
-  is_perceptual_loss : false
-  use_image_discriminator : false
+  is_perceptual_loss : true
+  use_image_discriminator : true
   use_mine: false           # Enables mutual information minimization
   use_ema: false
   ema_decay: 0.999
@@ -87,4 +87,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/SimplePickup/2025-12-12_12-55-39_T2WVY7/TextConditionedVAE.tar
+  model_dir: model_weights/DQN/2025-11-11_14-37-59_P9WM4K/TextConditionedVAE.tar

@@ -1,5 +1,5 @@
 defaults:
-  - agent: baselines/sf/sf_simple
+  - agent: baselines/sf/sf_reconstruction
   - env : MiniWorld
   - _self_ # this yaml file is overriding configs from the Defaults List (eg. {agent}.yaml)
   - resources: null  
@@ -16,11 +16,11 @@ epsilon_decay : 0.999
 
 # train settings
 #num_train_frames: 2000010
-num_train_frames: 2000000
+num_train_frames: 500000
 num_seed_frames: 4000
 update_encoder: true
 # eval
-eval_every_frames: 2500
+eval_every_frames: 10000
 num_eval_episodes: 10
 #transfer
 transfer_interaction_step : 100000

@@ -136,6 +136,7 @@ class SimplePickup(MiniGridEnv):
         self.action_space = spaces.Discrete(4)
         self.env_description = self._get_environment_description()
         self.env_name = self.set_env_name()
+        self.reset_metrices()
         
     def _get_environment_description(self):
         """
@@ -161,27 +162,29 @@ class SimplePickup(MiniGridEnv):
         return description
     
     def set_env_name(self):
-        reward_objects = [item for sublist in self.reward_objects for item in sublist]
+        self.current_reward_objects = [item for sublist in self.reward_objects for item in sublist]
         objects = [item for sublist in self.objects for item in sublist]
-        for obj in reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
-        non_rewarding_obj_list = list(set(objects)-set(reward_objects))
+        for obj in self.current_reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
+        self.current_non_rewarding_obj_list = list(set(objects)-set(self.current_reward_objects))
         rewarding_objects = ""
         non_rewarding_object = ""
-        for obj in reward_objects:
+        for obj in self.current_reward_objects:
             rewarding_objects += obj.capitalize().replace(" ", "")
-        for obj in non_rewarding_obj_list:
+        for obj in self.current_non_rewarding_obj_list:
             non_rewarding_object += obj.capitalize().replace(" ", "")
             
         room_color = ""
         for room in self.wall_colors:
             room_color += room.capitalize()
-        # ---- Add a variable to save and later evaluate the performance of the agent ----
-        self.agent_performance = {"rewarding_objects" : dict.fromkeys(reward_objects, 0),
-                                  "non_rewarding_objects" : dict.fromkeys(non_rewarding_obj_list, 0)}
         if not non_rewarding_object:
            return f"Pick{rewarding_objects}Room{room_color}"
         else:
             return f"Pick{rewarding_objects}Avoid{non_rewarding_object}Room{room_color}"
+        
+    def reset_metrices(self):
+        # ---- Add a variable to save and later evaluate the performance of the agent ----
+        self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.current_reward_objects, 0),
+                                  "non_rewarding_objects" : dict.fromkeys(self.current_non_rewarding_obj_list, 0)}
 
     @staticmethod
     def _gen_mission() -> str:
@@ -426,8 +429,8 @@ class SimplePickup(MiniGridEnv):
         self.obs = obs['image']
         # Custom reward logic for picking up objects
         if action == self.actions.pickup and self.carrying is not None:
+            color = self.carrying.color
             if type(self.carrying) in self.rewarding_objects_class:
-                color = self.carrying.color
                 if color in self.rewarding_objects_color:
                     reward = 1.0
                     self.agent_performance["rewarding_objects"][f"{color} {self.carrying.type}"] += 1
@@ -436,6 +439,7 @@ class SimplePickup(MiniGridEnv):
                     self.agent_performance["non_rewarding_objects"][f"{color} {self.carrying.type}"] += 1
             else:
                 reward = -1.0
+                self.agent_performance["non_rewarding_objects"][f"{color} {self.carrying.type}"] += 1
             # Drop the object after reward is given
             self.carrying = None
             terminated = True  # Optionally end episode after pickup

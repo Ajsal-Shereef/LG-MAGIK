@@ -1,6 +1,6 @@
 defaults:
-  - env : SimplePickup
-agent_name : DQN
+  - env : MiniWorld
+agent_name : PPO
 save_every : 10000
 use_wandb : true
 log_every : 100
@@ -8,3 +8,5 @@ save_data : true
 data_dave_dir : data
 save_model_dir : model_weights
 number_data_to_collect : 150000
+fine_tune : True
+fine_tune_checkpoint : model_weights/PPO/2025-11-24_18-32-20_86FRBT/PPO.zip

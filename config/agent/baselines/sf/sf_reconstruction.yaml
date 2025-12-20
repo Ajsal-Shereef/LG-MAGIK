@@ -1,7 +1,7 @@
 # @package agent
 _target_: baselines.successor_feature.agent.sf_reconstruction.SFReconstructAgent
 name: sf_reconstruction
-reward_free: ${reward_free}
+# reward_free: ${reward_free}
 obs_type: ??? # to be specified later
 obs_shape: ??? # to be specified later
 action_shape: ??? # to be specified later
@@ -10,7 +10,7 @@ lr: 1e-4
 lr_task: 1e-5
 critic_target_tau: 0.01
 update_every_steps: 2
-use_tb: ${use_tb}
+# use_tb: ${use_tb}
 use_wandb: ${use_wandb}
 num_expl_steps: ??? # to be specified later
 hidden_dim: 512

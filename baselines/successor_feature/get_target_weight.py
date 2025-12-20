@@ -6,10 +6,10 @@ import torch.nn.functional as F
 from gymnasium.wrappers import RecordVideo
 
 class TransferEvaluation():
-    def __init__(self, agent, device, transform):
+    def __init__(self, agent, device, env_name):
         self.agent = agent
         self.device = device
-        self.transform = transform
+        self.env_name = env_name
         
     def collect_target_data(self, env, target_interaction_steps):
         step = 0
@@ -20,7 +20,7 @@ class TransferEvaluation():
             action = env.action_space.sample()
             next_obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
-            phi = self.agent.get_phi(obs.to(self.device), torch.tensor(action).unsqueeze(0).to(self.device))
+            phi = self.agent.get_phi(obs, torch.tensor(action).unsqueeze(0).to(self.device))
             phi_values_target.append(phi.squeeze().detach().cpu().numpy())
             rewards_target.append(reward)
             obs = next_obs
@@ -30,6 +30,10 @@ class TransferEvaluation():
         return phi_values_target, rewards_target
 
     def test_transfer(self, env, w, target_episodes):
+        if self.env_name == "SimplePickup" or self.env_name == "MiniWorld":
+            env.unwrapped.reset_metrices()
+        else:
+            env.reset_metrices()
         episode = 0
         obs, _ = env.reset()
         while episode < target_episodes:
@@ -48,7 +52,7 @@ class TransferEvaluation():
                     episode += 1
 
         env.close()
-        if env.name == "SimplePickup":
+        if self.env_name == "SimplePickup":
             agent_performance = env.unwrapped.get_performance_metric()
         else:
             agent_performance = env.get_performance_metric()
@@ -61,5 +65,5 @@ class TransferEvaluation():
         print("[INFO] Target weight min value: ", np.min(w))
         # target_env = RecordVideo(env, f"videos/{self.agent.__class__.__name__}/{goal}_{is_single_object}", episode_trigger=lambda x: True, disable_logger=True)
         self.test_transfer(env, w, target_episodes)
-        print(f"[INFO] Target experimnet {env.env_name} is done")
+        print(f"[INFO] Target experimnet {self.env_name} is done")
         print("--------------------------------------------------------------------------")

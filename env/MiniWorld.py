@@ -230,6 +230,7 @@ class PickObjectEnv(MiniWorldEnv):
         self.action_space = spaces.Discrete(self.actions.pickup + 1)
         self.env_description = self._get_environment_description()
         self.env_name = self.set_env_name()
+        self.reset_metrices()
         self.mission = self._gen_mission()
         self.name = config.get("name", "MiniWorld")
         
@@ -264,28 +265,31 @@ class PickObjectEnv(MiniWorldEnv):
         return description
     
     def set_env_name(self):
-        reward_objects = [item for sublist in self.reward_objects for item in sublist]
+        self.current_reward_objects = [item for sublist in self.reward_objects for item in sublist]
         objects = [item for sublist in self.objects for item in sublist]
         layout = self.layout
-        for obj in reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
-        non_rewarding_obj_list = list(set(objects)-set(reward_objects))
+        for obj in self.current_reward_objects: assert obj in objects, f"Reward object {obj} must be in {objects}"
+        self.current_non_rewarding_obj_list = list(set(objects)-set(self.current_reward_objects))
         rewarding_objects = ""
         non_rewarding_object = ""
-        for obj in reward_objects:
+        for obj in self.current_reward_objects:
             rewarding_objects += obj.capitalize()
-        for obj in non_rewarding_obj_list:
+        for obj in self.current_non_rewarding_obj_list:
             non_rewarding_object += obj.capitalize()
 
         room_color = ""
         for room in layout:
             room_color += room.capitalize()
-        # ---- Add a variable to save and later evaluate the performance of the agent ----
-        self.agent_performance = {"rewarding_objects" : dict.fromkeys(reward_objects, 0),
-                                  "non_rewarding_objects" : dict.fromkeys([non_rewarding_object.lower()], 0)}
+
         if not non_rewarding_object:
            return f"Pick{rewarding_objects}Room{room_color}"
         else:
             return f"Pick{rewarding_objects}Avoid{non_rewarding_object}Room{room_color}"
+        
+    def reset_metrices(self):
+        # ---- Add a variable to save and later evaluate the performance of the agent ----
+        self.agent_performance = {"rewarding_objects" : dict.fromkeys(self.current_reward_objects, 0),
+                                  "non_rewarding_objects" : dict.fromkeys(self.current_non_rewarding_obj_list, 0)}
 
     def _gen_mission(self) -> str:
         # Flatten lists
@@ -680,7 +684,7 @@ def main(args: DictConfig) -> None:
     args.verbose = True
     env = PickObjectEnv(args)
     # Total number of timesteps to collect
-    total_training_data = 100000
+    total_training_data = 150000
     validation_data = 0
     paired_data, episode = collect_data(env, total_training_data + validation_data)
     env.close()
@@ -691,7 +695,7 @@ def main(args: DictConfig) -> None:
         # val_data = paired_data[total_training_data:]
 
         # --- Save the training dataset in the required image/text pair format ---
-        save_dir_train = f"data/{env.name}/Random/vae"
+        save_dir_train = f"data/{env.name}/Random/vae/domain_2"
         os.makedirs(save_dir_train, exist_ok=True)
         
         # Save the training dataset

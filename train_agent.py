@@ -54,8 +54,6 @@ class FrameStackHW(gym.Wrapper):
     def _get_obs(self):
         # Concatenate along the last axis (channel axis)
         return np.concatenate(list(self.frames), axis=-1)
-
-
 class WandbLoggingCallback(BaseCallback):
     def __init__(self, episode_length, verbose=1):
         super(WandbLoggingCallback, self).__init__(verbose)
@@ -280,15 +278,30 @@ def main(args: DictConfig) -> None:
         from architectures.common_utils import save_dataset_for_images
         saving_data_function = save_dataset_for_images
         
+    if args.fine_tune and not os.path.exists(args.fine_tune_checkpoint):
+        raise FileNotFoundError(f"Checkpoint not found at {args.fine_tune_checkpoint}")
+
     if args.agent_name == "SAC":
         from stable_baselines3 import SAC
-        model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
+        if args.fine_tune:
+            model = SAC.load(args.fine_tune_checkpoint, env=env)
+            print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint}")
+        else:
+            model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
-        model = PPO(policy, env, verbose=0, ent_coef = 0.00)
+        if args.fine_tune:
+            model = PPO.load(args.fine_tune_checkpoint, env=env)
+            print(f"[INFO] Loadied PPO model from {args.fine_tune_checkpoint}")
+        else:
+            model = PPO(policy, env, verbose=0, ent_coef = 0.00)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
-        model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
+        if args.fine_tune:
+            model = DQN.load(args.fine_tune_checkpoint, env=env)
+            print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint}")
+        else:
+            model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
     else:
         raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC")
         

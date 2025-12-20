@@ -34,6 +34,8 @@ class Encoder(nn.Module):
         self.apply(utils.weight_init)
 
     def forward(self, obs):
+        if isinstance(obs, np.ndarray):
+            obs = torch.as_tensor(obs, dtype=torch.float32, device=next(self.parameters()).device)
         h = self.convnet(obs)
         h = h.view(h.shape[0], -1)
         return h

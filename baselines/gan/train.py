@@ -44,13 +44,13 @@ def train(config):
     trainer = UNIT_Trainer(config).to(device)
     
     if config.use_wandb:
-        wandb.init(project="LG-MAGIK", name=f"GAN_{config.env}", config=OmegaConf.to_container(config, resolve=True))
+        wandb.init(project="P_3_GAN", name=f"GAN_{config.env}", config=OmegaConf.to_container(config, resolve=True))
 
-    checkpoint_directory = create_dump_directory("model_weights/GAN")
+    checkpoint_directory = create_dump_directory(f"model_weights/GAN/{config.env}")
     print(checkpoint_directory)
 
-    data_a = load_images_as_numpy_array("data/MiniWorld/Random/domain1/images")
-    data_b = load_images_as_numpy_array("data/MiniWorld/Random/domain2/images")
+    data_a = load_images_as_numpy_array("data/MiniWorld/Random/vae/domain_3/images")
+    data_b = load_images_as_numpy_array("data/MiniWorld/Random/vae/domain_2/images")
     data_a = data_a.transpose(0,3,1,2)
     data_b = data_b.transpose(0,3,1,2)
     
