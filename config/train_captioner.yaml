@@ -2,11 +2,11 @@
 
 # --- General ---
 # Can be overridden from the command line: python train.py mode=test
-mode: test # 'train' or 'test'
+mode: train # 'train' or 'test'
 
 # --- Paths ---
 paths:
-  dataset_path: "data/MiniWorld/Random"
+  dataset_path: "cached_data/MiniWorld/images"
   final_model_path: "model_weights/Captioner"
   test_image_paths:
     - "frame2.png"
@@ -17,7 +17,7 @@ paths:
 
 # --- Model ---
 model:
-  base_model_id: "Salesforce/blip-image-captioning-base"
+  base_model_id: "openai/clip-vit-base-patch32"
 
 # --- Preprocessing ---
 preprocessing:

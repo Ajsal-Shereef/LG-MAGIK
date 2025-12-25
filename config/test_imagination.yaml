@@ -3,13 +3,21 @@ defaults:
   - env: MiniWorld
 
 agent_name : PPO
-model_dir : model_weights/PPO/2025-12-17_22-51-51_FWREE8/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+model_dir : model_weights/PPO/2025-12-08_22-02-26_7Z1KFT/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
 num_episode: 10
 result_dir: result
-mode: agent
+mode: transfer
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
 llm_model: "x-ai/grok-4.1-fast" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
 alternate_llm_model : x-ai/grok-4.1-fast
+vllm_model: "x-ai/grok-4.1-fast"
+llm_caption: true
+
+caption_system_prompt: >
+  You are an assistant helping to caption the visual observation of a Reinforcement Learning agent.
+  The room contains interactable object(s) of different type(s) and color(s) such as Blue Box, Green Ball, Yellow Duckie etc.
+  Describe the observation in a plain-text sentence, detailing the interactable object(s), their color(s), and the room/background features (e.g., floor, wall, ceiling etc if present).
+  Output only the description. Do not use markdown.
 
 system_prompt: |
 

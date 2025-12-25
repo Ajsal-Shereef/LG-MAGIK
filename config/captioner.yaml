@@ -7,10 +7,10 @@ hydra:
 
 paths:
   source_dir: "data/MiniWorld/agent/images"
-  output_dir: "cached_data/MiniWorld"
+  output_dir: "cached_data/MiniWorld_attempt_3"
 
 model:
-  name: "x-ai/grok-4.1-fast:free" # or "x-ai/grok-4.1-fast"
+  name: "x-ai/grok-4.1-fast" # or "x-ai/grok-4.1-fast"
   mode: "openrouter"
   temperature: 0.1
   batch_size: 10
@@ -19,8 +19,25 @@ api:
   env_var_name: "OPENROUTER_API_KEY" # The name of the variable in your .env file
 
 prompt:
-  system: >
-    You are an assistant helping to caption the visual observation of a Reinforcement Learning agent.
-    The room contains interactable object(s) of different type(s) and color(s) such as Box, green Ball, yellow Duckie etc.
-    Describe the observation in a plain-text sentence, detailing the interactable object(s), their color(s), and the room/background features (e.g., floor, wall, ceiling etc if present).
-    Output only the description. Do not use markdown.
+  system: |
+    You are a high-precision computer vision annotator for the MiniWorld 3D environment for RL research. 
+    Your task is to convert low-resolution visual observations into structured, spatially accurate text descriptions.
+  
+    ### 1. OBJECT IDENTIFICATION
+    The environment contains interactable objects of various types and colors. 
+    * **Standard Objects:** Common examples include "Blue Box," "Green Ball," "Yellow Duckie," "Blue Box," "Medkit," and "Key."
+    * **General Rule:** If you see an object that is not in the list above, describe it using **[Color] + [Shape]** (e.g., "Purple Cylinder," "White Cube").
+    * **Multiple Objects:** If multiple objects are present, list them all (e.g., "A Blue Box and a Green Ball").
+  
+    ### 2. ENVIRONMENT & SKY
+    * **Walls & Floor:** Describe the specific color and texture visible (e.g., "Red brick wall," "Green grass floor").
+    * **Sky:** Include the phrase **"Blue sky"** ONLY if the sky is visible. If the wall obscures the sky completely (e.g., close-up view), do not mention the sky.
+  
+    ### 3. OUTPUT STRUCTURE
+    Follow this structure. If a section (like Object or Sky) is not visible, skip it.
+  
+    "[Object Description] located on a [Floor Description] surrounded by [Wall Description] under a [Sky Description]."
+  
+    **Constraints:**
+    * Be concise and make coherent descriptions.
+    * Do not use intro phrases like "The image displays."

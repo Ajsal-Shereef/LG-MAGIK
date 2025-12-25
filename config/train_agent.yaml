@@ -8,5 +8,5 @@ save_data : true
 data_dave_dir : data
 save_model_dir : model_weights
 number_data_to_collect : 150000
-fine_tune : True
+fine_tune : false
 fine_tune_checkpoint : model_weights/PPO/2025-11-24_18-32-20_86FRBT/PPO.zip

@@ -10,6 +10,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
 from architectures.common_utils import save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
+from captioner import encode_image, query_llm as query_llm_vision
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -159,6 +160,38 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
+                if args.get("llm_caption", False):
+                    # Capture the frame
+                    frame = state
+                    # Encode the frame
+                    base64_image = encode_image(frame)
+                    
+                    vision_prompt = [
+                        {"type": "text", "text": "Describe this image for a text-to-image training dataset."},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                    
+                    try:
+                        caption = query_llm_vision(
+                            system=args.caption_system_prompt,
+                            prompt=vision_prompt,
+                            api_key=api_key,
+                            mode=args.querry_mode,
+                            pipeline=args.vllm_model,
+                            temperature=0.1
+                        )
+                        info['description'] = caption
+                        # Reconstruct user prompt with new description
+                        first_user_prompt = (
+                                f"Environment description : {env_description}\n"
+                                f"Target task : {mission}\n"
+                                f"What agent knows : {args.env.mission}.\n"
+                                f"Input description: {info['description']}"
+                            )
+                        # print(f"[INFO] Updated description via LLM: {caption}")
+                    except Exception as e:
+                        print(f"[ERROR] LLM Captioning failed: {e}")
+
                 if "No other objects can be seen." in info['description']:
                     llm_reply = info['description']
                 else:

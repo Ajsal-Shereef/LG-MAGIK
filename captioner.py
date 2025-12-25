@@ -12,9 +12,40 @@ from typing import Union, List
 from omegaconf import DictConfig
 
 # --- 1. Helper: Base64 Encoder ---
-def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+# --- 1. Helper: Base64 Encoder ---
+def encode_image(image_input):
+    """
+    Encodes an image to base64.
+    Args:
+        image_input (str, Path, PIL.Image.Image, or np.ndarray): The image to encode.
+    Returns:
+        str: Base64 encoded string.
+    """
+    from PIL import Image
+    import io
+    import numpy as np
+
+    if isinstance(image_input, (str, Path)):
+        with open(image_input, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    
+    elif isinstance(image_input, np.ndarray):
+        # Convert numpy array to PIL Image
+        # Assuming image is in [H, W, C] or similar format suitable for PIL
+        if image_input.dtype != np.uint8:
+             image_input = (image_input).astype(np.uint8)
+        image = Image.fromarray(image_input)
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    elif isinstance(image_input, Image.Image):
+        buffered = io.BytesIO()
+        image_input.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+    
+    else:
+        raise ValueError(f"Unsupported image type: {type(image_input)}")
 
 # --- 2. Helper: Text Parser ---
 def split_gptoss_analysis_final(content: str):
@@ -28,13 +59,21 @@ def split_gptoss_analysis_final(content: str):
     return analysis_text, final_text
 
 # --- 3. Query Function ---
-def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, cfg: DictConfig) -> tuple[str, dict]:
+def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, cfg: DictConfig = None, mode: str = None, pipeline: str = None, temperature: float = None) -> tuple[str, dict]:
     """
-    Queries the LLM. Now accepts the Hydra cfg object to access model settings.
+    Queries the LLM. 
+    Accepts specific args (mode, pipeline, temperature) OR a Hydra cfg object.
     """
-    mode = cfg.model.mode
-    pipeline = cfg.model.name
-    temperature = cfg.model.temperature
+    # Fallback to cfg if explicit args are not provided
+    if mode is None and cfg is not None:
+        mode = cfg.model.mode
+    if pipeline is None and cfg is not None:
+        pipeline = cfg.model.name
+    if temperature is None and cfg is not None:
+        temperature = cfg.model.temperature
+        
+    if mode is None:
+        raise ValueError("Mode must be provided either explicitly or via cfg.")
 
     if mode == "openrouter":
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -164,7 +203,7 @@ def process_dataset(cfg: DictConfig, api_key: str):
             # raise e # Optional: re-raise if you want to stop everything, but usually better to log and continue
 
     # Use ThreadPoolExecutor for concurrent processing
-    batch_size = cfg.model.get("batch_size", 5) # Default to 5 if not set
+    batch_size = cfg.model.get("batch_size", 10) # Default to 10 if not set
     print(f"Starting processing with batch size (concurrency): {batch_size}")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:

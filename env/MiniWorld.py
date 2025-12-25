@@ -518,7 +518,6 @@ class PickObjectEnv(MiniWorldEnv):
         return self.agent_performance
     
     def get_class(self, obs=None, thresholds=None):
-        # This function remains unchanged
         if obs is None:
             obs = self.obs
         if thresholds is None:
@@ -544,7 +543,6 @@ class PickObjectEnv(MiniWorldEnv):
         return np.array(obj_cls)
 
     def get_frame_description(self, obs=None):
-        # This function remains unchanged
         if obs is None:
             obs = self.obs
 
