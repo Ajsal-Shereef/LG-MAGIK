@@ -267,7 +267,7 @@ def change_descriptions(data, no_ball_prob=0.1):
 
     return nested_list
     
-def tokenize_captions(tokenizer, caption_list, is_train=True):
+def tokenize_captions(tokenizer, caption_list, is_train=True, max_length=None):
     captions = []
     for caption in caption_list:
         if isinstance(caption, str):
@@ -279,30 +279,36 @@ def tokenize_captions(tokenizer, caption_list, is_train=True):
             raise ValueError(
                 f"Caption list should contain either strings or lists of strings."
             )
-    # token_lengths = [len(tokenizer.encode(caption, add_special_tokens=True)) for caption in captions]
-    # max_token_length = max(token_lengths)
+    
+    # Use provided max_length or default to tokenizer's max length, clamped to model's max length
+    if max_length is not None:
+        length = min(max_length, tokenizer.model_max_length)
+    else:
+        length = tokenizer.model_max_length
+    
     inputs = tokenizer(
-        captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        captions, max_length=length, padding="max_length", truncation=True, return_tensors="pt"
     )
     return inputs.input_ids, inputs.attention_mask
 
+
 class NumpyFeaturesDataset(Dataset):
     """Custom dataset for loading numpy feature arrays + text metadata."""
-    def __init__(self, feature_dir, metadata_path, tokenizer_path=None, text_key="text", transform=None):
+    def __init__(self, feature_dir, metadata_path, tokenizer_path=None, text_key="text", transform=None, max_length=None):
         self.feature_dir = feature_dir
         self.metadata = []
         self.transform = transform
         self.text_key = text_key
+        self.max_length = max_length
 
         # Load metadata.jsonl (each line = one JSON dict)
         with open(metadata_path, "r") as f:
             for line in f:
                 self.metadata.append(json.loads(line.strip()))
 
-        # Optional tokenizer
         self.tokenizer = None
         if tokenizer_path:
-            self.tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path)
+             self.tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path)
 
     def __len__(self):
         return len(self.metadata)
@@ -320,7 +326,7 @@ class NumpyFeaturesDataset(Dataset):
 
         # If text description exists, tokenize
         if self.text_key in item and self.tokenizer:
-            input_ids, attention_mask = tokenize_captions(self.tokenizer, [item[self.text_key]])
+            input_ids, attention_mask = tokenize_captions(self.tokenizer, [item[self.text_key]], max_length=self.max_length)
             sample["input_ids"] = input_ids.squeeze()
             sample["attention_mask"] = attention_mask.squeeze()
         return sample
@@ -373,10 +379,11 @@ def get_dataloader(args: DictConfig) -> DataLoader:
 
         def preprocess_train(examples: Dict) -> Dict:
             images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
-            examples["pixel_values"] = [train_transforms(image) for image in images]
             if cfg.data.caption_column:
                 tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
-                input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column])
+                
+                max_len = cfg.model.get("max_sequence_length", None)
+                input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
                 examples["input_ids"] = input_ids
                 examples["attention_mask"] = attention_mask
                 return examples
@@ -408,6 +415,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
             tokenizer_path=cfg.data.text_encoder_path if cfg.data.get("caption_column") else None,
             text_key=cfg.data.get("caption_column", "text"),
             transform=train_transforms,
+            max_length=cfg.model.get("max_sequence_length", None)
         )
 
     def collate_fn(examples: list[Dict]) -> Dict:

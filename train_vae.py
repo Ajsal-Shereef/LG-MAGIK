@@ -86,6 +86,8 @@ def train(args: DictConfig) -> None:
     # --- 3. Define Model ---
     accelerator.print("Initializing VAE model...")
     vae = instantiate(cfg.model)
+    if cfg.training.get("is_model_fine_tune", False):
+        vae.load_params(cfg.test.model_dir)
    
     # --- 5. Prepare for Distributed Training ---
     vae, dataloader = accelerator.prepare(vae, dataloader)

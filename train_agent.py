@@ -55,30 +55,29 @@ class FrameStackHW(gym.Wrapper):
         # Concatenate along the last axis (channel axis)
         return np.concatenate(list(self.frames), axis=-1)
 class WandbLoggingCallback(BaseCallback):
-    def __init__(self, episode_length, verbose=1):
+    def __init__(self, verbose=1):
         super(WandbLoggingCallback, self).__init__(verbose)
-        self.episode_length = episode_length
-        self.episode_rewards = []
+        self.current_episode_reward = 0
         self.episode_count = 0
 
     def _on_step(self):
         # This callback is called *after* the env.step()
         # self.locals["rewards"] is an array of (n_envs,)
         reward = self.locals.get("rewards", [0])[0] # Get reward for the first env
-        self.episode_rewards.append(reward)
+        done = self.locals.get("dones", [False])[0]
 
-        # Assuming episode_length is for a single env
-        # This logic might need adjustment for multi-env setups
-        if self.num_timesteps > 0 and self.num_timesteps % self.episode_length == 0:
-            episode_reward = np.sum(self.episode_rewards)
+        self.current_episode_reward += reward
+
+        if done:
             self.episode_count += 1
             log_data = {
                 "env_step": self.num_timesteps,
-                "episode_reward": episode_reward,
+                "episode_reward": self.current_episode_reward,
                 "episode": self.episode_count
             }
             wandb.log(log_data, step=self.num_timesteps)
-            self.episode_rewards = []
+            self.current_episode_reward = 0
+            
         return True
 
 
@@ -309,7 +308,7 @@ def main(args: DictConfig) -> None:
         wandb.watch(model.policy, log="all", log_freq=100)
 
     # --- CALLBACKS ---
-    wandb_callback = WandbLoggingCallback(episode_length=50)
+    wandb_callback = WandbLoggingCallback()
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,
         save_path=model_save_dir,

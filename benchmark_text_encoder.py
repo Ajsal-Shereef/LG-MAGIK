@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer, util
 from transformers import CLIPModel, CLIPTokenizer
 
 # --- 0. SETUP: FORCE OFFLINE MODE ---
-os.environ["HF_HUB_OFFLINE"] = "1"
+# os.environ["HF_HUB_OFFLINE"] = "1"  # Commented out to allow downloading new models
 
 # --- 1. CONFIGURATION ---
 # We separate models by type because they need different loading logic
@@ -41,25 +41,44 @@ models_config = [
         "name": "5. MiniLM (Fine-tuned)", 
         "id": "model_weights/finetuned_minilm/MiniWorld", 
         "type": "st"
+    },
+    # --- New Models ---
+    {
+        "name": "7. Paraphrase MiniLM",
+        "id": "sentence-transformers/paraphrase-MiniLM-L6-v2",
+        "type": "st"
+    },
+    {
+        "name": "8. Paraphrase MPNet",
+        "id": "sentence-transformers/paraphrase-mpnet-base-v2",
+        "type": "st"
+    },
+    {
+        "name": "9. MPNet Base (Strong)",
+        "id": "sentence-transformers/all-mpnet-base-v2",
+        "type": "st"
+    },
+    {
+        "name": "10. BGE Large (SOTA)",
+        "id": "BAAI/bge-large-en-v1.5",
+        "type": "st"
     }
 ]
 
 # --- 2. DATA SETUP ---
 boilerplate = "The agent is in a room with grass floor. "
 
-anchor_full = "The agent is in a room with grass floor. A blue box is found slightly to the right at angle 16.4."
+anchor_full = "The agent is in a room with grass floor and concrete walls. A green ball is found to the far right at angle 46 at a distance of 1.3 units."
 
 candidates_full = [
     # 1. Exact Match
-    "The agent is in a room with grass floor. A blue box is found slightly to the right at angle 16.4.",
-    # 2. Small Numerical Shift (Angle 16.4 -> 17.0)
-    "The agent is in a room with grass floor. A blue box is found slightly to the right at angle 17.0.",
-    # 3. Different Object
-    "The agent is in a room with grass floor. A green ball is found slightly to the right at angle 16.4.",
+    "The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 8.91 at a distance of 4.5 units. A green ball is found slightly to the left at angle 14.5 at a distance of 3.4 units.",
+    # 2. Sematically same 
+    "The agent is in a room with grass floor and concrete walls. A blue box is found to the far right at angle 46 at a distance of 1.3 units.",
+    # 3. Slight difference
+    "The agent is in a room with grass floor and concrete walls. A green ball is found in the front at angle 0.50 at a distance of 3.0 units.",
     # 4. Empty Room
-    "The agent is in a room with grass floor. No objects are visible in the current view.",
-    # 5. Multiple Objects
-    "The agent is in a room with grass floor and concrete walls. A blue box is found to the far left at angle 43.4 at a distance of 0.6 units. A green ball is found in front at angle 1.82 at a distance of 3.1 units."
+    "An empty room with a green grass floor, gray brick walls, and a blue sky.",
 ]
 
 # Helper to clean text
@@ -135,10 +154,9 @@ print("="*80)
 # Create DataFrame
 row_labels = [
     "1. Exact Match", 
-    "2. Small Shift (Angle)", 
-    "3. Diff Object", 
+    "2. Semantic same", 
+    "3. Diff loc", 
     "4. Empty Room",
-    "5. Multiple Objects"
 ]
 df = pd.DataFrame(results, index=row_labels)
 
@@ -149,7 +167,7 @@ if len(results) >= 2:
     for col in df.columns:
         # Gap = Similarity(Small Shift) - Similarity(Diff Object)
         # Higher gap = Better at knowing that "Angle Change" is minor but "Object Change" is major
-        gap = df.loc["2. Small Shift (Angle)", col] - df.loc["3. Diff Object", col]
+        gap = df.loc["2. Semantic same", col] - df.loc["3. Diff loc", col]
         df_gap[col] = [gap]
     
     print("\nDiscrimination Power (Higher is better):")

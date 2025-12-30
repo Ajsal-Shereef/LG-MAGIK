@@ -44,13 +44,23 @@ class TextConditionedVAE(nn.Module):
             encoder_final_dim = kwargs["encoder_final_dim"]
             latent_channel = kwargs["latent_channel"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
+            use_coord_conv = kwargs.get("use_coord_conv", True)
             self.is_perceptual_loss = kwargs["is_perceptual_loss"]
-
+            self.max_sequence_length = kwargs.get("max_sequence_length", None)
+            
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
             self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
-            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel)
+            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv)
+            
+            # Use max_sequence_length if provided, else fall back to tokenizer default
+            # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
+            if self.max_sequence_length is not None:
+                token_len = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
+            else:
+                token_len = self.decoder.tokenizer.model_max_length
+            
             self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
-                                             self.decoder.tokenizer.model_max_length * self.decoder.text_dim,
+                                             token_len * self.decoder.text_dim,
                                              discriminator_fc_hidden)
             if self.use_image_discriminator:
                 in_ch = kwargs.get("disc_in_channels", input_dim)
@@ -67,6 +77,7 @@ class TextConditionedVAE(nn.Module):
                 from architectures.common_utils import VGGLoss
                 self.vgg_loss = VGGLoss(device)
         else:
+            self.is_perceptual_loss = None
             input_dim = kwargs["input_dim"]
             encoder_out_dim = kwargs["encoder_output_dim"]
             hidden_dims = kwargs["encoder_hidden_dims"]
@@ -79,7 +90,6 @@ class TextConditionedVAE(nn.Module):
             latent_dim = kwargs["latent_dim"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
             decoder_hidden_dims = kwargs["decoder_hidden_dims"]
-            self.is_perceptual_loss = None
 
             self.encoder = MLPEncoder(input_dim, hidden_dims, encoder_out_dim, num_resblocks, norm, activ, dropout)
             self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)
@@ -344,7 +354,7 @@ class TextConditionedVAE(nn.Module):
         state_tensor = torch.stack(states_tensors)
         
         tokeniser = self.decoder.tokenizer
-        captions_tokenised, attention_mask = tokenize_captions(tokeniser, [description])
+        captions_tokenised, attention_mask = tokenize_captions(tokeniser, [description], max_length=self.max_sequence_length)
         captions_tokenised = captions_tokenised.to(device)
         attention_mask = attention_mask.to(device)
         
@@ -386,13 +396,13 @@ class TextConditionedVAE(nn.Module):
         states_tensors = [train_transforms(image) for image in images]
         
         tokeniser = self.decoder.tokenizer
-        captions_tokenised, attention_mask = tokenize_captions(tokeniser, descriptions)
+        captions_tokenised, attention_mask = tokenize_captions(tokeniser, descriptions, max_length=self.max_sequence_length)
         captions_tokenised = captions_tokenised.to(device)
         attention_mask = attention_mask.to(device)
         changed_captions_list = list(chain.from_iterable(
             [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
         ))
-        changed_captions_tokenised_list, changed_caption_attention_mask = tokenize_captions(tokeniser, changed_captions_list)
+        changed_captions_tokenised_list, changed_caption_attention_mask = tokenize_captions(tokeniser, changed_captions_list, max_length=self.max_sequence_length)
         changed_captions_tokenised_list = changed_captions_tokenised_list.to(device)
         changed_caption_attention_mask = changed_caption_attention_mask.to(device)
         changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
@@ -515,8 +525,12 @@ class TextConditionedVAE(nn.Module):
 
         # --- 3. GENERATE PROMPT-DRIVEN IMAGES ---
         # Tokenize and encode the text prompts to get embeddings
+        if self.max_sequence_length is not None:
+            length = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
+        else:
+            length = self.decoder.tokenizer.model_max_length
         tokenised_text = self.decoder.tokenizer(
-            prompts, max_length=self.decoder.tokenizer.model_max_length, padding="max_length", 
+            prompts, max_length=length, padding="max_length", 
             truncation=True, return_tensors="pt"
         )
         input_ids = tokenised_text["input_ids"].to(device)

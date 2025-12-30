@@ -8,7 +8,6 @@ import torch.nn.init as init
 from architectures.common_utils import identity, get_activation, get_normalisation_2d
 from architectures.mlp import MLP, GaussianDist, CategoricalDistParams, TanhGaussianDistParams
 import torch.nn.functional as F
-from transformers import CLIPTokenizer, CLIPTextModel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -525,15 +524,18 @@ class FinalTextConditionedOutput(nn.Module):
         return torch.tanh(self.conv(refined))
     
 class CNNTextConditionedDecoder(nn.Module):
-    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8):
+    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
-        #Conv layer to map latent channel to dim
-        self.mapping_conv = nn.Conv2d(latent_channel, dim, 1)
+        self.use_coord_conv = use_coord_conv
+        # Mapping conv: Input channels = latent_channel (+2 if coord_conv)
+        in_channels = latent_channel + 2 if use_coord_conv else latent_channel
+        self.mapping_conv = nn.Conv2d(in_channels, dim, 1)
         init.xavier_uniform_(self.mapping_conv.weight)
-        #Text encoder and tockenizer
-        self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
-        self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
+        # Text encoder and tokenizer
+        # Text encoder and tokenizer
+        self.tokenizer = CLIPTokenizer.from_pretrained(clip_model)
+        self.text_encoder = CLIPTextModel.from_pretrained(clip_model)
         
         #Freeze the CLIP model parameters first
         for params in self.text_encoder.parameters():
@@ -548,8 +550,9 @@ class CNNTextConditionedDecoder(nn.Module):
         self.blocks=nn.ModuleList()
         self.ups=nn.ModuleList()
         self.conv = nn.ModuleList()
+        latent_dim_for_blocks = latent_channel + 2 if use_coord_conv else latent_channel
         for i in range(n_upsample):
-            self.blocks.append(CrossAttentionFiLMSpatial(dim,latent_channel,self.text_dim, i))
+            self.blocks.append(CrossAttentionFiLMSpatial(dim,latent_dim_for_blocks,self.text_dim, i))
             self.ups.append(nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False))
             self.conv.append(nn.Conv2d(dim, dim//2, 3, 1, 1))
             dim //= 2
@@ -557,7 +560,15 @@ class CNNTextConditionedDecoder(nn.Module):
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
     def forward(self,z,text_tockens, attention_mask, return_text_feats=False):
-        self.text_feats = self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
+        # We must pass attention_mask to handle padding correctly 
+        outputs = self.text_encoder(text_tockens, attention_mask=attention_mask, return_dict=True)
+        
+        if hasattr(outputs, 'last_hidden_state'):
+            self.text_feats = outputs.last_hidden_state
+        else:
+            self.text_feats = outputs[0] # Tuple fallback
+            
+        # self.text_feats = self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
         self.text_feats = self.text_adapter(self.text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)
         # text_global = self.text_feats.mean(dim=1)  # [B, D]
@@ -569,6 +580,15 @@ class CNNTextConditionedDecoder(nn.Module):
         B, C, H, W = z.shape
         z = z.view(B, C, H*W).permute(0,2,1)
         z = self.attention(z, self.text_feats, attention_mask).permute(0,2,1).view(B, C, H, W)
+        
+        if self.use_coord_conv:
+            x_range = torch.linspace(-1, 1, steps=W, device=z.device)
+            y_range = torch.linspace(-1, 1, steps=H, device=z.device)
+            y_grid, x_grid = torch.meshgrid(y_range, x_range, indexing='ij')
+            x_grid = x_grid.unsqueeze(0).unsqueeze(0).expand(B, -1, -1, -1)
+            y_grid = y_grid.unsqueeze(0).unsqueeze(0).expand(B, -1, -1, -1)
+            z = torch.cat([z, x_grid, y_grid], dim=1)
+            
         x = self.mapping_conv(z)
         for blk,up,conv in zip(self.blocks, self.ups, self.conv):
             x=blk(x,z,self.text_feats, attention_mask)
