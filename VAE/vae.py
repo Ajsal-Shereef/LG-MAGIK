@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from diffusers.models import AutoencoderKL
-from typing import Dictf
+from typing import Dict
 from architectures.common_utils import VGGLoss
 
 
@@ -62,6 +62,35 @@ class VAE(AutoencoderKL):
                                 weight_decay=parms.weight_decay,
                                 eps=parms.eps,
                                )
+        
+        # Initialize scheduler
+        if hasattr(parms, "scheduler"):
+            self.scheduler = self._get_scheduler(self.vae_optim, parms.scheduler)
+        else:
+            self.scheduler = None
+
+    def get_lr(self):
+        return {"lr": self.vae_optim.param_groups[0]["lr"]}
+
+    def _get_scheduler(self, optimizer, scheduler_params):
+        if scheduler_params.type == "cosine":
+            return optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, 
+                T_max=scheduler_params.T_max, 
+                eta_min=scheduler_params.eta_min
+            )
+        elif scheduler_params.type == "step":
+            return optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=scheduler_params.step_size,
+                gamma=scheduler_params.gamma
+            )
+        else:
+            return None
+
+    def step_schedulers(self):
+        if self.scheduler:
+            self.scheduler.step()
 
     def loss_function(
         self,
@@ -103,9 +132,13 @@ class VAE(AutoencoderKL):
             "total_loss": total_loss,
             "recon_loss": recon_loss,
             "kl_loss": kl_loss,
+            "perceptual_loss": perceptual_loss,
         }
+
+    def optimize_discriminator(self, losses, accelerator):
+        pass
         
-    def optimize(self, losses, accelerator):
+    def optimize_generator(self, losses, accelerator, forward_output=None, **kwargs):
         self.vae_optim.zero_grad()
         accelerator.backward(losses["total_loss"])
         self.vae_optim.step()
@@ -123,26 +156,26 @@ class VAE(AutoencoderKL):
         Returns:
             torch.Tensor: A tensor of generated images.
         """
-        return None
         # The latent space dimensions are determined by the model's architecture.
         # It's (batch_size, latent_channels, height/downsample_factor, width/downsample_factor)
-        # latent_height = img_size // (2*(len(self.config.block_out_channels)-1))
-        # latent_width = latent_height
+        # Using fixed downsample factor of 8 (2^3) for now based on config
+        latent_height = 14 # 112 / 8
+        latent_width = 14
 
-        # # Sample random noise from a standard normal distribution
-        # z = torch.randn(
-        #     num_samples, 
-        #     self.config.latent_channels, 
-        #     latent_height, 
-        #     latent_width
-        # ).to(device)
+        # Sample random noise from a standard normal distribution
+        z = torch.randn(
+            num_samples, 
+            self.config.latent_channels, 
+            latent_height, 
+            latent_width
+        ).to(device)
         
-        # # Decode the random noise to generate images
-        # generated_images = self.decode(z).sample
+        # Decode the random noise to generate images
+        generated_images = self.decode(z).sample
         
-        # generated_images = generated_images*0.5 + 0.5
+        generated_images = generated_images*0.5 + 0.5
         
-        # return generated_images
+        return generated_images
         
     def load_params(self, path):
         """Load model and optimizer parameters."""

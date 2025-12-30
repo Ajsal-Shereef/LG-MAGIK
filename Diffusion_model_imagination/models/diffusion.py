@@ -58,7 +58,7 @@ class DiffusionImaginationModel(nn.Module):
         with torch.no_grad():
             hidden = self.vae.encoder(x)
             sampler = self.vae.bottleneck(hidden)
-            latents = sampler.latent * 0.18215 
+            latents = sampler.latent 
             
         # 2. Sample Noise
         noise = torch.randn_like(latents)
@@ -98,7 +98,7 @@ class DiffusionImaginationModel(nn.Module):
         # 1. Encode Source
         hidden = self.vae.encoder(state_image)
         sampler = self.vae.bottleneck(hidden)
-        init_latents = sampler.mean * 0.18215 # Use mean for deterministic starting point
+        init_latents = sampler.mean # Use mean for deterministic starting point
         
         # 2. Add Noise (Partial)
         # Calculate start timestep
@@ -138,5 +138,5 @@ class DiffusionImaginationModel(nn.Module):
             latents = self.inference_scheduler.step(noise_pred, t, latents).prev_sample
 
         # 4. Decode
-        latents = latents / 0.18215
+        # latents = latents / 0.18215 # No scaling
         return latents

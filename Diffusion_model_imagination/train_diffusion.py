@@ -128,7 +128,7 @@ def main(cfg: DictConfig):
                     # Encode Image -> Latent
                     hidden = model.vae.encoder(images)
                     sampler = model.vae.bottleneck(hidden)
-                    latents = sampler.latent * 0.18215 # Scale
+                    latents = sampler.latent
                     
                     # Encode Text
                     attention_mask = batch["attention_masks"]
@@ -180,8 +180,9 @@ def main(cfg: DictConfig):
                      # Use the current batch for visualization to see reconstruction vs imagination
                      # Grid: 10 rows (images), 7 cols (1 recon + 6 imaginations)
                      
+                     validation_prompts = cfg.env.get("validation_prompts", [])
                      num_vis = 10
-                     num_variations = 6
+                     num_variations = len(validation_prompts)
                      
                      # Get batch slice
                      vis_images = batch["pixel_values"][:num_vis].to(accelerator.device)
@@ -207,32 +208,57 @@ def main(cfg: DictConfig):
                          recon_images = (recon_images * 0.5 + 0.5).clamp(0, 1)
                          
                          # 2. Imagination (Columns 2-7)
-                         # We need to generate `num_variations` per image.
-                         # Repeats input data for batch processing? Or loop?
-                         # Looping is safer for memory.
+                         # Use Validation Prompts for variations
+                         # We need to Tokenize the validation prompts first
+                         # Access tokenizer from VAE decoder
+                         tokenizer = model.vae.decoder.tokenizer
                          
-                         # Get text embeddings
-                         out = model.vae.decoder.text_encoder(vis_input_ids, attention_mask=vis_attn_mask, return_dict=True)
-                         if hasattr(out, 'last_hidden_state'):
-                             txt_embeds = out.last_hidden_state
-                         else:
-                             txt_embeds = out[0]
-                             
+                         val_input_ids_all, val_attn_mask_all = [], []
+                         if num_variations > 0:
+                             # Batch tokenize all validation prompts
+                             # But we iterate one by one
+                             pass # We'll do it inside the loop for simplicity or pre-process
+
                          imagination_cols = []
-                         for _ in range(num_variations):
-                             # Generate from noise
-                             # dummy_state not used for content if strength=1.0
-                             dummy_state = torch.zeros_like(vis_images) 
+                         for i in range(num_variations):
+                             prompt = str(validation_prompts[i])
                              
+                             # Tokenize prompt (repeated for batch size)
+                             # We can use the helper tokenize_captions from common_utils ONLY IF we import it, 
+                             # or just use tokenizer directly. tokenizer is available.
+                             
+                             # Tokenize SINGLE prompt
+                             tokens = tokenizer(
+                                 [prompt], 
+                                 max_length=cfg.models.model.max_sequence_length, 
+                                 padding="max_length", 
+                                 truncation=True, 
+                                 return_tensors="pt"
+                             )
+                             
+                             # Repeat for batch size [1, Seq] -> [B, Seq]
+                             p_input_ids = tokens.input_ids.to(accelerator.device).repeat(current_bsz, 1)
+                             p_attn_mask = tokens.attention_mask.to(accelerator.device).repeat(current_bsz, 1)
+                             
+                             # Get embedding
+                             out = model.vae.decoder.text_encoder(p_input_ids, attention_mask=p_attn_mask, return_dict=True)
+                             if hasattr(out, 'last_hidden_state'):
+                                 txt_embeds = out.last_hidden_state
+                             else:
+                                 txt_embeds = out[0]
+
+                             # Img2Img Generation
+                             # Use vis_images as state_image
+                             # Strength < 1.0 to preserve structure (e.g. 0.75)
                              img_latents = model.imagine(
-                                 state_image=dummy_state,
+                                 state_image=vis_images,
                                  target_text_embeddings=txt_embeds,
-                                 strength=1.0, 
+                                 strength=0.75, 
                                  num_inference_steps=50
                              )
                              
-                             # Decode
-                             gen_images = model.vae.decoder(img_latents, vis_input_ids, vis_attn_mask)
+                             # Decode (Conditioned on the NEW prompt)
+                             gen_images = model.vae.decoder(img_latents, p_input_ids, p_attn_mask)
                              gen_images = (gen_images * 0.5 + 0.5).clamp(0, 1)
                              imagination_cols.append(gen_images)
                          
@@ -240,9 +266,10 @@ def main(cfg: DictConfig):
                          # Rows: [Recon, Gen1, Gen2, ..., Gen6]
                          rows = []
                          for i in range(current_bsz):
-                             row_imgs = [recon_images[i]] # Col 1
+                             orig_img = (vis_images[i] * 0.5 + 0.5).clamp(0, 1)
+                             row_imgs = [orig_img, recon_images[i]] # Col 1: Orig, Col 2: Recon
                              for col in imagination_cols:
-                                 row_imgs.append(col[i]) # Col 2-7
+                                 row_imgs.append(col[i]) # Col 3-8
                              
                              # Concat horizontally
                              rows.append(torch.cat(row_imgs, dim=2)) # Dim 2 is Width (C,H,W)
@@ -251,7 +278,7 @@ def main(cfg: DictConfig):
                          full_grid = torch.cat(rows, dim=1) # Dim 1 is Height
                          
                          # Log
-                         accelerator.log({"Validation Generation (Recon + 6 Imagination)": wandb.Image(full_grid)}, step=global_step)
+                         accelerator.log({"Validation Generation (Orig + Recon + Imagination)": wandb.Image(full_grid)}, step=global_step)
                          
                 model.unet.train()
 

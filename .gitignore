@@ -6,6 +6,7 @@ logs
 outputs
 videos
 exp_local
+experiment_logs
 model_weights
 result
 cached_data

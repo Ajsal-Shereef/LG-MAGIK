@@ -5,7 +5,7 @@ project_name: TextConditionedVAE
 model_name : "DARLA"
 # --- Data Configuration ---
 data:
-  train_dir: data/${env.name}/Random/vae
+  train_dir: data/${env.name}/agent
   image_column: "image"
   cache_dir: null
   resolution: 112
@@ -23,14 +23,14 @@ model:
   up_block_types: ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"]
   block_out_channels: [64, 128, 256]
   layers_per_block: 1
-  latent_channels: 4
+  latent_channels: 8
   norm_num_groups: 32
 
 # --- Training Hyperparameters ---
 training:
   num_epochs: 250 
   seed: null
-  kl_weight: 1
+  kl_weight: 0.05
   logs : "logs"
   output_dir: "model_weights/vae"
   experiment_name: "VAE"
@@ -46,6 +46,10 @@ optimizer:
   betas: [0.9, 0.999]
   weight_decay: 1e-2
   eps: 1e-8
+  scheduler:
+    type: cosine
+    T_max: ${models.training.num_epochs}
+    eta_min: 0.000001
 
 # --- Accelerator Configuration ---
 accelerator:

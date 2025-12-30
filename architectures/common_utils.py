@@ -379,6 +379,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
 
         def preprocess_train(examples: Dict) -> Dict:
             images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
+            examples["pixel_values"] = [train_transforms(image) for image in images]
             if cfg.data.caption_column:
                 tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
                 
@@ -386,7 +387,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
                 input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
                 examples["input_ids"] = input_ids
                 examples["attention_mask"] = attention_mask
-                return examples
+            return examples
         # Load dataset from image folder
         data_files = {"train": os.path.join(cfg.data.train_dir, "**")}
         dataset = load_dataset(

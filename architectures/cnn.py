@@ -8,6 +8,7 @@ import torch.nn.init as init
 from architectures.common_utils import identity, get_activation, get_normalisation_2d
 from architectures.mlp import MLP, GaussianDist, CategoricalDistParams, TanhGaussianDistParams
 import torch.nn.functional as F
+from transformers import CLIPTokenizer, CLIPTextModel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
