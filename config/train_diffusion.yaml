@@ -5,7 +5,7 @@ defaults:
 
 models:
   model_name: "diffusion_imagination"
-  vae_path: "model_weights/DARLA/MiniWorld/2025-12-31_01-22-34_HRV8KO/TextConditionedVAE.tar" 
+  vae_path: "model_weights/DARLA/MiniWorld/2025-12-31_12-17-26_FYFNZA/TextConditionedVAE.tar" 
   
   # For get_dataloader compatibility
   model:

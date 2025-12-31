@@ -47,7 +47,7 @@ class VAE(AutoencoderKL):
         if self.training:
             reconstructed_x = self.decode(latents).sample
         else:
-            reconstructed_x = self.decode(posterior).sample
+            reconstructed_x = self.decode(posterior.mode()).sample
         
         return {
             "reconstructed_x": reconstructed_x, 

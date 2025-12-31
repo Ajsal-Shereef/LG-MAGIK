@@ -19,9 +19,9 @@ model:
   _target_: VAE.vae.VAE
   in_channels: 3
   out_channels: 3
-  down_block_types: ["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"]
-  up_block_types: ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"]
-  block_out_channels: [64, 128, 256]
+  down_block_types: ["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"]
+  up_block_types: ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"]
+  block_out_channels: [64, 128, 128, 128, 256]
   layers_per_block: 1
   latent_channels: 8
   norm_num_groups: 32
@@ -30,7 +30,7 @@ model:
 training:
   num_epochs: 250 
   seed: null
-  kl_weight: 0.05
+  kl_weight: 1
   logs : "logs"
   output_dir: "model_weights/vae"
   experiment_name: "VAE"

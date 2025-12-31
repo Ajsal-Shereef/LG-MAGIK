@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,10 +19,17 @@ class DiffusionImaginationModel(nn.Module):
         # For this project, we might want to start with a standard small config if not loading pretrained
         if unet_config is None:
              # Default small config for 64x64 or 128x128 latents
+             # Get latent channel from VAE config if available
+            latent_channels = 4
+            if hasattr(self.vae, 'config') and hasattr(self.vae.config, 'latent_channels'):
+                latent_channels = self.vae.config.latent_channels
+            elif hasattr(self.vae, 'latent_channel'):
+                latent_channels = self.vae.latent_channel
+                
             self.unet = UNet2DConditionModel(
                 sample_size=16,
-                in_channels=self.vae.latent_channel if hasattr(self.vae, 'latent_channel') else 4,
-                out_channels=self.vae.latent_channel if hasattr(self.vae, 'latent_channel') else 4,
+                in_channels=latent_channels,
+                out_channels=latent_channels,
                 layers_per_block=2,
                 block_out_channels=(128, 256, 512, 512),
                 down_block_types=(
@@ -56,9 +62,13 @@ class DiffusionImaginationModel(nn.Module):
         """
         # 1. Encode to Latent
         with torch.no_grad():
-            hidden = self.vae.encoder(x)
-            sampler = self.vae.bottleneck(hidden)
-            latents = sampler.latent 
+            # Standard VAE encode
+            posterior = self.vae.encode(x).latent_dist
+            latents = posterior.sample()
+            
+            # Optional: Scale latents if VAE expects it (standard SD uses 0.18215)
+            # We will use 0.18215 factor for consistency with typical usage
+            # latents = latents * 0.18215
             
         # 2. Sample Noise
         noise = torch.randn_like(latents)
@@ -71,16 +81,8 @@ class DiffusionImaginationModel(nn.Module):
         noisy_latents = self.noise_scheduler.add_noise(latents, noise, timesteps)
         
         # 5. Predict Noise
-        # Pad from 5x5 to 8x8 for U-Net stability
-        # pad (left, right, top, bottom) => (0, 3, 0, 3) to go 5->8
-        noisy_latents_padded = F.pad(noisy_latents, (0, 3, 0, 3))
-        
-        # UNet forward on 8x8
-        pred_padded = self.unet(noisy_latents_padded, timesteps, encoder_hidden_states=text_embeddings).sample
-        
-        # Crop back to 5x5
-        # [B, C, 8, 8] -> [B, C, 5, 5]
-        model_pred = pred_padded[:, :, :5, :5]
+        # UNet forward
+        model_pred = self.unet(noisy_latents, timesteps, encoder_hidden_states=text_embeddings).sample
         
         return model_pred, noise
 
@@ -96,9 +98,11 @@ class DiffusionImaginationModel(nn.Module):
         self.inference_scheduler.set_timesteps(num_inference_steps)
         
         # 1. Encode Source
-        hidden = self.vae.encoder(state_image)
-        sampler = self.vae.bottleneck(hidden)
-        init_latents = sampler.mean # Use mean for deterministic starting point
+        # Standard VAE encode
+        posterior = self.vae.encode(state_image).latent_dist
+        init_latents = posterior.mean # Use mean for deterministic starting point
+        
+        # init_latents = init_latents * 0.18215
         
         # 2. Add Noise (Partial)
         # Calculate start timestep
@@ -113,30 +117,23 @@ class DiffusionImaginationModel(nn.Module):
         t_start = max(num_inference_steps - init_timestep, 0)
         
         for i, t in enumerate(self.inference_scheduler.timesteps[t_start:]):
-            # Pad latents 5x5 -> 8x8 for U-Net
-            latents_padded = F.pad(latents, (0, 3, 0, 3))
-            
-            # Expand for classifier free guidance (on padded latents)
-            latent_model_input = torch.cat([latents_padded] * 2)
+            # Expand for classifier free guidance
+            latent_model_input = torch.cat([latents] * 2)
             latent_model_input = self.inference_scheduler.scale_model_input(latent_model_input, t)
             
             # Duplicate text embeddings for CFG (simulated, ideally use uncond)
             text_embeddings_input = torch.cat([target_text_embeddings] * 2)
             
             # Predict noise
-            noise_pred_padded = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_input).sample
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_input).sample
             
             # CFG
-            noise_pred_uncond, noise_pred_text = noise_pred_padded.chunk(2)
-            noise_pred_padded = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            
-            # Crop predicted noise to 5x5 to step the scheduler?
-            # Scheduler expects noise of same shape as latents.
-            noise_pred = noise_pred_padded[:, :, :5, :5]
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
             
             # Step
             latents = self.inference_scheduler.step(noise_pred, t, latents).prev_sample
 
         # 4. Decode
-        # latents = latents / 0.18215 # No scaling
+        # latents = latents / 0.18215
         return latents

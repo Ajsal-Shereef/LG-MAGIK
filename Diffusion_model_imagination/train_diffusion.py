@@ -1,4 +1,3 @@
-
 import os
 import hydra
 import torch
@@ -20,6 +19,7 @@ from architectures.common_utils import get_dataloader, create_dump_directory
 from torchvision.utils import make_grid
 from hydra.utils import instantiate
 from Diffusion_model_imagination.models.diffusion import DiffusionImaginationModel
+from transformers import CLIPTokenizer, CLIPTextModel
 
 @hydra.main(version_base=None, config_path="../config", config_name="train_diffusion")
 def main(cfg: DictConfig):
@@ -53,12 +53,24 @@ def main(cfg: DictConfig):
     vae.load_params(cfg.models.vae_path)
     vae.eval()
     vae.requires_grad_(False)
+
+    # Load Text Encoder and Tokenizer explicitly
+    accelerator.print(f"Loading Text Encoder from {cfg.models.data.text_encoder_path}")
+    tokenizer = CLIPTokenizer.from_pretrained(cfg.models.data.text_encoder_path)
+    text_encoder = CLIPTextModel.from_pretrained(cfg.models.data.text_encoder_path)
+    text_encoder.eval()
+    text_encoder.requires_grad_(False)
     
     # 4. Initialize Diffusion Model
     accelerator.print("Initializing Diffusion Model...")
     
-    # Get latent channel from VAE args
-    latent_channel = vae_args.models.model.get("latent_channel", 4)
+    # Get latent channel from VAE
+    latent_channel = 4
+    if hasattr(vae, 'config') and hasattr(vae.config, 'latent_channels'):
+        latent_channel = vae.config.latent_channels
+    elif hasattr(vae, 'latent_channel'):
+        latent_channel = vae.latent_channel
+    
     accelerator.print(f"Detected VAE latent channel: {latent_channel}")
     
     # Construct config for very small 5x5 latents
@@ -69,7 +81,7 @@ def main(cfg: DictConfig):
     # Since we pad to 8x8, we can use a slightly deeper U-Net if desired, or keep it shallow.
     # 8 -> 4 -> 2 is safe.
     unet_config = {
-        "sample_size": 8, 
+        "sample_size": 5, 
         "in_channels": latent_channel,
         "out_channels": latent_channel,
         "layers_per_block": 1,
@@ -82,7 +94,7 @@ def main(cfg: DictConfig):
             "UpBlock2D",
             "CrossAttnUpBlock2D",
         ),
-        "cross_attention_dim": 512,
+        "cross_attention_dim": text_encoder.config.hidden_size, # Standard CLIP embedding dim
         "attention_head_dim": 8,
     }
 
@@ -100,8 +112,9 @@ def main(cfg: DictConfig):
     
     # 6. Prepare
     model.unet, optimizer, dataloader = accelerator.prepare(model.unet, optimizer, dataloader)
-    # VAE is kept on device but not prepared for training
+    # VAE and Text Encoder are kept on device but not prepared for training
     model.vae.to(accelerator.device)
+    text_encoder.to(accelerator.device)
     
     # 7. Training Loop
     num_epochs = cfg.models.training.num_epochs
@@ -117,38 +130,17 @@ def main(cfg: DictConfig):
                 # Unpack batch
                 images = batch["pixel_values"]
                 input_ids = batch["input_ids"] # Text tokens for caption
-                
-                # Get Text Embeddings using VAE's text encoder (CLIP)
-                # The VAE decoder has the tokenizer and text_encoder usually, or we access it via model.vae.decoder.text_encoder
-                # TextConditionedDecoder in VAE/text_conditioned_vae.py has a 'clip_model'.
-                # We need to verify how to get embeddings. 
-                # model.vae.decoder.text_encoder(input_ids, attention_mask=...)
+                attention_mask = batch["attention_masks"]
                 
                 with torch.no_grad():
-                    # Encode Image -> Latent
-                    hidden = model.vae.encoder(images)
-                    sampler = model.vae.bottleneck(hidden)
-                    latents = sampler.latent
-                    
-                    # Encode Text
-                    attention_mask = batch["attention_masks"]
-                    # We utilize the VAE's text encoder to get embeddings
-                    # The VAE decoder usually holds the text encoder.
-                    encoder_hidden_states = model.vae.decoder.text_encoder(input_ids, attention_mask=attention_mask)[0]
+                    # Get Text Embeddings using standalone Text Encoder
+                    encoder_hidden_states = text_encoder(input_ids, attention_mask=attention_mask)[0]
                 
-                # Sample noise
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
-                timesteps = torch.randint(0, model.noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                
-                # Add noise
-                noisy_latents = model.noise_scheduler.add_noise(latents, noise, timesteps)
-                
-                # Predict
-                noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states=encoder_hidden_states).sample
+                # Forward pass (VAE encoding happens inside model forward)
+                model_pred, noise = model(images, encoder_hidden_states)
                 
                 # Loss
-                loss = F.mse_loss(noise_pred, noise, reduction="mean")
+                loss = F.mse_loss(model_pred, noise, reduction="mean")
                 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -186,21 +178,26 @@ def main(cfg: DictConfig):
                      
                      # Get batch slice
                      vis_images = batch["pixel_values"][:num_vis].to(accelerator.device)
-                     vis_input_ids = batch["input_ids"][:num_vis].to(accelerator.device)
-                     vis_attn_mask = batch["attention_masks"][:num_vis].to(accelerator.device)
+                     # vis_input_ids = batch["input_ids"][:num_vis].to(accelerator.device)
+                     # vis_attn_mask = batch["attention_masks"][:num_vis].to(accelerator.device)
                      current_bsz = vis_images.shape[0]
                      
                      if current_bsz == 0:
                          accelerator.print("Batch empty, skipping visualization.")
                      else:
                          # 1. Reconstruction (Column 1)
-                         # Use VAE forward pass (handles encoding -> bottleneck -> decoding)
-                         # We need to construct a mini-batch dict for the VAE forward method
+                         # Use VAE forward pass (handles encoding -> decoding)
+                         # Standard VAE forward does not take dict anymore if we use AutoencoderKL style
+                         # But let's check VAE.py wrapper. It takes "x".
+                         # If we use VAE.py wrapper:
+                         # It expects dict with "pixel_values"
                          mini_batch = {
                              "pixel_values": vis_images,
-                             "input_ids": vis_input_ids,
-                             "attention_masks": vis_attn_mask
                          }
+                         # VAE.forward returns dict.
+                         # CAUTION: If we really switched to Normal VAE, we might be calling AutoencoderKL
+                         # which takes tensor. But the user said VAE is in VAE/vae.py and it wraps AutoencoderKL
+                         # and has a forward that takes dict.
                          vae_out = model.vae(mini_batch)
                          recon_images = vae_out["reconstructed_x"]
                          
@@ -208,26 +205,11 @@ def main(cfg: DictConfig):
                          recon_images = (recon_images * 0.5 + 0.5).clamp(0, 1)
                          
                          # 2. Imagination (Columns 2-7)
-                         # Use Validation Prompts for variations
-                         # We need to Tokenize the validation prompts first
-                         # Access tokenizer from VAE decoder
-                         tokenizer = model.vae.decoder.tokenizer
-                         
-                         val_input_ids_all, val_attn_mask_all = [], []
-                         if num_variations > 0:
-                             # Batch tokenize all validation prompts
-                             # But we iterate one by one
-                             pass # We'll do it inside the loop for simplicity or pre-process
-
                          imagination_cols = []
                          for i in range(num_variations):
                              prompt = str(validation_prompts[i])
                              
                              # Tokenize prompt (repeated for batch size)
-                             # We can use the helper tokenize_captions from common_utils ONLY IF we import it, 
-                             # or just use tokenizer directly. tokenizer is available.
-                             
-                             # Tokenize SINGLE prompt
                              tokens = tokenizer(
                                  [prompt], 
                                  max_length=cfg.models.model.max_sequence_length, 
@@ -241,11 +223,7 @@ def main(cfg: DictConfig):
                              p_attn_mask = tokens.attention_mask.to(accelerator.device).repeat(current_bsz, 1)
                              
                              # Get embedding
-                             out = model.vae.decoder.text_encoder(p_input_ids, attention_mask=p_attn_mask, return_dict=True)
-                             if hasattr(out, 'last_hidden_state'):
-                                 txt_embeds = out.last_hidden_state
-                             else:
-                                 txt_embeds = out[0]
+                             txt_embeds = text_encoder(p_input_ids, attention_mask=p_attn_mask)[0]
 
                              # Img2Img Generation
                              # Use vis_images as state_image
@@ -257,13 +235,18 @@ def main(cfg: DictConfig):
                                  num_inference_steps=50
                              )
                              
-                             # Decode (Conditioned on the NEW prompt)
-                             gen_images = model.vae.decoder(img_latents, p_input_ids, p_attn_mask)
+                             # Decode (Normal VAE decode - no text conditioning)
+                             if hasattr(model.vae, 'decode'):
+                                 # Standard AutoencoderKL decode
+                                 gen_images = model.vae.decode(img_latents).sample
+                             else:
+                                 # Fallback? VAE.py should inherit decode.
+                                 gen_images = model.vae.decoder(img_latents) # If it was TextConditioned, but we are switching.
+                             
                              gen_images = (gen_images * 0.5 + 0.5).clamp(0, 1)
                              imagination_cols.append(gen_images)
                          
                          # 3. Assemble Grid
-                         # Rows: [Recon, Gen1, Gen2, ..., Gen6]
                          rows = []
                          for i in range(current_bsz):
                              orig_img = (vis_images[i] * 0.5 + 0.5).clamp(0, 1)
