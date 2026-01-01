@@ -17,14 +17,14 @@ data:
 # --- VAE Model Architecture ---
 model:
   _target_: VAE.vae.VAE
-  in_channels: 3
-  out_channels: 3
-  down_block_types: ["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"]
-  up_block_types: ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"]
-  block_out_channels: [64, 128, 128, 128, 256]
-  layers_per_block: 1
+  input_dim: 3
+  dim: 64
+  n_downsample: 3
+  n_res: 2
+  activ: "relu"
+  pad_type: "zero"
+  norm: "in"
   latent_channels: 8
-  norm_num_groups: 32
 
 # --- Training Hyperparameters ---
 training:

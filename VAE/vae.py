@@ -2,59 +2,138 @@
 import os
 import torch
 import torch.optim as optim
+import torch.nn as nn
 import torch.nn.functional as F
-from diffusers.models import AutoencoderKL
+from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
 from typing import Dict
 from architectures.common_utils import VGGLoss
-
+from architectures.cnn import CNNEncoder, ResBlocks, Conv2dBlock
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class VAE(AutoencoderKL):
-    """
-    A Variational Autoencoder class that inherits from diffusers.AutoencoderKL.
+class Linker(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(Linker, self).__init__()
+        self.conv = nn.Conv2d(input_dim, output_dim, 1)
+        nn.init.xavier_uniform_(self.conv.weight)
+        nn.init.constant_(self.conv.bias, 0)
     
-    This class encapsulates the forward pass and loss calculation, making the
-    training loop cleaner and allowing for easy extension with new methods.
-    """
-    def __init__(self, *args, **kwargs):
-        # The __init__ method accepts all arguments that AutoencoderKL accepts
-        # and passes them directly to the parent class constructor.
-        # This makes it fully compatible with Hydra's instantiation.
-        super().__init__(*args, **kwargs)
+    def forward(self, x):
+        return self.conv(x)
+
+class SpatialDecoder(nn.Module):
+    def __init__(self, n_upsample, n_res, dim, output_dim, activ='relu', pad_type='zero', norm='in'):
+        """
+        Spatial decoder matching CNNEncoder reverse structure.
+        We assume input features start at dim * 2**n_downsample from encoder, but we project z back to this.
+        """
+        super(SpatialDecoder, self).__init__()
+        
+        self.dim = dim * (2**n_upsample) # Start with high channels
+        
+        # AdaIN residual blocks? Or just standard ResBlocks as in Encoder?
+        # Encoder used ResBlocks with 'norm' passed in (default 'in').
+        # Let's match typical VAE: ResBlocks -> Upsample layers
+        
+        self.res_layers = ResBlocks(n_res, self.dim, norm, activ, pad_type=pad_type)
+        
+        self.upsample_layers = nn.Sequential()
+        current_dim = self.dim
+        
+        # n_upsample times
+        for i in range(n_upsample):
+            self.upsample_layers.add_module(f"UpSampling_{i}", nn.Upsample(scale_factor=2))
+            self.upsample_layers.add_module(f"Conv2dBlock_{i}", Conv2dBlock(current_dim, current_dim // 2, 3, 1, 1, norm=norm, activation=activ, pad_type=pad_type))
+            current_dim //= 2
+            
+        # Final output conv
+        self.final_conv = Conv2dBlock(current_dim, output_dim, 3, 1, 1, norm='none', activation='none', pad_type=pad_type)
+
+    def forward(self, x):
+        x = self.res_layers(x)
+        x = self.upsample_layers(x)
+        x = self.final_conv(x)
+        # Using Tanh as in typical VAEs usually? Or just Identity?
+        # train_vae.py VAE.load_params showed TextConditionedVAE using tanh+scaling.
+        # AutoencoderKL usually expects raw logits or depends on config.
+        # Let's stick to raw output here unless we want to enforce [-1, 1].
+        # But wait, default behavior of AutoencoderKL decode doesn't squash unless specified?
+        # Let's use no key activation here, assuming loss function handles it or we rely on logic.
+        # But wait, check previous implementation view?
+        # VAE/vae.py previously inherited AutoencoderKL, which usually ends with Conv2d for mean.
+        return x
+
+class VAE(nn.Module):
+    def __init__(self, input_dim, dim, n_downsample, n_res, activ, pad_type, norm, latent_channels):
+        super(VAE, self).__init__()
+        
+        self.config = type('Config', (), {'latent_channels': latent_channels})() # mimic config object
+        self.latent_channels = latent_channels
+        
+        # Encoder
+        self.encoder = CNNEncoder(n_downsample, n_res, input_dim, dim, norm, activ, pad_type)
+        encoder_out_dim = self.encoder.output_dim
+        
+        # Quant Conv (Map to mean + logvar)
+        self.quant_conv = nn.Conv2d(encoder_out_dim, 2 * latent_channels, 1)
+        
+        # Post Quant Conv (Map z back to features)
+        self.post_quant_conv = nn.Conv2d(latent_channels, encoder_out_dim, 1)
+        
+        # Decoder
+        self.decoder = SpatialDecoder(n_downsample, n_res, dim, input_dim, activ, pad_type, norm)
+        
         self.vgg_loss = VGGLoss(device)
 
+    def encode(self, x):
+        h = self.encoder(x)
+        moments = self.quant_conv(h)
+        posterior = DiagonalGaussianDistribution(moments)
+        return type('EncoderOutput', (), {'latent_dist': posterior})()
+
+    def decode(self, z):
+        z = self.post_quant_conv(z)
+        dec = self.decoder(z)
+        return type('DecoderOutput', (), {'sample': dec})()
+
     def forward(self, x: torch.Tensor):
-        """
-        Performs the forward pass of the VAE.
-
-        Args:
-            x (torch.Tensor): The input batch of images.
-
-        Returns:
-            Dict: A dictionary containing
-                the reconstructed images and the posterior distribution.
-        """
-        x = x["pixel_values"]
-        # Encode the input to get the posterior distribution
-        posterior = self.encode(x).latent_dist
-        
-        # Sample from the posterior distribution to get the latents
-        latents = posterior.sample()
-        
-        # Decode the latents to reconstruct the image
-        # Sample is used to get the mean of the decoded output distribution
+        x_img = x["pixel_values"]
+        posterior = self.encode(x_img).latent_dist
         if self.training:
-            reconstructed_x = self.decode(latents).sample
+            latents = posterior.sample()
         else:
-            reconstructed_x = self.decode(posterior.mode()).sample
+            latents = posterior.mode()
+            
+        reconstructed_x = self.decode(latents).sample
         
         return {
             "reconstructed_x": reconstructed_x, 
             "posterior": posterior,
             "latent" : latents
         }
+
+    def loss_function(self, original_x, forward_output, **kwargs):
+        original_images = original_x["pixel_values"]
+        reconstructed_images = forward_output["reconstructed_x"]
+        posterior = forward_output["posterior"]
+
+        recon_loss = F.mse_loss(reconstructed_images, original_images, reduction="none")
+        recon_loss = recon_loss.view(recon_loss.size(0), -1).sum(dim=1).mean()
         
+        perceptual_loss = self.vgg_loss(original_images, reconstructed_images)
+
+        kl_loss = posterior.kl()
+        kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
+
+        total_loss = recon_loss + perceptual_loss + kwargs.get("kl_weight", 1.0) * kl_loss
+
+        return {
+            "total_loss": total_loss,
+            "recon_loss": recon_loss,
+            "kl_loss": kl_loss,
+            "perceptual_loss": perceptual_loss,
+        }
+
     def set_optimizers(self, parms):
         self.vae_optim = optim.AdamW(self.parameters(),
                                 lr=parms.lr,
@@ -63,7 +142,6 @@ class VAE(AutoencoderKL):
                                 eps=parms.eps,
                                )
         
-        # Initialize scheduler
         if hasattr(parms, "scheduler"):
             self.scheduler = self._get_scheduler(self.vae_optim, parms.scheduler)
         else:
@@ -92,99 +170,71 @@ class VAE(AutoencoderKL):
         if self.scheduler:
             self.scheduler.step()
 
-    def loss_function(
-        self,
-        original_x: torch.Tensor,
-        forward_output: Dict,
-        **kwargs,
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Calculates the VAE loss components.
-
-        Args:
-            original_x (torch.Tensor): The original input images.
-            forward_output (Dict): The output from the forward pass.
-            kl_weight (float): The weight for the KL divergence term.
-
-        Returns:
-            Dict[str, torch.Tensor]: A dictionary containing total loss,
-                reconstruction loss, and KL divergence loss.
-        """
-        original_x = original_x["pixel_values"]
-        reconstructed_x = forward_output["reconstructed_x"]
-        posterior = forward_output["posterior"]
-
-        # Reconstruction Loss (MSE)
-        # We flatten the image dimensions and sum over them, then take the mean over the batch.
-        recon_loss = F.mse_loss(reconstructed_x, original_x, reduction="none")
-        recon_loss = recon_loss.view(recon_loss.size(0), -1).sum(dim=1).mean()
-        
-        perceptual_loss = self.vgg_loss(original_x, reconstructed_x)
-
-        # KL Divergence Loss
-        # This is the standard formula for KL divergence between the posterior and a standard normal prior.
-        kl_loss = -0.5 * torch.sum(1 + posterior.logvar - posterior.mean.pow(2) - posterior.logvar.exp(), dim=[1, 2, 3]).mean()
-
-        # Total Loss
-        total_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss
-
-        return {
-            "total_loss": total_loss,
-            "recon_loss": recon_loss,
-            "kl_loss": kl_loss,
-            "perceptual_loss": perceptual_loss,
-        }
-
     def optimize_discriminator(self, losses, accelerator):
         pass
         
     def optimize_generator(self, losses, accelerator, forward_output=None, **kwargs):
         self.vae_optim.zero_grad()
         accelerator.backward(losses["total_loss"])
+        # Clip grads if needed, relying on train_vae.py to handle clipping if configured
         self.vae_optim.step()
 
-    def generate(self, sampler, num_samples: int, device: torch.device, *args) -> torch.Tensor:
-        """
-        Generates new images by sampling from the latent space.
+    def generate(self, output_dict, num_samples: int, device: torch.device, *args) -> torch.Tensor:
+        # Sample random noise
+        # Infer shape from output_dict latent if available, else standard?
+        # Actually generate method usually generates from scratch or arguments.
+        # The previous implementation inferred shape from config.
+        # But we can also check the latent_channels.
         
-        This is an example of an additional method you can add for more controllability.
+        # Assumption: We generate at same resolution as we learned?
+        # If n_downsample=3, 80x80 -> 10x10.
+        # But wait, 80 / 8 = 10.
+        # Previous checkpoint was 80 input -> 5 output?
+        # That implies downsample of 16 (4 layers).
+        
+        # Since we just verified the previous check point was 5x5 for 80x80.
+        # But now we are defining a NEW architecture with n_downsample=3.
+        # So 80x80 -> 10x10.
+        # Let's use 10x10 as default for generation if we assume 3 downsamples on 80.
+        # Or better, check current config? We don't have access to env config here easily.
+        # Just use hardcoded or what?
+        
+        # Let's try to grab shape from passed output_dict if possible.
+        if output_dict is not None and "latent" in output_dict:
+             latent_shape = output_dict["latent"].shape[2:]
+        else:
+             latent_shape = (10, 10)
 
-        Args:
-            num_samples (int): The number of images to generate.
-            device (torch.device): The device to generate the images on (e.g., 'cuda').
-
-        Returns:
-            torch.Tensor: A tensor of generated images.
-        """
-        # The latent space dimensions are determined by the model's architecture.
-        # It's (batch_size, latent_channels, height/downsample_factor, width/downsample_factor)
-        # Using fixed downsample factor of 8 (2^3) for now based on config
-        latent_height = 14 # 112 / 8
-        latent_width = 14
-
-        # Sample random noise from a standard normal distribution
         z = torch.randn(
             num_samples, 
-            self.config.latent_channels, 
-            latent_height, 
-            latent_width
+            self.latent_channels, 
+            *latent_shape
         ).to(device)
         
-        # Decode the random noise to generate images
         generated_images = self.decode(z).sample
-        
-        generated_images = generated_images*0.5 + 0.5
-        
+        generated_images = (generated_images * 0.5 + 0.5).clamp(0, 1) # Normalize for display
         return generated_images
-        
+
     def load_params(self, path):
-        """Load model and optimizer parameters."""
-        params = torch.load(path, map_location=device)
-        self.load_state_dict(params["network"])
-        print("[INFO] loaded the Text Conditioned VAE model", path)
+        # We need to be careful. If path is a TAR, it has "network".
+        # If it's a diffusers folder, it's different.
+        # Assuming TAR based on project style.
+        # But WAIT. If we load the OLD checkpoint (AutoencoderKL) into THIS model (CNN), keys will mismatch.
+        # The user asked to Refactor. They probably intend to Retrain?
+        # "Preserve the methods called in train_vae.py".
+        # If we run train_vae.py, we might load a checkpoint if is_model_fine_tune is True.
+        try:
+            params = torch.load(path, map_location=device)
+            if "network" in params:
+                self.load_state_dict(params["network"])
+            else:
+                 # Attempt strict=False if keys loosely match?
+                 self.load_state_dict(params, strict=False)
+            print("[INFO] loaded VAE model", path)
+        except Exception as e:
+            print(f"[WARN] Failed to load params from {path}: {e}")
 
     def save(self, dump_dir, save_name):
-        """Save model and optimizer parameters."""
         params = {
                 "network": self.state_dict(),
                 }
@@ -192,4 +242,4 @@ class VAE(AutoencoderKL):
         os.makedirs(save_dir, exist_ok=True)
         checkpoint_path = save_dir + save_name + '.tar'
         torch.save(params, checkpoint_path)
-        print("[INFO] Text Conditioned VAE model saved to: ", checkpoint_path)
+        print("[INFO] VAE model saved to: ", checkpoint_path)

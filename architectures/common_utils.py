@@ -1581,3 +1581,73 @@ class SwitchChannel(gym.ObservationWrapper):
         obs = self.observation(obs)
         return obs, info
 
+        return self.vision_model.decoder(latent, **kwargs)
+
+def calculate_vae_scaling_factor(vae, dataloader, num_images=5000, device='cuda'):
+    """
+    Calculates the scaling factor required to normalize VAE latents to unit variance.
+    
+    Args:
+        vae: The VAE model.
+        dataloader: DataLoader returning batches of images.
+        num_images (int): Number of images to use for calculation.
+        device (str): Device to run calculation on.
+        
+    Returns:
+        float: The scaling factor (1 / std_dev).
+    """
+    print(f"Calculating VAE scaling factor using {num_images} images...")
+    vae.eval()
+    vae.to(device)
+    
+    all_latents = []
+    count = 0
+    
+    # Iterate through dataloader
+    # We create an iterator to avoid consuming the original dataloader if it's not persistent,
+    # but here we just need a few batches.
+    
+    from tqdm.auto import tqdm
+    progress_bar = tqdm(total=num_images, desc="Collecting latents")
+    
+    with torch.no_grad():
+        for batch in dataloader:
+            if count >= num_images:
+                break
+                
+            images = batch["pixel_values"].to(device)
+            current_batch_size = images.shape[0]
+            
+            # Encode
+            if hasattr(vae, 'encode'):
+                posterior = vae.encode(images).latent_dist
+                latents = posterior.sample()
+            else:
+                 # Fallback for wrapper
+                 mini_batch = {"pixel_values": images}
+                 # We assume the wrapper has 'encode' or similar if we look closely, 
+                 # but based on previous context, user said VAE is in models/vae.py.
+                 # If standard AutoencoderKL:
+                 posterior = vae.encode(images).latent_dist
+                 latents = posterior.sample()
+            
+            all_latents.append(latents.cpu())
+            count += current_batch_size
+            progress_bar.update(current_batch_size)
+            
+    progress_bar.close()
+    
+    all_latents = torch.cat(all_latents, dim=0)
+    
+    # Calculate across all dimensions involved in normalization?
+    # Usually global std dev is used for scaling factor in Diffusion (one scalar).
+    std = all_latents.std()
+    mean = all_latents.mean()
+    
+    print(f"  Latent Mean: {mean.item():.4f}")
+    print(f"  Latent Std: {std.item():.4f}")
+    
+    scale_factor = 1.0 / std.item()
+    print(f"  Calculated Scaling Factor: {scale_factor:.4f}")
+    
+    return scale_factor
