@@ -15,7 +15,7 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from architectures.common_utils import get_dataloader, create_dump_directory, calculate_vae_scaling_factor
+from architectures.common_utils import get_dataloader, create_dump_directory
 from torchvision.utils import make_grid
 from hydra.utils import instantiate
 from Diffusion_model_imagination.models.diffusion import DiffusionImaginationModel
@@ -44,28 +44,8 @@ def main(cfg: DictConfig):
     accelerator.print("Loading dataset...")
     dataloader = get_dataloader(cfg) # Using existing dataloader
     
-    # 3. Initialize VAE (Frozen)
-    accelerator.print(f"Loading VAE from {cfg.models.vae_path}")
-    vae = instantiate(cfg.models.vae.model)
-    vae.load_params(cfg.models.vae_path)
-    vae.eval()
-    vae.requires_grad_(False)
     
-    # Calculate Scaling Factor (Main Process only, then broadcast? Or just calculate on all if fast enough)
-    # Using 500 samples (user asked for 5000, but let's stick to what's reasonable interactively unless forced. 
-    # User asked for "5000 images". Okay.)
-    # Note: If multi-gpu, this might be redundant work on each proc, but it's safe.
-    vae_scaling_factor = 1.0
-    # Actually, we should probably just run this on main process and broadcast, OR just run on all. 
-    # Running on all ensures everyone has same value if deterministic. 
-    # But let's just run it. 
-    accelerator.print("Calculating VAE scaling factor...")
-    # Create a temporary dataloader for this? Or reuse `dataloader`.
-    # `calculate_vae_scaling_factor` handles iterator.
-    vae_scaling_factor = calculate_vae_scaling_factor(vae, dataloader, num_images=5000, device=accelerator.device)
-    accelerator.print(f"Using VAE Scaling Factor: {vae_scaling_factor}")
-
-    # Load Text Encoder and Tokenizer explicitly
+    # 3. Load Text Encoder and Tokenizer explicitly
     accelerator.print(f"Loading Text Encoder from {cfg.models.data.text_encoder_path}")
     tokenizer = CLIPTokenizer.from_pretrained(cfg.models.data.text_encoder_path)
     text_encoder = CLIPTextModel.from_pretrained(cfg.models.data.text_encoder_path)
@@ -75,41 +55,33 @@ def main(cfg: DictConfig):
     # 4. Initialize Diffusion Model
     accelerator.print("Initializing Diffusion Model...")
     
-    # Get latent channel from VAE
-    latent_channel = 4
-    if hasattr(vae, 'config') and hasattr(vae.config, 'latent_channels'):
-        latent_channel = vae.config.latent_channels
-    elif hasattr(vae, 'latent_channel'):
-        latent_channel = vae.latent_channel
-    
-    accelerator.print(f"Detected VAE latent channel: {latent_channel}")
-    
-    # Construct config for 10x10 latents (padded to 16x16)
-    # We pad to 16x16 for U-Net stability (16->8->4 through 2 downsamples).
+    # U-Net Config for 80x80 Pixel Diffusion (Lightweight)
     unet_config = {
-        "sample_size": 16, 
-        "in_channels": latent_channel,
-        "out_channels": latent_channel,
+        "sample_size": 80, 
+        "in_channels": 3,
+        "out_channels": 3,
         "layers_per_block": 1,
-        "block_out_channels": (128, 256), # Only 2 levels
+        "block_out_channels": (32, 64, 128, 256), 
         "down_block_types": (
-            "CrossAttnDownBlock2D", # 16 -> 8
-            "DownBlock2D",          # 8 -> 4
+            "DownBlock2D",          # 80 -> 40
+            "CrossAttnDownBlock2D", # 40 -> 20
+            "CrossAttnDownBlock2D", # 20 -> 10
+            "CrossAttnDownBlock2D", # 10 -> 5 
         ),
         "up_block_types": (
-            "UpBlock2D",            # 4 -> 8
-            "CrossAttnUpBlock2D",   # 8 -> 16
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "UpBlock2D",
         ),
-        "cross_attention_dim": text_encoder.config.hidden_size, # Standard CLIP embedding dim
-        "attention_head_dim": 8,
+        "cross_attention_dim": text_encoder.config.hidden_size, 
+        "attention_head_dim": 64, # Increased to 64
     }
 
-    # Instantiate custom wrapper
+    # Instantiate model (No VAE)
     model = DiffusionImaginationModel(
-        vae, 
         unet_config=unet_config,
-        num_train_timesteps=cfg.models.training.num_train_timesteps,
-        scaling_factor=vae_scaling_factor
+        num_train_timesteps=cfg.models.training.num_train_timesteps
     )
     
     # 5. Optimizer
@@ -133,7 +105,7 @@ def main(cfg: DictConfig):
     # 6. Prepare
     model.unet, optimizer, dataloader, lr_scheduler = accelerator.prepare(model.unet, optimizer, dataloader, lr_scheduler)
     # VAE and Text Encoder are kept on device but not prepared for training
-    model.vae.to(accelerator.device)
+    # model.vae.to(accelerator.device) # Removed
     text_encoder.to(accelerator.device)
     
     # 7. Training Loop
@@ -257,18 +229,9 @@ def main(cfg: DictConfig):
                          # 1. Reconstruction (Column 1)
                          # Use VAE forward pass (handles encoding -> decoding)
                          # Standard VAE forward does not take dict anymore if we use AutoencoderKL style
-                         # But let's check VAE.py wrapper. It takes "x".
-                         # If we use VAE.py wrapper:
-                         # It expects dict with "pixel_values"
-                         mini_batch = {
-                             "pixel_values": vis_images,
-                         }
-                         # VAE.forward returns dict.
-                         vae_out = model.vae(mini_batch)
-                         recon_images = vae_out["reconstructed_x"]
-                         
-                         # Clamp and Normalize for display [0,1]
-                         recon_images = (recon_images * 0.5 + 0.5).clamp(0, 1)
+                         # 1. Original Images (Column 1)
+                         # Denormalize for display [0,1]
+                         orig_images_display = (vis_images * 0.5 + 0.5).clamp(0, 1)
                          
                          # 2. Imagination (Columns 2-7)
                          imagination_cols = []
@@ -314,22 +277,15 @@ def main(cfg: DictConfig):
                                  num_inference_steps=cfg.models.training.num_inference_steps
                              )
                              
-                             # Decode (Normal VAE decode - no text conditioning)
-                             if hasattr(model.vae, 'decode'):
-                                 # Standard AutoencoderKL decode
-                                 gen_images = model.vae.decode(img_latents).sample
-                             else:
-                                 # Fallback? VAE.py should inherit decode.
-                                 gen_images = model.vae.decoder(img_latents) # If it was TextConditioned, but we are switching.
-                             
-                             gen_images = (gen_images * 0.5 + 0.5).clamp(0, 1)
+                             # Decode (No decoding needed)
+                             gen_images = (img_latents * 0.5 + 0.5).clamp(0, 1)
                              imagination_cols.append(gen_images)
                          
                          # 3. Assemble Grid
                          rows = []
                          for i in range(current_bsz):
                              orig_img = (vis_images[i] * 0.5 + 0.5).clamp(0, 1)
-                             row_imgs = [orig_img, recon_images[i]] # Col 1: Orig, Col 2: Recon
+                             row_imgs = [orig_img] # Col 1: Orig
                              for col in imagination_cols:
                                  row_imgs.append(col[i]) # Col 3-8
                              

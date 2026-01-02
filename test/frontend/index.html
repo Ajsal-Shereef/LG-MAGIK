@@ -4,450 +4,627 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VAE Imagination</title>
+    <title>Magik Lens</title>
     <style>
         :root {
-            --bg-color: #121212;
-            --surface-color: #1e1e1e;
+            --bg-color: #0d0d0d;
+            --surface-color: #1a1a1a;
             --primary-color: #bb86fc;
             --secondary-color: #03dac6;
             --text-color: #e0e0e0;
-            --input-bg: #2d2d2d;
+            --input-bg: #262626;
             --border-color: #333;
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-
-        .main-layout {
+            padding: 0;
+            height: 100vh;
             display: flex;
             flex-direction: column;
-            width: 95%;
-            max-width: 1400px;
-            height: 90vh;
-            gap: 20px;
-        }
-
-        .panels-container {
-            display: flex;
-            flex: 1;
-            gap: 20px;
-            min-height: 0;
-            /* Important for flex nested scrolling */
-        }
-
-        .panel {
-            background-color: var(--surface-color);
-            border-radius: 16px;
-            border: 1px solid var(--border-color);
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-            position: relative;
             overflow: hidden;
         }
 
-        .panel-header {
+        /* View Container */
+        .view-container {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .view-container.active {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            z-index: 10;
         }
 
-        h2 {
-            margin: 0;
-            font-weight: 300;
-            color: var(--primary-color);
-            font-size: 1.2rem;
+        /* Main Grid */
+        .view-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr auto;
+            flex: 1;
+            height: 100%;
+            overflow: hidden;
         }
 
-        .controls-container {
-            background-color: var(--surface-color);
-            border-radius: 16px;
-            border: 1px solid var(--border-color);
+        /* Panels */
+        .panel {
             padding: 20px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .left-panel {
+            grid-column: 1 / 2;
+            grid-row: 1 / 2;
+            border-right: none;
+        }
+
+        .right-panel {
+            grid-column: 2 / 3;
+            grid-row: 1 / 2;
+        }
+
+        .bottom-panel {
+            grid-column: 1 / 3;
+            grid-row: 2 / 3;
+            background-color: var(--surface-color);
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
             display: flex;
             gap: 20px;
+            align-items: flex-start;
+            height: 250px;
+            box-sizing: border-box;
+        }
+
+        /* 2x2 Inner Layout within Panels */
+        /* Note: To ensure vertical alignment across panels, we use strict percentages or flex ratios */
+        .section-header {
+            color: var(--primary-color);
+            font-weight: 300;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .image-container {
+            flex: 1;
+            display: flex;
             align-items: center;
-            /* Align textarea and button vertically */
+            justify-content: center;
+            background: #111;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+            overflow: hidden;
+            position: relative;
+            min-height: 200px;
         }
 
-        .caption-group {
-            flex-grow: 1;
+        /* Interactive Upload Container */
+        .upload-container {
+            cursor: pointer;
+            transition: border-color 0.2s;
         }
 
-        label {
-            font-weight: 500;
-            color: #aaa;
-            font-size: 0.9rem;
+        .upload-container:hover {
+            border-color: var(--primary-color);
+        }
+
+        .upload-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            color: #888;
+            pointer-events: none;
+        }
+
+        /* Images */
+        img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
             display: block;
-            margin-bottom: 8px;
+        }
+
+        /* Hide File Input */
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Controls */
+        .controls {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .caption-box {
+            flex: 4;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
 
         textarea {
             background-color: var(--input-bg);
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 12px;
-            color: var(--text-color);
-            font-size: 1rem;
-            width: 100%;
-            height: 80px;
-            /* Fixed height for footer */
-            box-sizing: border-box;
-            transition: border-color 0.2s;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 6px;
             resize: none;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary-color);
-        }
-
-        .file-upload {
-            border: 2px dashed var(--border-color);
-            border-radius: 8px;
             flex: 1;
+            font-family: inherit;
+        }
+
+        .sliders-box {
+            flex: 5;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            position: relative;
-            background-color: var(--input-bg);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .file-upload:hover {
-            border-color: var(--primary-color);
-            background-color: #252525;
-        }
-
-        /* The result area is just a div but styled similar to file-upload minus handling interaction */
-        .image-display-area {
-            border: 2px solid transparent;
-            /* To match spacing */
-            border-radius: 8px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            position: relative;
-            background-color: #171717;
-        }
-
-        .file-upload input {
-            position: absolute;
-            width: 100%;
+            gap: 5px;
             height: 100%;
-            top: 0;
-            left: 0;
-            opacity: 0;
+        }
+
+        .sliders-scroll {
+            overflow-y: auto;
+            flex: 1;
+            padding-right: 5px;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            font-size: 0.8rem;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            flex: 1;
             cursor: pointer;
         }
 
-        #preview-image,
-        #result-image {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            display: none;
-            border-radius: 4px;
-            transition: transform 0.2s ease-out;
-            transform-origin: center center;
+        .action-box {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            justify-content: center;
         }
 
-        .upload-text {
-            pointer-events: none;
-            text-align: center;
-            color: #888;
-        }
-
-        .placeholder-text {
-            color: #444;
-            text-align: center;
-        }
-
-        button.btn {
+        button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
             background-color: var(--primary-color);
             color: #000;
-            border: none;
-            padding: 0 40px;
-            height: 80px;
-            /* Match textarea height */
-            border-radius: 8px;
-            font-size: 1.2rem;
-            font-weight: 600;
+            font-weight: bold;
             cursor: pointer;
-            transition: transform 0.1s, filter 0.2s;
-            white-space: nowrap;
+            font-size: 1rem;
         }
 
-        button.btn:hover {
+        button:hover {
             filter: brightness(1.1);
         }
 
-        button.btn:active {
-            transform: scale(0.98);
-        }
-
-        button.btn:disabled {
+        button:disabled {
             background-color: #555;
             cursor: not-allowed;
-            filter: none;
         }
 
-        /* Loader */
-        .loader {
-            border: 4px solid #333;
-            border-top: 4px solid var(--secondary-color);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            display: none;
+        .sm-btn {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            background: #333;
+            color: #fff;
         }
 
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
+        .switch-btn {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            z-index: 100;
+            background-color: var(--secondary-color);
+            font-size: 0.8rem;
+            padding: 8px 15px;
         }
 
-        /* Zoom Control Group */
-        .zoom-controls {
-            display: none;
-            /* Hidden by default */
-            gap: 10px;
+        /* Latent Overlay */
+        .overlay-loader {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary-color);
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        /* Zoom btns */
+        .zoom-ctrl {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+            z-index: 5;
         }
 
         .zoom-btn {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: var(--primary-color);
-            border: 1px solid var(--primary-color);
-            border-radius: 4px;
+            width: 24px;
+            height: 24px;
             padding: 0;
-            width: 32px;
-            height: 32px;
-            font-size: 1.2rem;
-            cursor: pointer;
             display: flex;
-            justify-content: center;
             align-items: center;
-            line-height: 1;
-        }
-
-        .zoom-btn:hover {
-            background-color: var(--primary-color);
-            color: #000;
-        }
-
-        @media (max-width: 768px) {
-            .panels-container {
-                flex-direction: column;
-            }
-
-            .controls-container {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            button.btn {
-                height: 50px;
-            }
-
-            .main-layout {
-                height: auto;
-            }
+            justify-content: center;
         }
     </style>
 </head>
 
 <body>
 
-    <div class="main-layout">
-        <div class="panels-container">
-            <!-- Input Panel -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h2>Input Image</h2>
-                    <div class="zoom-controls" id="input-zoom-controls">
-                        <button class="zoom-btn" onclick="zoomImage('input', -1)">-</button>
-                        <button class="zoom-btn" onclick="zoomImage('input', 1)">+</button>
+    <!-- ============================================ -->
+    <!-- VIEW 1: LATENT VISUALIZATION (Default)       -->
+    <!-- ============================================ -->
+    <div id="view-latent" class="view-container active">
+        <button class="switch-btn" onclick="switchView('imagine')">Switch to Imagination Mode</button>
+
+        <div class="view-grid">
+            <!-- Left Panel -->
+            <div class="panel left-panel">
+                <!-- 1. Input Image Section -->
+                <div class="section-header">Input Image</div>
+                <div class="image-container upload-container"
+                    onclick="document.getElementById('latent-upload').click()">
+                    <div class="zoom-ctrl">
+                        <button class="zoom-btn" onclick="zoom('latent-input', -1, event)">-</button>
+                        <button class="zoom-btn" onclick="zoom('latent-input', 1, event)">+</button>
                     </div>
+                    <!-- Placeholder -->
+                    <div id="latent-placeholder" class="upload-placeholder">
+                        <span style="font-size: 2rem;">+</span>
+                        <span>Click to Upload</span>
+                    </div>
+                    <!-- Image Preview (Replaces placeholder) -->
+                    <img id="latent-input-preview" src="" style="display: none;">
+
+                    <input type="file" id="latent-upload" accept="image/*" onchange="handleLatentUpload(this)">
                 </div>
 
-                <div class="file-upload" id="drop-zone">
-                    <div class="upload-text" id="upload-text">
-                        <span>Click or Drag to Upload</span>
-                    </div>
-                    <img id="preview-image" src="" alt="Preview">
-                    <input type="file" id="image-input" accept="image/*">
+                <!-- 2. Original Latent Section -->
+                <div class="section-header">Original Latent</div>
+                <div class="image-container">
+                    <img id="latent-orig-img" src="" style="display: none;">
                 </div>
             </div>
 
-            <!-- Output Panel -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h2 style="color: var(--secondary-color);">Result</h2>
-                    <div class="zoom-controls" id="result-zoom-controls">
-                        <button class="zoom-btn" onclick="zoomImage('result', -1)">-</button>
-                        <button class="zoom-btn" onclick="zoomImage('result', 1)">+</button>
+            <!-- Right Panel -->
+            <div class="panel right-panel">
+                <div id="latent-loader" class="overlay-loader" style="display: none;">Processing...</div>
+
+                <!-- 1. Reconstruction Section -->
+                <div class="section-header">Reconstruction</div>
+                <div class="image-container">
+                    <div class="zoom-ctrl">
+                        <button class="zoom-btn" onclick="zoom('latent-recon', -1, event)">-</button>
+                        <button class="zoom-btn" onclick="zoom('latent-recon', 1, event)">+</button>
+                    </div>
+                    <img id="latent-recon-img" src="" style="display: none;">
+                </div>
+
+                <!-- 2. Modified Latent Section -->
+                <div class="section-header">Modified Latent</div>
+                <div class="image-container">
+                    <img id="latent-mod-img" src="" style="display: none;">
+                </div>
+            </div>
+
+            <!-- Bottom Panel -->
+            <div class="bottom-panel">
+                <div class="controls">
+                    <div class="caption-box">
+                        <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Caption</label>
+                        <textarea
+                            id="latent-caption">The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 8.91 at a distance of 4.5 units. A green ball is found slightly to the left at angle 14.5 at a distance of 3.4 units.</textarea>
+                    </div>
+
+                    <div class="sliders-box">
+                        <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Latent Channels ([-10,
+                            10])</label>
+                        <div id="sliders-container" class="sliders-scroll"></div>
+                    </div>
+
+                    <div class="action-box">
+                        <button id="latent-generate-btn" onclick="generateLatent(true)">Reconstruct</button>
+                        <button class="sm-btn" onclick="resetSliders()">Reset Scale</button>
                     </div>
                 </div>
-
-                <div class="image-display-area">
-                    <div class="placeholder-text" id="placeholder">Generated image will appear here</div>
-                    <div class="loader" id="loader"></div>
-                    <img id="result-image" src="" alt="Generated Result">
-                </div>
             </div>
-        </div>
-
-        <div class="controls-container">
-            <div class="caption-group">
-                <label>Caption Prompt</label>
-                <textarea id="caption-input"
-                    placeholder="e.g. A red ball on a blue floor...">Agent is in a room surrounded by grey walls. Agent sees in front, a green ball which is 1 unit apart at (3,5) and to the bottom left, a red ball which is 2 units apart at (2,5).</textarea>
-            </div>
-            <button class="btn" id="generate-btn" onclick="generateImage()">
-                Imagine
-            </button>
         </div>
     </div>
 
-    <script>
-        const imageInput = document.getElementById('image-input');
-        const previewImage = document.getElementById('preview-image');
-        const uploadText = document.getElementById('upload-text');
-        const generateBtn = document.getElementById('generate-btn');
-        const captionInput = document.getElementById('caption-input');
 
-        // Zoom Logic
-        let scales = {
-            'input': 1.0,
-            'result': 1.0
+    <!-- ============================================ -->
+    <!-- VIEW 2: IMAGINATION MODE                     -->
+    <!-- ============================================ -->
+    <div id="view-imagine" class="view-container">
+        <button class="switch-btn" onclick="switchView('latent')">Switch to Latent Visualization</button>
+
+        <div class="view-grid">
+            <!-- Left Panel -->
+            <div class="panel left-panel">
+                <div class="section-header">Input Image</div>
+                <div class="image-container upload-container" style="flex: 1; max-height: none;"
+                    onclick="document.getElementById('imagine-upload').click()">
+                    <div class="zoom-ctrl">
+                        <button class="zoom-btn" onclick="zoom('imagine-input', -1, event)">-</button>
+                        <button class="zoom-btn" onclick="zoom('imagine-input', 1, event)">+</button>
+                    </div>
+
+                    <div id="imagine-placeholder" class="upload-placeholder">
+                        <span style="font-size: 2rem;">+</span>
+                        <span>Click to Upload</span>
+                    </div>
+                    <img id="imagine-input-preview" src="" style="display: none;">
+
+                    <input type="file" id="imagine-upload" accept="image/*" onchange="handleImagineUpload(this)">
+                </div>
+            </div>
+
+            <!-- Right Panel -->
+            <div class="panel right-panel">
+                <div id="imagine-loader" class="overlay-loader" style="display: none;">Imagining...</div>
+
+                <div class="section-header">Output</div>
+                <div class="image-container" style="flex: 1; max-height: none;">
+                    <div class="zoom-ctrl">
+                        <button class="zoom-btn" onclick="zoom('imagine-output', -1, event)">-</button>
+                        <button class="zoom-btn" onclick="zoom('imagine-output', 1, event)">+</button>
+                    </div>
+                    <img id="imagine-result-img" src="" style="display: none;">
+                </div>
+            </div>
+
+            <!-- Bottom Panel -->
+            <div class="bottom-panel">
+                <div class="controls">
+                    <div class="caption-box">
+                        <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Caption Prompt</label>
+                        <textarea
+                            id="imagine-caption">The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 8.91 at a distance of 4.5 units. A green ball is found slightly to the left at angle 14.5 at a distance of 3.4 units.</textarea>
+                    </div>
+
+                    <div class="action-box">
+                        <button id="imagine-generate-btn" onclick="generateImagine()"
+                            style="width: 50%; align-self: center;">Imagine</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // State
+        let scales = Array(8).fill(1.0);
+        let zoomLevels = {
+            'imagine-input': 1.0,
+            'imagine-output': 1.0,
+            'latent-input': 1.0,
+            'latent-recon': 1.0
         };
 
-        function zoomImage(target, direction) {
-            let newScale = scales[target] + (direction * 0.2);
-            if (newScale < 0.4) newScale = 0.4;
-            if (newScale > 5.0) newScale = 5.0;
+        // --- View Switching ---
+        function switchView(mode) {
+            document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${mode}`).classList.add('active');
+        }
 
-            scales[target] = newScale;
+        // --- Zooom ---
+        function zoom(target, dir, event) {
+            if (event) event.stopPropagation();
+            zoomLevels[target] += dir * 0.2;
+            zoomLevels[target] = Math.max(0.4, Math.min(zoomLevels[target], 5.0));
 
-            const imgId = target === 'input' ? 'preview-image' : 'result-image';
+            let imgId = '';
+            if (target === 'imagine-input') imgId = 'imagine-input-preview';
+            if (target === 'imagine-output') imgId = 'imagine-result-img';
+            if (target === 'latent-input') imgId = 'latent-input-preview';
+            if (target === 'latent-recon') imgId = 'latent-recon-img';
+
             const img = document.getElementById(imgId);
-            if (img) {
-                img.style.transform = `scale(${newScale})`;
+            if (img) img.style.transform = `scale(${zoomLevels[target]})`;
+        }
+
+        // --- Logic: Latent View ---
+
+        // Init Sliders
+        const slidersDiv = document.getElementById('sliders-container');
+        for (let i = 0; i < 8; i++) {
+            const row = document.createElement('div');
+            row.className = 'slider-row';
+            row.innerHTML = `
+                <span style="width: 30px; text-align: right;">Ch${i}</span>
+                <input type="range" min="-10" max="10" step="0.1" value="1.0" oninput="updateScale(${i}, this.value)" onchange="generateLatent(true)">
+                <span id="val-${i}" style="width: 40px; text-align: right;">1.0</span>
+            `;
+            slidersDiv.appendChild(row);
+        }
+
+        function updateScale(idx, val) {
+            scales[idx] = parseFloat(val);
+            document.getElementById(`val-${idx}`).innerText = val;
+        }
+
+        function resetSliders() {
+            scales.fill(1.0);
+            document.querySelectorAll('#sliders-container input').forEach(inp => inp.value = 1.0);
+            document.querySelectorAll('#sliders-container span[id^="val-"]').forEach(sp => sp.innerText = '1.0');
+            const fileInput = document.getElementById('latent-upload');
+            if (fileInput.files[0]) generateLatent(true);
+        }
+
+        // Handle Upload & Preview
+        function handleLatentUpload(input) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    // Hide placeholder, show image
+                    document.getElementById('latent-placeholder').style.display = 'none';
+                    const img = document.getElementById('latent-input-preview');
+                    img.src = ev.target.result;
+                    img.style.display = 'block';
+
+                    // Auto-trigger generation
+                    generateLatent(false);
+                };
+                reader.readAsDataURL(file);
             }
         }
 
-        // Preview logic
-        imageInput.addEventListener('change', function (e) {
-            if (e.target.files && e.target.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    previewImage.src = e.target.result;
-                    previewImage.style.display = 'block';
-                    uploadText.style.display = 'none';
+        async function generateLatent(isModification = false) {
+            const fileInput = document.getElementById('latent-upload');
+            if (!fileInput.files[0]) return;
 
-                    document.getElementById('input-zoom-controls').style.display = 'flex';
-                    scales['input'] = 1.0;
-                    previewImage.style.transform = 'scale(1.0)';
-                }
-                reader.readAsDataURL(e.target.files[0]);
-            }
-        });
+            const file = fileInput.files[0];
+            const caption = document.getElementById('latent-caption').value;
+            const btn = document.getElementById('latent-generate-btn');
+            const loader = document.getElementById('latent-loader');
 
-        async function generateImage() {
-            if (!imageInput.files || !imageInput.files[0]) {
-                alert("Please select an image first.");
-                return;
-            }
-
-            const file = imageInput.files[0];
-            const caption = captionInput.value;
-
-            if (!caption) {
-                alert("Please enter a caption.");
-                return;
-            }
-
-            // UI State: Loading
-            const loader = document.getElementById('loader');
-            const resultImage = document.getElementById('result-image');
-            const placeholder = document.getElementById('placeholder');
-            const resultControls = document.getElementById('result-zoom-controls');
-
-            generateBtn.disabled = true;
-            generateBtn.innerText = "Imagining...";
-            loader.style.display = 'block';
-            resultImage.style.display = 'none';
-            resultControls.style.display = 'none';
-            placeholder.style.display = 'none';
-
-            scales['result'] = 1.0;
-            resultImage.style.transform = 'scale(1.0)';
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+            loader.style.display = 'flex';
 
             const formData = new FormData();
             formData.append('file', file);
             formData.append('caption', caption);
+            formData.append('mode', 'latent');
+
+            if (isModification) {
+                formData.append('channel_scales', JSON.stringify(scales));
+            }
 
             try {
-                const response = await fetch('/imagine', {
-                    method: 'POST',
-                    body: formData
-                });
+                const res = await fetch('/imagine', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error((await res.json()).detail);
 
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || "Failed to generate image");
+                const data = await res.json();
+
+                if (data.original_latent) {
+                    const img = document.getElementById('latent-orig-img');
+                    img.src = data.original_latent;
+                    img.style.display = 'block';
+                    if (!isModification) {
+                        // On first load, also show default reconstruction
+                        generateLatent(true);
+                    }
                 }
 
-                const blob = await response.blob();
-                const imageUrl = URL.createObjectURL(blob);
+                if (data.reconstruction) {
+                    const recon = document.getElementById('latent-recon-img');
+                    recon.src = data.reconstruction;
+                    recon.style.display = 'block';
+                }
 
-                resultImage.src = imageUrl;
-                resultImage.onload = () => {
-                    resultImage.style.display = 'block';
-                    resultImage.style.opacity = '1';
-                    loader.style.display = 'none';
-                    resultControls.style.display = 'flex';
-                };
+                if (data.modified_latent) {
+                    const mod = document.getElementById('latent-mod-img');
+                    mod.src = data.modified_latent;
+                    mod.style.display = 'block';
+                }
 
-            } catch (error) {
-                console.error(error);
-                alert("Error: " + error.message);
-                placeholder.style.display = 'block';
-                placeholder.innerText = "Error generating image.";
-                loader.style.display = 'none';
+            } catch (err) {
+                console.error(err);
+                alert("Error: " + err.message);
             } finally {
-                generateBtn.disabled = false;
-                generateBtn.innerText = "Imagine";
+                btn.disabled = false;
+                btn.innerText = "Reconstruct";
+                loader.style.display = 'none';
+            }
+        }
+
+
+        // --- Logic: Imagination View ---
+
+        function handleImagineUpload(input) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    document.getElementById('imagine-placeholder').style.display = 'none';
+                    const img = document.getElementById('imagine-input-preview');
+                    img.src = ev.target.result;
+                    img.style.display = 'block';
+
+                    // Reset zoom
+                    zoomLevels['imagine-input'] = 1.0;
+                    img.style.transform = 'scale(1.0)';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function generateImagine() {
+            const fileInput = document.getElementById('imagine-upload');
+            if (!fileInput.files[0]) return alert("Please upload an image first");
+
+            const file = fileInput.files[0];
+            const caption = document.getElementById('imagine-caption').value;
+            const btn = document.getElementById('imagine-generate-btn');
+            const loader = document.getElementById('imagine-loader');
+
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+            loader.style.display = 'flex';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('caption', caption);
+            formData.append('mode', 'imagination');
+
+            try {
+                const res = await fetch('/imagine', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error((await res.json()).detail);
+
+                const data = await res.json();
+
+                if (data.result) {
+                    const img = document.getElementById('imagine-result-img');
+                    img.src = data.result;
+                    img.style.display = 'block';
+
+                    // Reset zoom
+                    zoomLevels['imagine-output'] = 1.0;
+                    img.style.transform = 'scale(1.0)';
+                }
+
+            } catch (err) {
+                console.error(err);
+                alert("Error: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Imagine";
+                loader.style.display = 'none';
             }
         }
     </script>
-
 </body>
 
 </html>

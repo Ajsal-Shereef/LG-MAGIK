@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diffusion Imagination Tester</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Diffusion Imagination</h1>
+            <p>Test the pixel-space diffusion model with custom prompts and settings.</p>
+        </header>
+
+        <main>
+            <div class="control-panel">
+                <div class="input-group">
+                    <label for="image-upload">Source Image</label>
+                    <input type="file" id="image-upload" accept="image/*">
+                    <div class="zoom-wrapper">
+                        <div class="zoom-controls">
+                            <button class="zoom-btn" onclick="zoomImage('source-img', 0.1)">+</button>
+                            <button class="zoom-btn" onclick="zoomImage('source-img', -0.1)">-</button>
+                            <button class="zoom-btn" onclick="resetZoom('source-img')">R</button>
+                        </div>
+                        <div class="image-preview" id="source-preview">
+                            <span>No image selected</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="prompt">Target Prompt</label>
+                    <textarea id="prompt" rows="3" placeholder="Describe the desired change or scene..."></textarea>
+                </div>
+
+                <div class="input-group">
+                    <label for="strength">Strength: <span id="strength-val">0.6</span></label>
+                    <input type="range" id="strength" min="0" max="1" step="0.05" value="0.6">
+                    <small>Higher = more change from source image</small>
+                </div>
+
+                <div class="input-group">
+                    <label for="guidance">Guidance Scale: <span id="guidance-val">7.5</span></label>
+                    <input type="range" id="guidance" min="1" max="20" step="0.5" value="7.5">
+                    <small>Higher = closer to text prompt</small>
+                </div>
+
+                <button id="generate-btn">Generate Image</button>
+            </div>
+
+            <div class="result-panel">
+                <h2>Result</h2>
+                <div class="zoom-wrapper">
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="zoomImage('result-img', 0.1)">+</button>
+                        <button class="zoom-btn" onclick="zoomImage('result-img', -0.1)">-</button>
+                        <button class="zoom-btn" onclick="resetZoom('result-img')">R</button>
+                    </div>
+                    <div class="image-preview" id="result-preview">
+                        <span>Generated image will appear here</span>
+                    </div>
+                </div>
+                <button id="save-btn" class="hidden"
+                    style="width: 100%; padding: 15px; margin-top: 10px; cursor: pointer; background-color: #2c2c2c; border: 1px solid #444; color: #e0e0e0; border-radius: 8px;">Save
+                    Image</button>
+                <div id="loading" class="hidden">Generating...</div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/script.js?v=2"></script>
+</body>
+
+</html>

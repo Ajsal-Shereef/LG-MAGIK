@@ -6,7 +6,8 @@ defaults:
 
 models:
   model_name: "diffusion"
-  vae_path: "model_weights/DARLA/MiniWorld/2025-12-31_21-52-19_SE3Z8M/TextConditionedVAE.tar" 
+  test:
+    model_dir: "model_weights/diffusion/MiniWorld/2026-01-02_00-37-48_XAJI0Y/checkpoint-468000" 
   
   # For get_dataloader compatibility
   model:
@@ -34,14 +35,14 @@ models:
     experiment_name: "diffusion_imagination_v1"
     num_epochs: 100
     logs: "logs/diffusion"
-    save_interval: 1000
+    save_interval: 50000
     num_train_timesteps: 1000
     num_inference_steps: 50
     save_top_k: 3
-    log_media_interval: 50
+    log_media_interval: 8000
     num_images_to_generate: 4
     uncond_prob: 0.1
-    imagination_strength: 0.4
+    imagination_strength: 0.75
     
   optimizer:
     lr: 1e-4
