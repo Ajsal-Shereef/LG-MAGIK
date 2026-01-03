@@ -60,7 +60,7 @@ class TextConditionedVAE(nn.Module):
                 token_len = self.decoder.tokenizer.model_max_length
             
             self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
-                                             token_len * self.decoder.text_dim,
+                                             self.decoder.text_dim,
                                              discriminator_fc_hidden)
             if self.use_image_discriminator:
                 in_ch = kwargs.get("disc_in_channels", input_dim)
@@ -95,7 +95,7 @@ class TextConditionedVAE(nn.Module):
             self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)
             self.decoder = MLPTextConditionedDecoder(latent_dim, input_dim, decoder_hidden_dims, clip_model)
             self.caption_discriminator = MLP(latent_dim,
-                                             self.decoder.tokenizer.model_max_length * self.decoder.text_dim,
+                                             self.decoder.text_dim,
                                              discriminator_fc_hidden)
             self.image_discriminator = None
             self.train_transform = get_train_transform_mlp()
@@ -205,8 +205,11 @@ class TextConditionedVAE(nn.Module):
                 "text_feats": text_feats # Add text features to the output
                 }
 
-    def loss_function(self, original_x, forward_output, **kwargs):
-        original_x = original_x["pixel_values"]
+    def loss_function(self, batch, forward_output, **kwargs):
+        # Retrieve attention masks from the original batch for pooling
+        attention_mask = batch.get("attention_masks", None)
+        
+        original_x = batch["pixel_values"]
         reconstructed_x = forward_output["reconstructed_x"]
         posterior = forward_output["posterior"]
         text_feats = forward_output["text_feats"] # Retrieve text features
@@ -226,17 +229,33 @@ class TextConditionedVAE(nn.Module):
             perceptual_loss = torch.tensor(0.0, device=original_x.device)
         
         # === Adversarial disentanglement loss ===
+        # === Adversarial disentanglement loss ===
         z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
         pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
-        pred = pred.view_as(text_feats) # Use retrieved text_feats for view_as
-        pred_n = F.normalize(pred, dim=-1)
-        tgt_n = F.normalize(text_feats.detach(), dim=-1) # Use retrieved text_feats
+        
+        # --- Pooled Embedding Logic ---
+        if attention_mask is not None:
+            # text_feats: [B, T, D]
+            # attention_mask: [B, T] -> [B, T, 1]
+            mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
+            
+            # Masked Sum
+            sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
+            # Sum of mask (valid token count)
+            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
+            
+            pooled_text = sum_embeddings / sum_mask # [B, D]
+        else:
+            # Fallback if no mask provided (shouldn't happen with correct dataloader)
+            pooled_text = text_feats.detach().mean(dim=1)
 
-        B, T, Fd = pred_n.shape
-        pred_flat = pred_n.reshape(B*T, Fd)
-        tgt_flat  = tgt_n.reshape(B*T, Fd)
-        logits = (pred_flat @ tgt_flat.T) / kwargs.get("temperature", 0.07)
-        labels = torch.arange(B*T, device=logits.device)
+        # Normalize
+        pred_n = F.normalize(pred, dim=-1)
+        tgt_n = F.normalize(pooled_text, dim=-1)
+
+        # Contrastive Loss on POOLED embeddings
+        logits = (pred_n @ tgt_n.T) / kwargs.get("temperature", 0.07)
+        labels = torch.arange(logits.shape[0], device=logits.device)
         disc_loss = F.cross_entropy(logits, labels)
 
         vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
