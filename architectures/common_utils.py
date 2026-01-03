@@ -308,7 +308,7 @@ class NumpyFeaturesDataset(Dataset):
 
         self.tokenizer = None
         if tokenizer_path:
-             self.tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path)
+             self.tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
 
     def __len__(self):
         return len(self.metadata)
@@ -381,7 +381,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
             images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
             examples["pixel_values"] = [train_transforms(image) for image in images]
             if cfg.data.caption_column:
-                tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path)
+                tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
                 
                 max_len = cfg.model.get("max_sequence_length", None)
                 input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)

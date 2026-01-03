@@ -2,15 +2,16 @@ defaults:
   - env: MiniWorld # Default environment
 
 training:
-  model_name: "openai/clip-vit-base-patch32"
+  model_name: "zer0int/LongCLIP-GmP-ViT-L-14"
   batch_size: 256
   num_epochs: 10
   learning_rate: 2e-5
-  output_dir: "model_weights/finetuned_clip/${env.name}"
+  output_dir: "model_weights/finetuned_longclip/${env.name}"
   
 data:
   # The data path is choosen depending upon the env selected
   caption_file: "data/${env.name}/agent/metadata.jsonl" 
+  text_encoder_path: "zer0int/LongCLIP-GmP-ViT-L-14"
 
 wandb:
   use_wandb: true

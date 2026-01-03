@@ -43,7 +43,7 @@ model:
   use_coord_conv : false
   ema_decay: 0.999
   max_grad_norm: 1.0
-  max_sequence_length: 100
+  max_sequence_length: 110
 training:
   num_epochs: 500
   seed: ${models.seed}

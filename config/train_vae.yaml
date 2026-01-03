@@ -1,4 +1,4 @@
 defaults:
   - env : MiniWorld
-  - models : vae
+  - models : text_conditioned_vae_cnn
 save_path : model_weights

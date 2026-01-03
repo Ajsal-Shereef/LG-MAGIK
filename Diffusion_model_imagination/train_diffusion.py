@@ -47,8 +47,8 @@ def main(cfg: DictConfig):
     
     # 3. Load Text Encoder and Tokenizer explicitly
     accelerator.print(f"Loading Text Encoder from {cfg.models.data.text_encoder_path}")
-    tokenizer = CLIPTokenizer.from_pretrained(cfg.models.data.text_encoder_path)
-    text_encoder = CLIPTextModel.from_pretrained(cfg.models.data.text_encoder_path)
+    tokenizer = CLIPTokenizer.from_pretrained(cfg.models.data.text_encoder_path, trust_remote_code=True)
+    text_encoder = CLIPTextModel.from_pretrained(cfg.models.data.text_encoder_path, trust_remote_code=True)
     text_encoder.eval()
     text_encoder.requires_grad_(False)
     

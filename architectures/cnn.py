@@ -535,8 +535,8 @@ class CNNTextConditionedDecoder(nn.Module):
         init.xavier_uniform_(self.mapping_conv.weight)
         # Text encoder and tokenizer
         # Text encoder and tokenizer
-        self.tokenizer = CLIPTokenizer.from_pretrained(clip_model)
-        self.text_encoder = CLIPTextModel.from_pretrained(clip_model)
+        self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
+        self.text_encoder = CLIPTextModel.from_pretrained(clip_model, trust_remote_code=True)
         
         #Freeze the CLIP model parameters first
         for params in self.text_encoder.parameters():

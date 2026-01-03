@@ -12,7 +12,7 @@ models:
   # For get_dataloader compatibility
   model:
     observation_mode: ${env.observation_mode}
-    max_sequence_length: 77
+    max_sequence_length: 248
   
   data:
     train_dir: data/MiniWorld/agent
@@ -21,7 +21,7 @@ models:
     num_workers: 8
     image_column: image
     caption_column: text
-    text_encoder_path: openai/clip-vit-base-patch32
+    text_encoder_path: zer0int/LongCLIP-GmP-ViT-L-14
 
   accelerator:
     project_dir: "logs/diffusion"
