@@ -93,6 +93,13 @@ def train(args: DictConfig) -> None:
     vae, dataloader = accelerator.prepare(vae, dataloader)
    
     # --- 4. Define Optimizer within model ---
+    # Auto-calculate total_steps for OneCycleLR
+    if cfg.optimizer.get("scheduler") and cfg.optimizer.scheduler.get("type") == "one_cycle":
+        steps_per_epoch = len(dataloader)
+        total_steps = steps_per_epoch * cfg.training.num_epochs
+        cfg.optimizer.scheduler.total_steps = total_steps
+        accelerator.print(f"Auto-configured OneCycleLR total_steps to {total_steps} ({steps_per_epoch} steps/epoch * {cfg.training.num_epochs} epochs)")
+
     vae.set_optimizers(cfg.optimizer)
     
     # --- EMA Setup ---
@@ -161,6 +168,9 @@ def train(args: DictConfig) -> None:
                 # Update the running totals for the epoch
                 for key, value in reduced_losses.items():
                     epoch_losses[key] += value
+
+                # Step the scheduler (Moved to per-batch for OneCycleLR)
+                vae.step_schedulers()
 
                 # --- DYNAMIC LOGGING ---
                 if accelerator.is_main_process and log_values_and_images:
@@ -248,8 +258,7 @@ def train(args: DictConfig) -> None:
         loss_summary_str = " | ".join([f"{key}: {value:.4f}" for key, value in avg_epoch_losses.items()])
         accelerator.print(f"Epoch {epoch+1}/{cfg.training.num_epochs} | {loss_summary_str}")
         
-        # Step the scheduler
-        vae.step_schedulers()
+
 
     accelerator.wait_for_everyone()
 

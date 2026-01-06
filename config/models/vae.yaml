@@ -47,9 +47,18 @@ optimizer:
   weight_decay: 1e-2
   eps: 1e-8
   scheduler:
-    type: cosine
-    T_max: ${models.training.num_epochs}
-    eta_min: 0.000001
+    # type: cosine
+    # T_max: ${models.training.num_epochs}
+    # eta_min: 0.000001
+    
+    # OneCycleLR Example
+    type: one_cycle
+    max_lr: 1e-4
+    total_steps: 200000 # num_epochs * num_steps_per_epoch
+    pct_start: 0.1
+    div_factor: 25.0
+    final_div_factor: 10000.0
+    anneal_strategy: cos
 
 # --- Accelerator Configuration ---
 accelerator:

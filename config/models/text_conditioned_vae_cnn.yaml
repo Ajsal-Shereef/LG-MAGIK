@@ -6,13 +6,13 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: null
 data:
-  train_dir: data/MiniWorld/agent
+  train_dir: cached_data/MiniWorld_attempt_4
   cache_dir: null
   batch_size: 32
   num_workers: 8
   image_column: image
   caption_column: text
-  text_encoder_path: openai/clip-vit-base-patch32 #openai/clip-vit-base-patch32
+  text_encoder_path: "zer0int/LongCLIP-GmP-ViT-L-14" #openai/clip-vit-base-patch32
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   n_downsample: 4
@@ -30,7 +30,7 @@ model:
   discriminator_fc_hidden:
   - 64
   - 128
-  - 128
+  - 256
   observation_mode : ${env.observation_mode}
   disc_params:
     base_channels: 64
@@ -80,9 +80,18 @@ optimizer:
   eps: 1.0e-08
   lr_mine : 0.00001
   scheduler:
-    type: cosine
-    T_max: ${models.training.num_epochs}
-    eta_min: 0.000001
+    # type: cosine
+    # T_max: ${models.training.num_epochs}
+    # eta_min: 0.000001
+    
+    # OneCycleLR
+    type: one_cycle
+    max_lr: 2e-4
+    total_steps: ???
+    pct_start: 0.07
+    div_factor: 25.0
+    final_div_factor: 10000.0
+    anneal_strategy: cos
 accelerator:
   mixed_precision: 'no'
   gradient_accumulation_steps: 1
@@ -90,4 +99,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2025-12-30_13-01-53_NT0L29/VAE.tar
+  model_dir: model_weights/VAE/MiniWorld/2026-01-04_09-23-08_XX1DWJ/VAE.tar
