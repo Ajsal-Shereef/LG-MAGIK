@@ -215,6 +215,32 @@ async def imagine(
             _, imagined_numpy = vision_model.imagine(image_np, caption)
             res_image = Image.fromarray(imagined_numpy)
             response_data["result"] = encode_image_base64(res_image)
+            
+            # --- Latent Visualization for Imagination Mode ---
+            with torch.no_grad():
+                # 1. Original Image Latent
+                transform = vision_model.train_transform
+                state_tensor = transform(image_np if isinstance(image_np, np.ndarray) else np.array(image)).unsqueeze(0).to(device)
+                hidden = vision_model.encoder(state_tensor)
+                sampler = vision_model.bottleneck(hidden)
+                mean_original = sampler.mean
+                
+                # 2. Reconstructed Image Latent
+                # We need to process the imagined_numpy back to tensor to get its latent
+                # imagined_numpy is uint8 [H, W, 3]
+                imagined_pil = Image.fromarray(imagined_numpy).convert("RGB")
+                imagined_tensor = transform(imagined_pil).unsqueeze(0).to(device)
+                hidden_recon = vision_model.encoder(imagined_tensor)
+                sampler_recon = vision_model.bottleneck(hidden_recon)
+                mean_recon = sampler_recon.mean
+                
+                # 3. Generate Grids
+                # Use mean_original as the reference for normalization for both to allow comparison
+                grid_original = create_latent_grid(mean_original)
+                grid_recon = create_latent_grid(mean_recon, ref_tensor=mean_original)
+                
+                response_data["original_latent"] = encode_image_base64(grid_original)
+                response_data["reconstructed_latent"] = encode_image_base64(grid_recon)
         
         return JSONResponse(content=response_data)
         

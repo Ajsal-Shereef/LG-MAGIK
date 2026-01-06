@@ -13,20 +13,20 @@ fps : 2.5
 verbose : True
 observation_mode : image
 mission : ???
-validation_prompts :
-  - The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 4.7 at a distance of 3.4 units.
-  - The agent is in a room with grass floor and concrete walls. A blue box is found to the right at angle 15.9 at a distance of 4.7 units. A green ball is found in front at angle 1.73 at a distance of 5.7 units.
-  - The agent is in a room with grass floor and concrete walls. A blue box is found to the left at angle 28.7 at a distance of 3.3 units.
-  - The agent is in a room with grass floor and concrete walls. No objects are visible in the current view.
-  - The agent is in a room with grass floor and concrete walls. A blue ball is found to the right at angle 22.7 at a distance of 2.5 units.
-  - The agent is in a room with grass floor and concrete walls. A green box is found to the left at angle 28.7 at a distance of 1.3 units.
-
 # validation_prompts :
-#   - A green ball is found to the left at angle 21.5 at a distance of 2.6 units on a green grass floor surrounded by gray wall under a blue sky.
-#   - The agent is in a room with grass floor and concrete walls, where a blue box is located on a green grass floor surrounded by gray wall under a blue sky, found slightly to the left at angle 16.5 at a distance of 3.2 units.
-#   - The agent is in a room with a green grass floor and concrete walls under a blue sky, and no objects are visible.
-#   - The agent is in a room with grass floor and concrete walls, with a green ball in front at angle 8.69 and distance 3.8 units on the green grass floor surrounded by a gray wall under a blue sky.
-#   - The agent is in a room with grass floor and concrete walls, with a blue box in front at angle 7.84 and distance 2.7 units and a green ball to the right at angle 23 and distance 2.6 units on the green grass floor surrounded by gray concrete wall under a blue sky.
-#   - The agent is in a room with a green grass floor surrounded by gray textured walls under a blue sky, with a blue box located in front at angle 0.212 at a distance of 4.5 units.
-#   - The agent is in a room with grass floor and concrete walls, and a green ball is located on a green grass floor surrounded by a gray wall under a blue sky to the far left at angle 46.5 at a distance of 0.9 units.
-#   - The agent is in a room with grass floor and concrete walls, and a green grass floor is visible surrounded by grey wall under a blue sky.
+#   - The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 4.7 at a distance of 3.4 units.
+#   - The agent is in a room with grass floor and concrete walls. A blue box is found to the right at angle 15.9 at a distance of 4.7 units. A green ball is found in front at angle 1.73 at a distance of 5.7 units.
+#   - The agent is in a room with grass floor and concrete walls. A blue box is found to the left at angle 28.7 at a distance of 3.3 units.
+#   - The agent is in a room with grass floor and concrete walls. No objects are visible in the current view.
+#   - The agent is in a room with grass floor and concrete walls. A blue ball is found to the right at angle 22.7 at a distance of 2.5 units.
+#   - The agent is in a room with grass floor and concrete walls. A green box is found to the left at angle 28.7 at a distance of 1.3 units.
+
+validation_prompts :
+  - A green ball is found to the left at angle 21.5 at a distance of 2.6 units on a green grass floor surrounded by gray wall under a blue sky.
+  - The agent is in a room with grass floor and concrete walls, where a blue box is located on a green grass floor surrounded by gray wall under a blue sky, found slightly to the left at angle 16.5 at a distance of 3.2 units.
+  - The agent is in a room with a green grass floor and concrete walls under a blue sky, and no objects are visible.
+  - The agent is in a room with grass floor and concrete walls, with a green ball in front at angle 8.69 and distance 3.8 units on the green grass floor surrounded by a gray wall under a blue sky.
+  - The agent is in a room with grass floor and concrete walls, with a blue box in front at angle 7.84 and distance 2.7 units and a green ball to the right at angle 23 and distance 2.6 units on the green grass floor surrounded by gray concrete wall under a blue sky.
+  - The agent is in a room with a green grass floor surrounded by gray textured walls under a blue sky, with a blue box located in front at angle 0.212 at a distance of 4.5 units.
+  - The agent is in a room with grass floor and concrete walls, and a green ball is located on a green grass floor surrounded by a gray wall under a blue sky to the far left at angle 46.5 at a distance of 0.9 units.
+  - The agent is in a room with grass floor and concrete walls, and a green grass floor is visible surrounded by grey wall under a blue sky.

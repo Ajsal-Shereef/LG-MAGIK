@@ -386,6 +386,12 @@
 
                     <input type="file" id="imagine-upload" accept="image/*" onchange="handleImagineUpload(this)">
                 </div>
+
+                <!-- 2. Original Latent Section (Imagination Mode) -->
+                <div class="section-header">Original Latent</div>
+                 <div class="image-container">
+                    <img id="imagine-orig-latent" src="" style="display: none;">
+                </div>
             </div>
 
             <!-- Right Panel -->
@@ -399,6 +405,12 @@
                         <button class="zoom-btn" onclick="zoom('imagine-output', 1, event)">+</button>
                     </div>
                     <img id="imagine-result-img" src="" style="display: none;">
+                </div>
+
+                <!-- 2. Reconstructed Latent Section (Imagination Mode) -->
+                <div class="section-header">Reconstructed Latent</div>
+                <div class="image-container">
+                    <img id="imagine-recon-latent" src="" style="display: none;">
                 </div>
             </div>
 
@@ -613,6 +625,18 @@
                     // Reset zoom
                     zoomLevels['imagine-output'] = 1.0;
                     img.style.transform = 'scale(1.0)';
+                }
+
+                if (data.original_latent) {
+                    const img = document.getElementById('imagine-orig-latent');
+                    img.src = data.original_latent;
+                    img.style.display = 'block';
+                }
+
+                if (data.reconstructed_latent) {
+                    const img = document.getElementById('imagine-recon-latent');
+                    img.src = data.reconstructed_latent;
+                    img.style.display = 'block';
                 }
 
             } catch (err) {

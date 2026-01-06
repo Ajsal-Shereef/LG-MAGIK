@@ -163,6 +163,16 @@ class TextConditionedVAE(nn.Module):
                 step_size=scheduler_params.step_size,
                 gamma=scheduler_params.gamma
             )
+        elif scheduler_params.type == "one_cycle":
+            return optim.lr_scheduler.OneCycleLR(
+                optimizer,
+                max_lr=scheduler_params.max_lr,
+                total_steps=scheduler_params.total_steps,
+                pct_start=scheduler_params.pct_start,
+                div_factor=scheduler_params.div_factor,
+                final_div_factor=scheduler_params.final_div_factor,
+                anneal_strategy=scheduler_params.get("anneal_strategy", "cos")
+            )
         else:
             return None
 
