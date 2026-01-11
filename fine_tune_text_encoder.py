@@ -43,21 +43,25 @@ def main(cfg: DictConfig):
     # 3. Initialize Model
     print(f"Initializing model: {cfg.training.model_name}")
     
-    if "openai/clip" in cfg.training.model_name.lower():
+    is_clip = "clip" in cfg.training.model_name.lower()
+    if is_clip:
         from sentence_transformers import models
         from transformers import CLIPConfig, CLIPTextModel, CLIPTokenizer
         
         # 1. Word Embedding Model (Text Tower)
         try:
              # Load from HF directly
-             clip_text = CLIPTextModel.from_pretrained(cfg.training.model_name)
-             clip_tokenizer = CLIPTokenizer.from_pretrained(cfg.training.model_name)
+             trust_remote_code = "longclip" in cfg.training.model_name.lower()
+             clip_text = CLIPTextModel.from_pretrained(cfg.training.model_name, trust_remote_code=trust_remote_code)
+             clip_tokenizer = CLIPTokenizer.from_pretrained(cfg.training.model_name, trust_remote_code=trust_remote_code)
         except Exception as e:
              raise RuntimeError(f"Failed to load CLIPTextModel from {cfg.training.model_name}: {e}")
              
-        word_embedding_model = models.Transformer(model_name_or_path=cfg.training.model_name)
+        word_embedding_model = models.Transformer(model_name_or_path=cfg.training.model_name, model_args={"trust_remote_code": trust_remote_code})
         word_embedding_model.auto_model = clip_text
         word_embedding_model.tokenizer = clip_tokenizer
+        word_embedding_model.max_seq_length = clip_tokenizer.model_max_length
+        print(f"Model Max Length: {word_embedding_model.max_seq_length}")
         
         # 2. Pooling
         dim = clip_text.config.hidden_size

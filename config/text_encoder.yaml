@@ -10,7 +10,7 @@ training:
   
 data:
   # The data path is choosen depending upon the env selected
-  caption_file: "data/${env.name}/agent/metadata.jsonl" 
+  caption_file: "cached_data/MiniWorld_attempt_4/metadata.jsonl" 
   text_encoder_path: "zer0int/LongCLIP-GmP-ViT-L-14"
 
 wandb:

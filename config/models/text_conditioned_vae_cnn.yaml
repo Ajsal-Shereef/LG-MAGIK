@@ -99,4 +99,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2026-01-04_09-23-08_XX1DWJ/VAE.tar
+  model_dir: model_weights/VAE/MiniWorld/2026-01-06_12-19-02_UO349K/TextConditionedVAE.tar

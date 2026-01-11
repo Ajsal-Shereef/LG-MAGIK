@@ -129,6 +129,7 @@ class DataCollectorCallback(BaseCallback):
         # We'll store all the data in these lists
         self.all_states = []
         self.all_description = []
+        self.all_sensor_data = []
         self.saving_func = saving_func
         self.number_data_to_collect = number_data_to_collect
         self.observation_mode = observation_mode
@@ -144,9 +145,12 @@ class DataCollectorCallback(BaseCallback):
         s = self.locals["new_obs"]
         infos = self.locals["infos"] # Get info dictionary
         description = [info["description"] for info in infos]
+        sensor_data = [info.get("sensor_data", "") for info in infos]
+        
         # Append data. .copy() is important!
         self.all_states.append(s.copy())
         self.all_description.append(description) # Append infos
+        self.all_sensor_data.append(sensor_data)
         
         return True
 
@@ -188,6 +192,7 @@ class DataCollectorCallback(BaseCallback):
         try:
             all_states = process_data(self.all_states, self.observation_mode)
             all_descriptions = process_data(self.all_description) # Process infos
+            all_sensor_data = process_data(self.all_sensor_data)
             total_samples = len(all_states)
             
             # Determine the number of samples to pick
@@ -203,11 +208,12 @@ class DataCollectorCallback(BaseCallback):
             # Select the random samples
             sampled_states = all_states[indices]
             sampled_descriptions = all_descriptions[indices]
+            sampled_sensor_data = all_sensor_data[indices]
 
             # Create the paired list
             paired_data = [
-                {'frame': state, 'description': desc}
-                for state, desc in zip(sampled_states, sampled_descriptions)
+                {'frame': state, 'description': desc, 'sensor_data': sens}
+                for state, desc, sens in zip(sampled_states, sampled_descriptions, sampled_sensor_data)
             ]
 
             # Call the saving function with the paired data and save path

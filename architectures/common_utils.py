@@ -76,7 +76,7 @@ def rollout(env, remaining_steps, collect_data=False):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
         if collect_data:
-            paired_data.append({"frame" : obs, "description" : info["description"]})
+            paired_data.append({"frame" : obs, "description" : info["description"], "sensor_data" : info.get("sensor_data", "")})
         else:
             env.render()
         steps += 1
@@ -119,7 +119,8 @@ def save_dataset_for_features(dataset, save_dir):
             # Create metadata entry. The file_name must be relative to the root of the dataset directory.
             metadata_entry = {
                 "file_name": os.path.join("features", base_filename),
-                "text": item["description"]
+                "text": item["description"],
+                "sensor_data": item.get("sensor_data", "")
             }
             metadata_entries.append(metadata_entry)
 
@@ -170,7 +171,8 @@ def save_dataset_for_images(dataset, save_dir):
             # The file_name must be relative to the root of the dataset directory
             metadata_entry = {
                 "file_name": os.path.join("images", base_filename),
-                "text": item["description"]
+                "text": item["description"],
+                "sensor_data": item.get("sensor_data", "")
             }
             metadata_entries.append(metadata_entry)
 
@@ -383,7 +385,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
             if cfg.data.caption_column:
                 tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
                 
-                max_len = cfg.model.get("max_sequence_length", None)
+                max_len = cfg.model.get("max_sequence_length", 77)
                 input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
                 examples["input_ids"] = input_ids
                 examples["attention_mask"] = attention_mask

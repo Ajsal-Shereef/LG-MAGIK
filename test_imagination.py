@@ -166,8 +166,10 @@ def main(args: DictConfig) -> None:
                     # Encode the frame
                     base64_image = encode_image(frame)
                     
+                    sensor_data = env.unwrapped.get_sensor_data()
+                    prompt_text = args.vision_prompt_text.format(sensor_data=sensor_data)
                     vision_prompt = [
-                        {"type": "text", "text": "Describe this image for a text-to-image training dataset."},
+                        {"type": "text", "text": prompt_text},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                     ]
                     

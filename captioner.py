@@ -12,7 +12,6 @@ from typing import Union, List
 from omegaconf import DictConfig
 
 # --- 1. Helper: Base64 Encoder ---
-# --- 1. Helper: Base64 Encoder ---
 def encode_image(image_input):
     """
     Encodes an image to base64.
@@ -155,6 +154,28 @@ def process_dataset(cfg: DictConfig, api_key: str):
 
     print(f"Found {len(all_files)} total images in source.")
 
+    # --- LOAD SOURCE METADATA ---
+    source_metadata_path = source_path.parent / "metadata.jsonl"
+    source_metadata_map = {}
+    if source_metadata_path.exists():
+        print(f"Loading source metadata from {source_metadata_path}...")
+        try:
+            with open(source_metadata_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        # Normalize filename to matches ones in all_files (usually basename)
+                        # entry["file_name"] might be "images/00001.png" -> we want "00001.png"
+                        fname = Path(entry.get("file_name", "")).name
+                        if fname:
+                            source_metadata_map[fname] = entry.get("sensor_data", "")
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            print(f"Warning: Could not read source metadata: {e}")
+    else:
+        print(f"Warning: Source metadata not found at {source_metadata_path}")
+
     # Lock for writing to the metadata file
     write_lock = threading.Lock()
 
@@ -169,9 +190,15 @@ def process_dataset(cfg: DictConfig, api_key: str):
 
         try:
             base64_image = encode_image(file_path)
+            
+            # Retrieve sensor data if available
+            sensor_info = source_metadata_map.get(filename, "")
+            prompt_text = "Describe this image for a text-to-image training dataset."
+            if sensor_info:
+                prompt_text += f"\n\nAdditional Sensor Data (Ground Truth):\n{sensor_info}\n\nIncorporarate this sensor data into the description."
 
             vision_prompt = [
-                {"type": "text", "text": "Describe this image for a text-to-image training dataset."},
+                {"type": "text", "text": prompt_text},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
             ]
 
@@ -188,7 +215,7 @@ def process_dataset(cfg: DictConfig, api_key: str):
 
             entry = {
                 "file_name": filename,
-                "text": caption
+                "text": caption,
             }
             
             with write_lock:

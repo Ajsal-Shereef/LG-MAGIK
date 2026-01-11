@@ -512,6 +512,7 @@ class PickObjectEnv(MiniWorldEnv):
         description = self.get_frame_description(obs)
         if self.verbose:
             info["description"] = description
+            info["sensor_data"] = self.get_sensor_data(obs)
         return obs, reward, terminated, truncated, info
     
     def get_performance_metric(self):
@@ -542,6 +543,24 @@ class PickObjectEnv(MiniWorldEnv):
             obj_cls[-1] = 1
         return np.array(obj_cls)
 
+    def _get_relative_position(self, ent):
+        delta = ent.pos - self.agent.pos
+        dist = np.sqrt(delta[0]**2 + delta[2]**2)
+
+        bearing_ent = np.arctan2(delta[2], delta[0])
+        agent_bearing = np.arctan2(self.agent.dir_vec[2], self.agent.dir_vec[0])
+        rel_angle_rad = bearing_ent - agent_bearing
+        rel_angle_rad = (rel_angle_rad + np.pi) % (2 * np.pi) - np.pi
+        angle_deg = np.degrees(rel_angle_rad)
+        return dist, angle_deg
+
+    def _get_direction_string(self, angle_deg):
+        if angle_deg > 0:
+            dir_str = "to the right"
+        else:
+            dir_str = "to the left"
+        return dir_str
+
     def get_frame_description(self, obs=None):
         if obs is None:
             obs = self.obs
@@ -568,36 +587,46 @@ class PickObjectEnv(MiniWorldEnv):
             if ent is None:
                 continue 
 
-            delta = ent.pos - self.agent.pos
-            dist = np.sqrt(delta[0]**2 + delta[2]**2)
+            dist, angle_deg = self._get_relative_position(ent)
 
-            bearing_ent = np.arctan2(delta[2], delta[0])
-            agent_bearing = np.arctan2(self.agent.dir_vec[2], self.agent.dir_vec[0])
-            rel_angle_rad = bearing_ent - agent_bearing
-            rel_angle_rad = (rel_angle_rad + np.pi) % (2 * np.pi) - np.pi
-            angle_deg = np.degrees(rel_angle_rad)
-
-            if abs(angle_deg) < self.agent.cam_fov_y//6:
-                dir_str = "in front"
-            elif self.agent.cam_fov_y//6 <= abs(angle_deg) < self.agent.cam_fov_y//3:
-                if angle_deg > 0:
-                    dir_str = "slightly to the right"
-                else:
-                    dir_str = "slightly to the left"
-            elif self.agent.cam_fov_y//3 <= abs(angle_deg) <= self.agent.cam_fov_y//2 + 1:
-                if angle_deg > 0:
-                    dir_str = "to the right"
-                else:
-                    dir_str = "to the left"
-            else:
-                if angle_deg > 0:
-                    dir_str = "to the far right"
-                else:
-                    dir_str = "to the far left"
+            dir_str = self._get_direction_string(angle_deg)
             object_name = COLOR_TO_OBJECT[color]
             description += f" A {color} {object_name} is found {dir_str} at angle {abs(angle_deg):.3g} at a distance of {dist:.1f} units."
 
         return description
+
+    def get_sensor_data(self, obs=None):
+        if obs is None:
+            obs = self.obs
+
+        obj_cls = self.get_class(obs)
+        color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
+        detected_colors = [color for color, idx in color_to_index.items() if obj_cls[idx] == 1]
+        
+        sensor_data = []
+
+        if len(detected_colors) == 0:
+            return "Visible objects sensor data: No objects are visible."
+
+        sensor_data_str = "Visible objects sensor data: "
+        
+        for color in detected_colors:
+            ent = None
+            for e in self.entities:
+                if hasattr(e, 'color') and e.color == color and e is not self.agent:
+                    ent = e
+                    break
+            if ent is None:
+                continue 
+
+            dist, angle_deg = self._get_relative_position(ent)
+            
+            object_name = COLOR_TO_OBJECT[color]
+            
+            direction = self._get_direction_string(angle_deg)
+            sensor_data_str += f"- {color} {object_name}: distance {dist:.1f}, angle {abs(angle_deg):.1f} deg {direction}. "
+
+        return sensor_data_str
     
     # def get_frame_description(self, obs=None):
     #     # This function remains unchanged

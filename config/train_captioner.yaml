@@ -9,7 +9,7 @@ paths:
   dataset_path: "cached_data/MiniWorld/images"
   final_model_path: "model_weights/Captioner"
   test_image_paths:
-    - "frame2.png"
+    - "data/MiniWorld/Random/test/images/001899.png"
     - "data/MiniWorld/Random/test/images/000399.png"
     - "data/MiniWorld/Random/test/images/000144.png"
     - "data/MiniWorld/Random/test/images/001050.png"
@@ -17,7 +17,7 @@ paths:
 
 # --- Model ---
 model:
-  base_model_id: "openai/clip-vit-base-patch32"
+  base_model_id: "zer0int/LongCLIP-GmP-ViT-L-14"
 
 # --- Preprocessing ---
 preprocessing:

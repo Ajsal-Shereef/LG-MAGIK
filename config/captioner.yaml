@@ -7,13 +7,13 @@ hydra:
 
 paths:
   source_dir: "data/MiniWorld/agent/images"
-  output_dir: "cached_data/MiniWorld_attempt_3"
+  output_dir: "cached_data/MiniWorld_attempt_5"
 
 model:
-  name: "x-ai/grok-4.1-fast" # or "x-ai/grok-4.1-fast"
+  name: "nvidia/nemotron-nano-12b-v2-vl:free" # or "x-ai/grok-4.1-fast"
   mode: "openrouter"
   temperature: 0.1
-  batch_size: 10
+  batch_size: 1
 
 api:
   env_var_name: "OPENROUTER_API_KEY" # The name of the variable in your .env file
@@ -33,10 +33,12 @@ prompt:
     * **Walls & Floor:** Describe the specific color and texture visible (e.g., "Red brick wall," "Green grass floor").
     * **Sky:** Include the phrase **"Blue sky"** ONLY if the sky is visible. If the wall obscures the sky completely (e.g., close-up view), do not mention the sky.
   
-    ### 3. OUTPUT STRUCTURE
-    Follow this structure. If a section (like Object or Sky) is not visible, skip it.
-  
-    "[Object Description] located on a [Floor Description] surrounded by [Wall Description] under a [Sky Description]."
+    ### 4. SENSOR DATA INTEGRATION
+    You will be provided with "Additional Sensor Data (Ground Truth)".
+    * **MANDATORY:** You MUST include the exact **distance** and **angle** numeric values provided in the sensor data for every visible object.
+    * **Direction:** Explicitly state the direction (e.g., "to the left", "to the right") as given.
+
+    "A [Color] [Object] is visible at [Distance] units and [Angle] degrees [Direction], located on a [Floor Description] surrounded by [Wall Description] under a [Sky Description]."
   
     **Constraints:**
     * Be concise and make coherent descriptions.
