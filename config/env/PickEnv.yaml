@@ -13,7 +13,7 @@ force_penalty_coeff : 0.1
 verbose : true
 observation_mode : "feature" #feature/image
 mission : ???
-mode : test
+mode : train
 fps : 3
 
 # New key for mode control

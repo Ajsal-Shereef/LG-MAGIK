@@ -6,7 +6,7 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: null
 data:
-  train_dir: cached_data/MiniWorld_attempt_4
+  train_dir: cached_data/MiniWorld_attempt_6
   cache_dir: null
   batch_size: 32
   num_workers: 8
@@ -99,4 +99,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2026-01-06_12-19-02_UO349K/TextConditionedVAE.tar
+  model_dir: model_weights/VAE/MiniWorld/2026-01-10_17-08-48_6DRQ77/VAE.tar

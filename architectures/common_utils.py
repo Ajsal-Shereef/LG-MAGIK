@@ -76,7 +76,7 @@ def rollout(env, remaining_steps, collect_data=False):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
         if collect_data:
-            paired_data.append({"frame" : obs, "description" : info["description"], "sensor_data" : info.get("sensor_data", "")})
+            paired_data.append({"frame" : obs.copy(), "description" : info["description"], "sensor_data" : info.get("sensor_data", "")})
         else:
             env.render()
         steps += 1
@@ -1254,6 +1254,8 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "HTTP-Referer": "https://localhost:3000",
+                "X-Title": "LG-MAGIK",
             }
             payload = {
                 "model": model_name,
@@ -1426,34 +1428,66 @@ def preprocess_llm_output(raw_text: str) -> dict:
     description = description[0].upper() + description[1:] if description else description
 
     return {"imagine": bool(imagine), "description": description}
-    
-    
-# def query_openrouter(system: str, prompt: str, api_key: str) -> str:
-#     """
-#     Sends a prompt to the OpenRouter API and returns the assistant's response.
-#     """
-#     url = "https://openrouter.ai/api/v1/chat/completions"
-#     headers = {
-#         "Authorization": f"Bearer {api_key}",
-#         "Content-Type": "application/json",
-#     }
-#     payload = {
-#         "model": "x-ai/grok-4-fast:free",
-#         "messages": [
-#             {
-#                 "role": "system",
-#                 "content": system,
-#             },
-#             {"role": "user", "content": prompt},
-#         ],
-#     }
 
-#     response = requests.post(url, headers=headers, json=payload)
-#     if response.status_code == 200:
-#         result = response.json()
-#         return result["choices"][0]["message"]["content"]
-#     else:
-#         raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
+def post_process_caption(caption: str) -> str:
+    """
+    Post-process the caption by removing non-alphanumeric characters 
+    (except spaces) and standardizing object names.
+    
+    Args:
+        caption (str): The raw caption from the LLM.
+        
+    Returns:
+        str: The cleaned and standardized caption.
+    """
+    # Remove newlines first
+    caption = caption.replace('\n', ' ')
+
+    # Convert to lowercase
+    caption = caption.lower()
+    
+    # Next replace cube with box, circle/sphere with ball.
+    caption = caption.replace("cube", "box").replace("sphere", "ball").replace("circle", "ball")
+    
+    # Capitalize the first letter of each sentence
+    # Split by sentence endings (.?!) followed by space or end of string
+    sentences = re.split(r'(?<=[.!?])\s+', caption)
+    caption = ' '.join([s.strip().capitalize() for s in sentences if s.strip()])
+
+    # Check for any characters apart from text and numbers (and spaces). If found remove.
+    caption = re.sub(r'[^a-zA-Z0-9\s.]', '', caption)
+    
+    return caption
+    
+    
+def query_openrouter(system: str, prompt: str, api_key: str) -> str:
+    """
+    Sends a prompt to the OpenRouter API and returns the assistant's response.
+    """
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://localhost:3000",
+        "X-Title": "LG-MAGIK",
+    }
+    payload = {
+        "model": "x-ai/grok-4-fast:free",
+        "messages": [
+            {
+                "role": "system",
+                "content": system,
+            },
+            {"role": "user", "content": prompt},
+        ],
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code == 200:
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    else:
+        raise RuntimeError(f"Request failed with status {response.status_code}: {response.text}")
     
 def zip_strict(*iterables: Iterable) -> Iterable:
     r"""

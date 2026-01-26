@@ -68,26 +68,34 @@ class Trainer():
             from minigrid.wrappers import RGBImgPartialObsWrapper
             from minigrid.wrappers import ImgObsWrapper
             from architectures.common_utils import SwitchChannel
+            env0 = SimplePickup(cfg.env)
+            env0 = RGBImgPartialObsWrapper(env0, tile_size=cfg.env.tile_size)
+            env0 = SwitchChannel(ImgObsWrapper(env0))
+            self.envs.append(env0)
+            cfg.env.objects = [["purple box", "green ball"]]
+            cfg.env.reward_objects = [["purple box"]]
             env1 = SimplePickup(cfg.env)
             env1 = RGBImgPartialObsWrapper(env1, tile_size=cfg.env.tile_size)
             env1 = SwitchChannel(ImgObsWrapper(env1))
             self.envs.append(env1)
-            cfg.env.objects = [["purple box", "red ball"]]
+            cfg.env.wall_color = ["blue"]
+            cfg.env.objects = [["purple box", "green ball"]]
             cfg.env.reward_objects = [["purple box"]]
             env2 = SimplePickup(cfg.env)
             env2 = RGBImgPartialObsWrapper(env2, tile_size=cfg.env.tile_size)
             env2 = SwitchChannel(ImgObsWrapper(env2))
             self.envs.append(env2)
-            cfg.env.objects = [["purple box", "green ball"]]
+            cfg.env.wall_color = ["grey"]
+            cfg.env.objects = [["purple box", "red ball"]]
             cfg.env.reward_objects = [["purple box"]]
             env3 = SimplePickup(cfg.env)
             env3 = RGBImgPartialObsWrapper(env3, tile_size=cfg.env.tile_size)
             env3 = SwitchChannel(ImgObsWrapper(env3))
             self.envs.append(env3)
             
-        self.interaction_step = [cfg.num_train_frames]*3
+        self.interaction_step = [cfg.num_train_frames]*len(self.envs)
         # self.interaction_step = [cfg.num_train_frames, int(cfg.num_train_frames*0.10), int(cfg.num_train_frames*0.10)]
-        self.num_seed_frames = [cfg.num_seed_frames]*3
+        self.num_seed_frames = [cfg.num_seed_frames]*len(self.envs)
 
         action_dim = (int(self.envs[0].action_space.n),)
 
@@ -273,18 +281,22 @@ def main(cfg):
         from minigrid.wrappers import RGBImgPartialObsWrapper
         from minigrid.wrappers import ImgObsWrapper
         from architectures.common_utils import SwitchChannel
-        cfg.env.objects = [["purple box", "red ball"]]
+        cfg.env.objects = [["purple box", "green ball"]]
         cfg.env.reward_objects = [["purple box"]]
         env1 = SimplePickup(cfg.env)
         env1 = RGBImgPartialObsWrapper(env1, tile_size=cfg.env.tile_size)
         env1 = SwitchChannel(ImgObsWrapper(env1))
         transfer_env.append(env1)
-        cfg.env.objects = [["purple box", "green ball"]]
-        cfg.env.reward_objects = [["purple box"]]
+        cfg.env.wall_color = ["blue"]
         env2 = SimplePickup(cfg.env)
         env2 = RGBImgPartialObsWrapper(env2, tile_size=cfg.env.tile_size)
         env2 = SwitchChannel(ImgObsWrapper(env2))
-        transfer_env.append(env2)
+        cfg.env.objects = [["purple box", "red ball"]]
+        cfg.env.reward_objects = [["purple box"]]
+        env3 = SimplePickup(cfg.env)
+        env3 = RGBImgPartialObsWrapper(env3, tile_size=cfg.env.tile_size)
+        env3 = SwitchChannel(ImgObsWrapper(env3))
+        transfer_env.append(env3)
         # cfg.env.wall_color = ["blue"]
         # env3 = SimplePickup(cfg.env)
         # env3 = RGBImgPartialObsWrapper(env3, tile_size=cfg.env.tile_size)

@@ -11,6 +11,7 @@ from hydra import compose, initialize
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 import base64
+import uvicorn
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -162,9 +163,9 @@ async def imagine(
                     import json
                     scales = json.loads(channel_scales)
                     
-                    with open("server_log.txt", "a") as logf:
-                        logf.write(f"Received scales: {scales}\n")
-                        logf.write(f"Mean stats before: Min={mean.min().item()}, Max={mean.max().item()}, Avg={mean.mean().item()}\n")
+                    # with open("server_log.txt", "a") as logf:
+                    #     logf.write(f"Received scales: {scales}\n")
+                    #     logf.write(f"Mean stats before: Min={mean.min().item()}, Max={mean.max().item()}, Avg={mean.mean().item()}\n")
                     
                     # scales should be list of length latent_channels
                     if len(scales) == mean.shape[1]:
@@ -197,25 +198,9 @@ async def imagine(
                         response_data["reconstruction"] = encode_image_base64(res_image)
                         
                         # Generate "Modified Latent" Grid
-                        with torch.no_grad():
-                            # Ensure reconstruction is in correct range/format if needed. 
-                            # Usually encoder expects standard normalized input. 
-                            # If reconstruction is [-1, 1], we can feed it back.
-                            # We use the FULL encoder pipeline (Encoder -> Bottleneck -> Mean)
-                            new_hidden = vision_model.encoder(reconstructed_x)
-                            
-                            if hasattr(vision_model, "bottleneck"):
-                                new_sampler = vision_model.bottleneck(new_hidden)
-                                if hasattr(new_sampler, "mean"):
-                                    new_mean = new_sampler.mean
-                                else:
-                                    # Fallback if bottleneck returns simple tensor or tuple
-                                    new_mean = new_sampler.latent if hasattr(new_sampler, "latent") else new_sampler
-                            else:
-                                new_mean = new_hidden
-
-                        # Pass 'mean' (the original) as reference stats for consistent relative visualization
-                        mod_grid = create_latent_grid(new_mean, ref_tensor=mean)
+                        # We use the modified_mean DIRECTLY to show exactly what was fed to the decoder.
+                        # This ensures that if only Ch-i was changed, only Ch-i changes in the vis.
+                        mod_grid = create_latent_grid(modified_mean, ref_tensor=mean)
                         response_data["modified_latent"] = encode_image_base64(mod_grid)
                         
                     else:
@@ -272,3 +257,6 @@ async def read_index():
     with open(os.path.join(os.path.dirname(__file__), "../frontend/index.html"), "r") as f:
         html_content = f.read()
     return Response(content=html_content, media_type="text/html")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

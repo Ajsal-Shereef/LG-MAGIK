@@ -3,44 +3,45 @@ defaults:
   - env: MiniWorld
 
 agent_name : PPO
-model_dir : model_weights/PPO/2025-12-08_22-02-26_7Z1KFT/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+model_dir : model_weights/${agent_name}/2026-01-25_19-39-00_0QJJSJ/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
 num_episode: 10
 result_dir: result
-mode: transfer
+mode: trasnfer
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
-llm_model: "openai/gpt-oss-20b:free" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
-alternate_llm_model : xiaomi/mimo-v2-flash:free
+llm_model: "x-ai/grok-4.1-fast" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
+alternate_llm_model : google/gemini-2.5-flash
 vllm_model: "x-ai/grok-4.1-fast"
+alternative_vllm : "google/gemini-2.5-flash"
 llm_caption: true
 
 caption_system_prompt: >
-  You are an assistant helping to caption the visual observation of a Reinforcement Learning agent.
-  The room contains interactable object(s) of different type(s) and color(s) such as Blue Box, Green Ball, Yellow Duckie etc.
-  Describe the observation in a plain-text sentence, detailing the interactable object(s), their color(s), and the room/background features (e.g., floor, wall, ceiling etc if present).
-  Output only the description. Do not use markdown.
-
-vision_prompt_text: >
-  Describe this image for a text-to-image training dataset.
-  The following is the ground truth sensor data of the objects visible in the image: {sensor_data}.
-  Use the sensor data to enhance your description, but integrate it naturally.
+    You are a high-precision computer vision annotator for the MiniWorld 3D environment for RL research. 
+    Your task is to convert low-resolution visual observations into structured, spatially accurate text descriptions.
   
-  Do not mention mountains or outdoor landscapes unless explicitly visible. 
-  Focus on the room interior. The room is always surrounded by walls and with a floor. The sky may or may not be visible. if the agent is very close to the wall, the sky may not be visible.
-  If sky is not visible, do not mention it.
+    ### 1. OBJECT IDENTIFICATION
+    The environment contains interactable objects of various types and colors. 
+    * **Standard Objects:** Common examples include "Blue Box," "Green Ball," "Yellow Duckie," "Blue Box," "Medkit," and "Key."
+    * **General Rule:** If you see an object that is not in the list above, describe it using **[Color] + [Shape]** (e.g., "Purple Cylinder," "White Cube").
+    * **Multiple Objects:** If multiple objects are present, list them all (e.g., "A Blue Box and a Green Ball").
+  
+    ### 2. ENVIRONMENT & SKY
+    * **Walls & Floor:** Describe the specific color and texture visible (e.g., "Gray concrete wall," "Green grass floor").
+    * **Sky:** Include the phrase **"Blue sky"** ONLY if the sky is visible. If the wall obscures the sky completely (e.g., close-up view), do not mention the sky.
+  
+    ### 3. SENSOR DATA INTEGRATION
+    You will be provided with "Additional Sensor Data (Ground Truth)".
+    * **MANDATORY:** You MUST include the exact **distance** and **angle** numeric values provided in the sensor data for every visible object.
+    * **Direction:** Explicitly state the direction (e.g., "to the left", "to the right") as given.
 
-  The examples below only show the possible integration of sensor data and not a template. The description could be human and include the sensor data in some form;
-  - Sensor: Visible objects sensor data: - <object 1>: distance 2.4, angle 14.1 deg right.
-    Description (Option 1): A <object 1> on a green grass floor surrounded by gray concrete walls under a blue sky is located slightly to the right at angle 14.1 at a distance of 2.4 units.
-    Description (Option 2): The scene shows a room with a grass floor, where a <object 1> is positioned 2.4 units away at an angle of 14.1 degrees to the right, surrounded by concrete walls.
-  - Sensor: Visible objects sensor data: No objects are visible.
-    Description (Option 1): An empty room with a green grass floor surrounded by gray walls under a blue sky.
-    Description (Option 2): The agent sees only the green grass floor and gray walls of the room; no objects are currently visible.
-  - Sensor: Visible objects sensor data: - <object 2>: distance 3.0, angle 10.0 deg left.
-    Description (Option 1): The agent is in a room with a grass floor and enclosed by concrete walls, with a <object 2> located an to the left at angle 10.0 at a distance of 3.0 units.
-    Description (Option 2): Detected a <object 2> to the left (10.0 degrees) at a distance of 3.0 units, situated on the grassy floor within the walled room.
-  - Sensor: Visible objects sensor data: - <object 3>: distance 4.3, angle 3.7 deg front. - <object 4>: distance 1.0, angle 50.7 deg right.
-    Description (Option 1): The agent is in a room with a green grass floor and gray concrete walls; a <object 3> is in front at angle 3.7 at a distance of 4.3 units, and a <object 4> is located to the right at angle 50.7 at a distance of 1.0 units, surrounded by gray concrete walls under a blue sky.
-    Description (Option 2): A <object 3> is visible in front (dist: 4.3, angle: 3.7), while a <object 4> sits to the right (dist: 1.0, angle: 50.7) in a grass-floored room surrounded by gray concrete wall.
+    "A [Color] [Object] is visible at [Distance] units and [Angle] degrees [Direction], located on a [Floor Description] surrounded by [Wall Description] under a [Sky Description]."
+  
+    **Constraints:**
+    * **NO META-COMMENTARY:** NEVER use the phrase "sensor data" or "indicated by sensor data" in the output caption. The sensor data is context for YOU, not text to be quoted.
+    * **Length Limit:** Keep captions concise and small. For empty scenes, use a sentence describing the environment and state no objects are visible.
+    * If no objects are visible, do NOT justify why. simply state the layout of the scene (Wall, floor and sky if available) and mention that there is no objects.
+    * All the image will contain a wall and the floor. Caption should contain a description of the wall and the floor. Remember caption should be small and concise.
+    * Give extra emphasis on the objects in the sensor data. ensure they are properly described and the distance and angle are correctly mentioned.
+    * DO NOT use any starting phrases such as "The image depicts/shows".
 
 system_prompt: |
 

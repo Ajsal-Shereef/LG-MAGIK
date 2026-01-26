@@ -1,5 +1,5 @@
 defaults:
-  - agent: baselines/sf/sf_reconstruction
+  - agent: baselines/sf/sf_simple
   - env : MiniWorld
   - _self_ # this yaml file is overriding configs from the Defaults List (eg. {agent}.yaml)
   - resources: null  
@@ -37,7 +37,6 @@ device: cuda
 use_wandb: true
 wandb_dir: ./wandb
 mode: full_train
-
 
 hydra:
   run:

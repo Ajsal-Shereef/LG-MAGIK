@@ -2,7 +2,7 @@ name : SimplePickup
 # data_collection_allowed_types : [[1,1], [1,0]] # [[0,1], [1,0], [4,0], [5,1]], [[2,0], [3,0], [3,1]], [[2,1]]
 # agent_training_allowed_types : [[2,0], [3,0], [3,1]]
 # test_allowed_types : [[2,1]]
-objects : [["green ball", "red ball"]]
+objects : [["red ball", "green ball"]]
 reward_objects : [["red ball"]]
 wall_color : ["grey"]
 tile_size : 8
@@ -19,7 +19,7 @@ observation_mode : image
 mission : ???
 validation_prompts :
   - Agent is in a room surrounded by grey walls. Agent sees to the bottom left,
-    a blue ball which is 2 units apart at (2,5).
+    a red ball which is 2 units apart at (2,5).
   - Agent is in a room surrounded by grey walls. No other objects can be seen
   - Agent is in a room surrounded by grey walls. Agent sees to the bottom right,
     a green ball which is 2 units apart at (4,5).

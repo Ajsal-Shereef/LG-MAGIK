@@ -605,7 +605,10 @@ class TextConditionedVAE(nn.Module):
         self.encoder.load_state_dict(params["encoder"])
         self.bottleneck.load_state_dict(params["bottleneck"])
         self.decoder.load_state_dict(params["decoder"])
-        self.caption_discriminator.load_state_dict(params["caption_discriminator"])
+        try:
+            self.caption_discriminator.load_state_dict(params["caption_discriminator"])
+        except RuntimeError as e:
+             print(f"[NOTE] Skipping caption_discriminator loading due to mismatch (acceptable for inference): {e}")
         if self.use_image_discriminator:
             self.image_discriminator.load_state_dict(params["image_discriminator"])
         print("[INFO] loaded the Text Conditioned VAE model", path)

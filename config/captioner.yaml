@@ -7,16 +7,18 @@ hydra:
 
 paths:
   source_dir: "data/MiniWorld/agent/images"
-  output_dir: "cached_data/MiniWorld_attempt_5"
+  output_dir: "cached_data/MiniWorld_attempt_6"
 
 model:
-  name: "nvidia/nemotron-nano-12b-v2-vl:free" # or "x-ai/grok-4.1-fast"
-  mode: "openrouter"
-  temperature: 0.1
-  batch_size: 1
+  name: "nvidia/nemotron-nano-12b-v2-vl"
+  mode: "nvidia"
+  # base_url: "https://integrate.api.nvidia.com/v1/chat/completions" # Default in code
+  temperature: 1
+  # top_p: 0.01 # Hardcoded in script for now based on snippet, or can rely on defaults
+  batch_size: 2
 
 api:
-  env_var_name: "OPENROUTER_API_KEY" # The name of the variable in your .env file
+  env_var_name: "NVIDIA_API_KEY" # The name of the variable in your .env file
 
 prompt:
   system: |
@@ -33,7 +35,7 @@ prompt:
     * **Walls & Floor:** Describe the specific color and texture visible (e.g., "Red brick wall," "Green grass floor").
     * **Sky:** Include the phrase **"Blue sky"** ONLY if the sky is visible. If the wall obscures the sky completely (e.g., close-up view), do not mention the sky.
   
-    ### 4. SENSOR DATA INTEGRATION
+    ### 3. SENSOR DATA INTEGRATION
     You will be provided with "Additional Sensor Data (Ground Truth)".
     * **MANDATORY:** You MUST include the exact **distance** and **angle** numeric values provided in the sensor data for every visible object.
     * **Direction:** Explicitly state the direction (e.g., "to the left", "to the right") as given.
@@ -41,5 +43,9 @@ prompt:
     "A [Color] [Object] is visible at [Distance] units and [Angle] degrees [Direction], located on a [Floor Description] surrounded by [Wall Description] under a [Sky Description]."
   
     **Constraints:**
-    * Be concise and make coherent descriptions.
-    * Do not use intro phrases like "The image displays."
+    * **NO META-COMMENTARY:** NEVER use the phrase "sensor data" or "indicated by sensor data" in the output caption. The sensor data is context for YOU, not text to be quoted.
+    * **Length Limit:** Keep captions concise and small. For empty scenes, use a sentence describing the environment and state no objects are visible.
+    * If no objects are visible, do NOT justify why. simply state the layout of the scene (Wall, floor and sky if available) and mention that there is no objects.
+    * All the image will contain a wall and the floor. Caption should contain a description of the wall and the floor. Remember caption should be small and concise.
+    * Give extra emphasis on the objects in the sensor data. ensure they are properly described and the distance and angle are correctly mentioned.
+    * DO NOT use any starting phrases such as "The image depicts/shows".

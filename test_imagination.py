@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import hydra
 import torch
@@ -9,7 +10,7 @@ from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
-from architectures.common_utils import save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm
+from architectures.common_utils import save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm, post_process_caption
 from captioner import encode_image, query_llm as query_llm_vision
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -126,7 +127,7 @@ def main(args: DictConfig) -> None:
     
         if args.querry_mode == "openrouter":
             # Access the API key
-            api_key = os.getenv('OPEN_ROUTER_API_KEY')
+            api_key = os.getenv('OPENROUTER_API_KEY')
             pipe = args.llm_model
             alternative_pipe = args.alternate_llm_model
         elif args.querry_mode == "huggingface":
@@ -167,11 +168,14 @@ def main(args: DictConfig) -> None:
                     base64_image = encode_image(frame)
                     
                     sensor_data = env.unwrapped.get_sensor_data()
-                    prompt_text = args.vision_prompt_text.format(sensor_data=sensor_data)
+                    prompt_text = "Describe this image for a text-to-image training dataset."
+                    if sensor_data:
+                        prompt_text += f"Sensor Data (Ground Truth):{sensor_data}, Incorporarate this sensor data into the description."
+
                     vision_prompt = [
                         {"type": "text", "text": prompt_text},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                    ]
+            ]
                     
                     try:
                         caption = query_llm_vision(
@@ -180,8 +184,12 @@ def main(args: DictConfig) -> None:
                             api_key=api_key,
                             mode=args.querry_mode,
                             pipeline=args.vllm_model,
+                            alternative_pipe=args.alternative_vllm,
                             temperature=0.1
                         )
+                        # Post-processing
+                        caption = post_process_caption(caption)
+
                         info['description'] = caption
                         # Reconstruct user prompt with new description
                         first_user_prompt = (

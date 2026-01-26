@@ -142,13 +142,23 @@ class DataCollectorCallback(BaseCallback):
         # self.locals["infos"] is the info dict (info_t+1)
         
         # Get data from the environment step
+        # Get data from the environment step
         s = self.locals["new_obs"]
         infos = self.locals["infos"] # Get info dictionary
+        
+        # Handle terminal observations
+        # If an episode is done, 'new_obs' is the reset observation of the NEW episode.
+        # We want the terminal observation of the COMPLETED episode, which is in info['terminal_observation'].
+        current_obs = s.copy()
+        for i, info in enumerate(infos):
+            if "terminal_observation" in info:
+                current_obs[i] = info["terminal_observation"]
+
         description = [info["description"] for info in infos]
         sensor_data = [info.get("sensor_data", "") for info in infos]
         
-        # Append data. .copy() is important!
-        self.all_states.append(s.copy())
+        # Append data. 
+        self.all_states.append(current_obs)
         self.all_description.append(description) # Append infos
         self.all_sensor_data.append(sensor_data)
         
@@ -290,21 +300,21 @@ def main(args: DictConfig) -> None:
         from stable_baselines3 import SAC
         if args.fine_tune:
             model = SAC.load(args.fine_tune_checkpoint, env=env)
-            print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint}")
+            print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
         if args.fine_tune:
             model = PPO.load(args.fine_tune_checkpoint, env=env)
-            print(f"[INFO] Loadied PPO model from {args.fine_tune_checkpoint}")
+            print(f"[INFO] Loadied PPO model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = PPO(policy, env, verbose=0, ent_coef = 0.00)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         if args.fine_tune:
             model = DQN.load(args.fine_tune_checkpoint, env=env)
-            print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint}")
+            print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
     else:
@@ -332,7 +342,7 @@ def main(args: DictConfig) -> None:
     data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
                                                     number_data_to_collect=int(args.number_data_to_collect),  
                                                     observation_mode=args.env.observation_mode, verbose=1)
-    call_backs = [checkpoint_callback, video_callback, data_collector_callback]
+    call_backs = [data_collector_callback, checkpoint_callback]
     all_callbacks = call_backs + [wandb_callback] if args.use_wandb else call_backs
     
     model.learn(total_timesteps=timesteps,

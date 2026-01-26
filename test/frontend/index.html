@@ -342,7 +342,7 @@
                     <div class="caption-box">
                         <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Caption</label>
                         <textarea
-                            id="latent-caption">The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 8.91 at a distance of 4.5 units. A green ball is found slightly to the left at angle 14.5 at a distance of 3.4 units.</textarea>
+                            id="latent-caption">A blue box is visible at 3.1 units and 5.5 degrees to the left, and a green ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.</textarea>
                     </div>
 
                     <div class="sliders-box">
@@ -420,7 +420,7 @@
                     <div class="caption-box">
                         <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Caption Prompt</label>
                         <textarea
-                            id="imagine-caption">The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 8.91 at a distance of 4.5 units. A green ball is found slightly to the left at angle 14.5 at a distance of 3.4 units.</textarea>
+                            id="imagine-caption">A blue box is visible at 3.1 units and 5.5 degrees to the left, and a green ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.</textarea>
                     </div>
 
                     <div class="action-box">
@@ -467,6 +467,21 @@
 
         // --- Logic: Latent View ---
 
+        // Utility: Debounce
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        const debouncedGenerateLatent = debounce(() => generateLatent(true), 150);
+
         // Init Sliders
         const slidersDiv = document.getElementById('sliders-container');
         for (let i = 0; i < 8; i++) {
@@ -474,7 +489,9 @@
             row.className = 'slider-row';
             row.innerHTML = `
                 <span style="width: 30px; text-align: right;">Ch${i}</span>
-                <input type="range" min="-10" max="10" step="0.1" value="1.0" oninput="updateScale(${i}, this.value)" onchange="generateLatent(true)">
+                <input type="range" min="-10" max="10" step="0.1" value="1.0" 
+                    oninput="updateScale(${i}, this.value); debouncedGenerateLatent()"
+                    >
                 <span id="val-${i}" style="width: 40px; text-align: right;">1.0</span>
             `;
             slidersDiv.appendChild(row);
