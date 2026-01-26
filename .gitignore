@@ -10,6 +10,7 @@ experiment_logs
 model_weights
 result
 cached_data
+.env
 *__pycache__
 *.pyc
 *.pth
