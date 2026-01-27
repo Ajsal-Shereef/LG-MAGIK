@@ -116,22 +116,53 @@ Input text prompts to generate or modify images via the text-conditioned VAE.
 ## Results
 
 ### MiniWorld
+
+#### Case 1
 **Full View**  
-![MiniWorld Full View](result/PPO/MiniWorld/PickBallAvoidBoxRoomGrass/concrete/transfer/0%20full.gif)
+![MiniWorld Case 1 Full](Results/MiniWorld/Case_1/1%20full.gif)
 
 **Partial View**  
-![MiniWorld Partial View](result/PPO/MiniWorld/PickBallAvoidBoxRoomGrass/concrete/transfer/0%20partial.gif)
+![MiniWorld Case 1 Partial](Results/MiniWorld/Case_1/1%20partial.gif)
 
-### SimplePickup
+#### Case 2
 **Full View**  
-![SimplePickup Full View](result/DQN/SimplePickup/PickPurpleboxAvoidGreenballRoomBlue/transfer/0%20full.gif)
+![MiniWorld Case 2 Full](Results/MiniWorld/Case_2/0%20full.gif)
 
 **Partial View**  
-![SimplePickup Partial View](result/DQN/SimplePickup/PickPurpleboxAvoidGreenballRoomBlue/transfer/0%20partial.gif)
+![MiniWorld Case 2 Partial](Results/MiniWorld/Case_2/0%20partial.gif)
+
+#### Case 3
+**Full View**  
+![MiniWorld Case 3 Full](Results/MiniWorld/Case_3/1%20full.gif)
+
+**Partial View**  
+![MiniWorld Case 3 Partial](Results/MiniWorld/Case_3/1%20partial.gif)
+
+### MiniGrid
+#### Case 1
+**Full View**  
+![MiniGrid Case 1 Full](Results/MiniGrid/Case_1/1%20full.gif)
+
+**Partial View**  
+![MiniGrid Case 1 Partial](Results/MiniGrid/Case_1/1%20partial.gif)
+
+#### Case 2
+**Full View**  
+![MiniGrid Case 2 Full](Results/MiniGrid/Case_2/0%20full.gif)
+
+**Partial View**  
+![MiniGrid Case 2 Partial](Results/MiniGrid/Case_2/0%20partial.gif)
+
+#### Case 3
+**Full View**  
+![MiniGrid Case 3 Full](Results/MiniGrid/Case_3/3%20full.gif)
+
+**Partial View**  
+![MiniGrid Case 3 Partial](Results/MiniGrid/Case_3/3%20partial.gif)
 
 ### PickEnv
 **Full View**  
-![PickEnv Full View](result/SAC/PickEnv/PickEnv/transfer/0%20full.gif)
+![PickEnv Full View](Results/PickEnv/0%20full.gif)
 
 ## Project Structure
 
