@@ -1,6 +1,6 @@
-# LG-MAGIK
+# ASPECT
 
-LG-MAGIK is a framework for training agents to solve target tasks by leveraging knowledge from analogous source tasks. The core idea is to use a text-conditioned VAE to transform observations from a target task into analogous source task observations, allowing an agent trained on the source task to operate in the target environment.
+ASPECT is a framework for training agents to solve target tasks by leveraging knowledge from analogous source tasks. The core idea is to use a text-conditioned VAE to transform observations from a target task into analogous source task observations, allowing an agent trained on the source task to operate in the target environment.
 
 ## Workflow
 
