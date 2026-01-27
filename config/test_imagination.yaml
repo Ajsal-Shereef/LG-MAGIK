@@ -3,16 +3,16 @@ defaults:
   - env: MiniWorld
 
 agent_name : PPO
-model_dir : model_weights/${agent_name}/2026-01-25_19-39-00_0QJJSJ/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
-num_episode: 10
+model_dir : model_weights/${agent_name}/2026-01-24_11-15-12_KPB7BA/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+num_episode: 3
 result_dir: result
-mode: trasnfer
+mode: transfer
 querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
 llm_model: "x-ai/grok-4.1-fast" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
 alternate_llm_model : google/gemini-2.5-flash
 vllm_model: "x-ai/grok-4.1-fast"
 alternative_vllm : "google/gemini-2.5-flash"
-llm_caption: true
+llm_caption: false
 
 caption_system_prompt: >
     You are a high-precision computer vision annotator for the MiniWorld 3D environment for RL research. 

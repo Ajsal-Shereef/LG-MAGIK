@@ -83,6 +83,56 @@ You can override any config parameter from the command line:
 python train_agent.py env.total_timestep=500000 agent_name=DQN
 ```
 
+## Web Interface
+
+The project includes a web application for exploring the VAE latent space and imagination capabilities.
+
+### How to Run
+
+1.  **Install Backend Dependencies**:
+    ```bash
+    pip install fastapi uvicorn python-multipart hydra-core omegaconf torch torchvision pillow
+    ```
+
+2.  **Start Backend**:
+    From the project root:
+    ```bash
+    python3 -m uvicorn test.backend.app:app --host 0.0.0.0 --port 8000
+    ```
+
+3.  **Open Frontend**:
+    Open `http://localhost:8000/`.
+
+### Features
+
+#### Latent Visualization
+![Latent View](test/Latent_view.png)
+Explore the latent space by modifying individual dimensions and observing the reconstruction.
+
+#### Imagination Mode
+![Imagination View](test/Imagiantion_view.png)
+Input text prompts to generate or modify images via the text-conditioned VAE.
+
+## Results
+
+### MiniWorld
+**Full View**  
+![MiniWorld Full View](result/PPO/MiniWorld/PickBallAvoidBoxRoomGrass/concrete/transfer/0%20full.gif)
+
+**Partial View**  
+![MiniWorld Partial View](result/PPO/MiniWorld/PickBallAvoidBoxRoomGrass/concrete/transfer/0%20partial.gif)
+
+### SimplePickup
+**Full View**  
+![SimplePickup Full View](result/DQN/SimplePickup/PickPurpleboxAvoidGreenballRoomBlue/transfer/0%20full.gif)
+
+**Partial View**  
+![SimplePickup Partial View](result/DQN/SimplePickup/PickPurpleboxAvoidGreenballRoomBlue/transfer/0%20partial.gif)
+
+### PickEnv
+**Full View**  
+![PickEnv Full View](result/SAC/PickEnv/PickEnv/transfer/0%20full.gif)
+
 ## Project Structure
 
 *   `agent/`: Agent implementations.
@@ -93,3 +143,4 @@ python train_agent.py env.total_timestep=500000 agent_name=DQN
 *   `train_vae.py`: Script for training the VAE.
 *   `test_imagination.py`: Script for testing agent transfer with imagination.
 *   `train_captioner.py`: Script for training the captioner (if applicable).
+*   `test/`: Web application code.
