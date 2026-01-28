@@ -107,11 +107,11 @@ The project includes a web application for exploring the VAE latent space and im
 
 #### Latent Visualization
 ![Latent View](test/Latent_view.png)
-Explore the latent space by modifying individual dimensions and observing the reconstruction.
+In the latent view, the left shows the input image and its corresponding latent, in the right, it shows the readjustable latent (each dimension) and the generated image of the adjusted latent.
 
 #### Imagination Mode
 ![Imagination View](test/Imagiantion_view.png)
-Input text prompts to generate or modify images via the text-conditioned VAE.
+In the imagination mode, it outputs the generation of image using the text and display the latent of the input and the latent of the generated image.
 
 ## Results
 
