@@ -10,6 +10,16 @@ experiment_logs
 model_weights
 result
 cached_data
+benchmark_text_encoder.py
+fine_tune_text_encoder.py
+test_openrouter.py
+test_vae.py
+train_captioner.py
+captioner.py
+frame.png
+frame1.png
+frame2.png
+imagination.png
 .env
 *__pycache__
 *.pyc
