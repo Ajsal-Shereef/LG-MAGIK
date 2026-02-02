@@ -128,7 +128,7 @@ Below are the episode rollout of the agent with imagination module in different 
 | **Full View**<br>![Case 1 Full](Results/MiniGrid/Case_1/1%20full.gif)<br><br>**Partial View**<br>![Case 1 Partial](Results/MiniGrid/Case_1/1%20partial.gif) | **Full View**<br>![Case 2 Full](Results/MiniGrid/Case_2/0%20full.gif)<br><br>**Partial View**<br>![Case 2 Partial](Results/MiniGrid/Case_2/0%20partial.gif) | **Full View**<br>![Case 3 Full](Results/MiniGrid/Case_3/3%20full.gif)<br><br>**Partial View**<br>![Case 3 Partial](Results/MiniGrid/Case_3/3%20partial.gif) |
 
 ### PickEnv
-In Pick Env, the object fragility are represented by the color of the object, the red object is the least fragile and the green object is the most fragile. A green outer box appears when the object is picked up without breaking and blue box appears if the force applied is weak and red appears if the object is broken.<br>
+In Pick Env, the object fragility is represented by the color of the object, the red object is the least fragile and the green object is the most fragile. A green outer box appears when the object is picked up without breaking and blue box appears if the applied force is weak to lift the object and red appears if the applied force is more than the threshold and the object breaks.<br>
 ![PickEnv Full View](Results/PickEnv/0%20full.gif)  ![PickEnv Full View](Results/PickEnv/1%20full.gif)
 
 ## Project Structure
