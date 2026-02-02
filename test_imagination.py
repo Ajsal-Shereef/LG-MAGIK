@@ -115,7 +115,7 @@ def main(args: DictConfig) -> None:
         vision_model = instantiate(cfg.model)
         vision_model.load_params(vision_model_path)
 
-        # --- 5. Prepare agent for inference ---
+        # Prepare agent for inference
         vision_model = accelerator.prepare(vision_model)
         
         #Setting the VAE model to eval mode
