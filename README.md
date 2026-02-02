@@ -114,7 +114,7 @@ In the latent view, the left shows the input image and its corresponding latent,
 In the imagination mode, it outputs the generation of image using the text and display the latent of the input and the latent of the generated image.
 
 ## Results
-
+Below are the episode rollout of the agent with imagination module in different environements and tasks. For MiiWorld and MiniGrid the full view is the top-down view of the environment and the partial view is the first-person view of the agent.
 ### MiniWorld
 
 | Case 1 | Case 2 | Case 3 |
@@ -128,8 +128,8 @@ In the imagination mode, it outputs the generation of image using the text and d
 | **Full View**<br>![Case 1 Full](Results/MiniGrid/Case_1/1%20full.gif)<br><br>**Partial View**<br>![Case 1 Partial](Results/MiniGrid/Case_1/1%20partial.gif) | **Full View**<br>![Case 2 Full](Results/MiniGrid/Case_2/0%20full.gif)<br><br>**Partial View**<br>![Case 2 Partial](Results/MiniGrid/Case_2/0%20partial.gif) | **Full View**<br>![Case 3 Full](Results/MiniGrid/Case_3/3%20full.gif)<br><br>**Partial View**<br>![Case 3 Partial](Results/MiniGrid/Case_3/3%20partial.gif) |
 
 ### PickEnv
-**Full View**  
-![PickEnv Full View](Results/PickEnv/0%20full.gif)
+In Pick Env, the object fragility are represented by the color of the object, the red object is the least fragile and the green object is the most fragile. A green outer box appears when the object is picked up without breaking and blue box appears if the force applied is weak and red appears if the object is broken.<br>
+![PickEnv Full View](Results/PickEnv/0%20full.gif)  ![PickEnv Full View](Results/PickEnv/1%20full.gif)
 
 ## Project Structure
 
