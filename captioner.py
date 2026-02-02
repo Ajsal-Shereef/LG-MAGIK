@@ -139,12 +139,7 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: s
 
     
     elif mode == "nvidia":
-        # Nvidia implementation remains the same as user didn't ask to change it specifically, 
-        # but the fallback structure was requested "as in common_utils.py" which mostly targeted openrouter/general flow.
-        # Given the instruction was generic "add an alternative llm model if the first fails", 
-        # I'll stick to modifying OpenRouter flow primarily as that matches the referent code best,
-        # but the function signature change allows extending it later.
-        
+
         invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
         if cfg and hasattr(cfg.model, "base_url") and cfg.model.base_url:
             invoke_url = cfg.model.base_url
@@ -161,7 +156,7 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: s
                 {"role": "user", "content": prompt}
             ],
             "temperature": temperature,
-            "top_p": 0.01, # Default from user snippet
+            "top_p": 0.01,
             "max_tokens": 1024,
             "stream": False
         }

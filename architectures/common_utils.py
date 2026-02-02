@@ -811,7 +811,6 @@ class Visualiser:
                 
                 values = torch.linspace(start_val, end_val, n_traversal, device=device)
 
-                # --- BATCHED TRAVERSAL (Same as before) ---
                 traversal_latent = base_latent.clone().repeat(n_traversal, 1)
                 traversal_latent[:, dim] = values
 
@@ -865,10 +864,6 @@ class Visualiser:
                 else:
                     images = images.to(device)
 
-                # This assumes get_latent_list returns the raw output of the encoder
-                # which might be [mu, logvar] or just a single latent z.
-                # We need to get the `mu` vector. Let's assume you have an `encode` method.
-                # If not, adapt this line to get the mean vector.
                 mu = self.vision_model.get_latent_list(images) # Shape: [batch_size, latent_dim]
 
                 # If your model returns a list of latents, focus on the first for diagnosis
@@ -1198,7 +1193,7 @@ def initialize_llm_hf_pipeline(model_id):
             trust_remote_code=True 
         )
         
-        print("Model and tokenizer loaded successfully. ✅")
+        print("Model and tokenizer loaded successfully.")
         return tokenizer, model
 
     except ImportError:
@@ -1207,7 +1202,6 @@ def initialize_llm_hf_pipeline(model_id):
             "Please run: pip install torch transformers accelerate bitsandbytes"
         )
     except Exception as e:
-        # 🐛 This provides a much more detailed error message for debugging
         print("--- DETAILED TRACEBACK ---")
         traceback.print_exc()
         print("--------------------------")
