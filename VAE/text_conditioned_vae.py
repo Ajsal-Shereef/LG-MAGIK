@@ -1,4 +1,5 @@
 import os
+import math
 import torch
 import torch.nn as nn
 import numpy as np
@@ -28,6 +29,7 @@ class TextConditionedVAE(nn.Module):
         # ---- Base configs ----
         self.observation_model = kwargs["observation_mode"]
         self.use_image_discriminator = kwargs.get("use_image_discriminator", False)
+        self.use_caption_discriminator = kwargs.get("use_caption_discriminator", False)
         self.use_mine = kwargs.get("use_mine", False)
         disc_params = kwargs.get("disc_params", {})
 
@@ -102,7 +104,7 @@ class TextConditionedVAE(nn.Module):
 
         # ---- Optional MINE module ----
         if self.use_mine:
-            self.mine_critic = MINECritic(latent_dim if self.observation_model != "images" else latent_channel * np.prod(encoder_final_dim),
+            self.mine_critic = MINECritic(latent_dim if self.observation_model != "image" else latent_channel * np.prod(encoder_final_dim),
                                           self.decoder.text_dim)
         else:
             self.mine_critic = None
@@ -239,36 +241,39 @@ class TextConditionedVAE(nn.Module):
             perceptual_loss = torch.tensor(0.0, device=original_x.device)
         
         # === Adversarial disentanglement loss ===
-        # === Adversarial disentanglement loss ===
-        z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
-        pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
-        
-        # --- Pooled Embedding Logic ---
-        if attention_mask is not None:
-            # text_feats: [B, T, D]
-            # attention_mask: [B, T] -> [B, T, 1]
-            mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
+        if self.use_caption_discriminator:
+            z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
+            pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
             
-            # Masked Sum
-            sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
-            # Sum of mask (valid token count)
-            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
-            
-            pooled_text = sum_embeddings / sum_mask # [B, D]
+            # --- Pooled Embedding Logic ---
+            if attention_mask is not None:
+                # text_feats: [B, T, D]
+                # attention_mask: [B, T] -> [B, T, 1]
+                mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
+                
+                # Masked Sum
+                sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
+                # Sum of mask (valid token count)
+                sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
+                
+                pooled_text = sum_embeddings / sum_mask # [B, D]
+            else:
+                # Fallback if no mask provided (shouldn't happen with correct dataloader)
+                pooled_text = text_feats.detach().mean(dim=1)
+
+            # Normalize
+            pred_n = F.normalize(pred, dim=-1)
+            tgt_n = F.normalize(pooled_text, dim=-1)
+
+            # Contrastive Loss on POOLED embeddings
+            logits = (pred_n @ tgt_n.T) / kwargs.get("temperature", 0.07)
+            labels = torch.arange(logits.shape[0], device=logits.device)
+            disc_loss = F.cross_entropy(logits, labels)
+
+            vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
         else:
-            # Fallback if no mask provided (shouldn't happen with correct dataloader)
-            pooled_text = text_feats.detach().mean(dim=1)
-
-        # Normalize
-        pred_n = F.normalize(pred, dim=-1)
-        tgt_n = F.normalize(pooled_text, dim=-1)
-
-        # Contrastive Loss on POOLED embeddings
-        logits = (pred_n @ tgt_n.T) / kwargs.get("temperature", 0.07)
-        labels = torch.arange(logits.shape[0], device=logits.device)
-        disc_loss = F.cross_entropy(logits, labels)
-
-        vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
+            disc_loss = torch.tensor(0.0, device=original_x.device)
+            vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss
         
         # Store core VAE loss (without image GAN loss) for generator optimization
         vae_loss_core = vae_loss
@@ -299,22 +304,31 @@ class TextConditionedVAE(nn.Module):
         if self.use_mine and self.mine_critic is not None:
             z_flat = posterior.latent.view(posterior.latent.size(0), -1)
             t_flat = text_feats.mean(dim=1) # Use retrieved text_feats
-            # Positive pairs
+            
+            # 1. Unbiased MI estimate for VAE Generator (minimize MI)
             joint = self.mine_critic(z_flat, t_flat).mean()
-            # Negative pairs (shuffle)
             shuffled_t = t_flat[torch.randperm(t_flat.size(0))]
             marginal_scores = self.mine_critic(z_flat, shuffled_t)
-            marginal_exp = torch.exp(marginal_scores).mean()
-            marginal_log = torch.log(marginal_exp + 1e-8)  # add epsilon for stability
+            
+            marginal_log = torch.logsumexp(marginal_scores, dim=0) - math.log(max(marginal_scores.size(0), 1))
+            
             mi_estimate = joint - marginal_log
-            # For VAE: minimize MI with unbiased gradient (detach marginal)
             mi_for_vae = joint - marginal_log.detach()
             
             vae_loss = vae_loss + kwargs.get("mine_weight", 0.1) * mi_for_vae
             vae_loss_core = vae_loss_core + kwargs.get("mine_weight", 0.1) * mi_for_vae
             
-            # For critic: maximize the bound, i.e., minimize -mi_estimate
-            critic_loss = -mi_estimate
+            # 2. Re-compute for Critic on DETACHED inputs (maximize MI)
+            z_detached = z_flat.detach()
+            t_detached = t_flat.detach()
+            
+            joint_detached = self.mine_critic(z_detached, t_detached).mean()
+            shuffled_t_detached = t_detached[torch.randperm(t_detached.size(0))]
+            marginal_scores_detached = self.mine_critic(z_detached, shuffled_t_detached)
+            
+            marginal_log_detached = torch.logsumexp(marginal_scores_detached, dim=0) - math.log(max(marginal_scores_detached.size(0), 1))
+            
+            critic_loss = -(joint_detached - marginal_log_detached)
             mine_loss = mi_estimate  # The MI estimate for logging
         else:
             mine_loss = torch.tensor(0.0, device=original_x.device)
@@ -352,7 +366,7 @@ class TextConditionedVAE(nn.Module):
              # This might fail if D was updated inplace
              total_loss = losses["vae_loss"]
 
-        accelerator.backward(total_loss, retain_graph=True if self.use_mine else False)
+        accelerator.backward(total_loss)
         
         if self.use_mine:
             self.mine_optim.zero_grad()  # Clear unwanted grads from vae_loss on critic params
