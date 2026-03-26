@@ -38,10 +38,11 @@ model:
     norm: in
   is_perceptual_loss : true
   use_image_discriminator : true
-  use_caption_discriminator : true
-  use_mine: true           # Enables mutual information minimization
+  use_caption_discriminator : false
+  use_club: true           # Enables CLUB mutual information minimization
   use_ema: false
   use_coord_conv : false
+  n_text_attn_layers: 2    # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
   ema_decay: 0.999
   max_grad_norm: 1.0
   max_sequence_length: 110
@@ -68,7 +69,7 @@ training:
   save_weight_freequency : 50
   img_adv_weight : 10.0
   img_adv_lambda : 1
-  mine_weight: 1           # Weight for MINE loss term
+  club_weight: 1           # Weight for CLUB MI loss term
   critic_updates: 2        # Number of discriminator updates per generator update
   recon_mix_weight: 0.5
   is_model_fine_tune : false
@@ -79,7 +80,7 @@ optimizer:
   - 0.999
   weight_decay: 0.01
   eps: 1.0e-08
-  lr_mine : 0.00001
+  lr_club : 0.00001
   scheduler:
     # type: cosine
     # T_max: ${models.training.num_epochs}

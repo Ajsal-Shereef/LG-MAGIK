@@ -12,7 +12,7 @@ import torch.optim as optim
 from architectures.mlp import MLP
 from torchvision.utils import make_grid
 from architectures.common_utils import grad_reverse
-from architectures.vae_utils import PatchDiscriminator, MINECritic
+from architectures.vae_utils import PatchDiscriminator, CLUBCritic
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
 from architectures.mlp import MLPEncoder, MLPTextConditionedDecoder
 from architectures.stochastic import GaussianSampleSpatial, GaussianSample
@@ -30,7 +30,7 @@ class TextConditionedVAE(nn.Module):
         self.observation_model = kwargs["observation_mode"]
         self.use_image_discriminator = kwargs.get("use_image_discriminator", False)
         self.use_caption_discriminator = kwargs.get("use_caption_discriminator", False)
-        self.use_mine = kwargs.get("use_mine", False)
+        self.use_club = kwargs.get("use_club", False)
         disc_params = kwargs.get("disc_params", {})
 
         # ---- Encoder/Decoder ----
@@ -47,12 +47,13 @@ class TextConditionedVAE(nn.Module):
             latent_channel = kwargs["latent_channel"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
             use_coord_conv = kwargs.get("use_coord_conv", True)
+            n_text_attn_layers = kwargs.get("n_text_attn_layers", 2)
             self.is_perceptual_loss = kwargs["is_perceptual_loss"]
             self.max_sequence_length = kwargs.get("max_sequence_length", None)
             
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
             self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
-            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv)
+            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers)
             
             # Use max_sequence_length if provided, else fall back to tokenizer default
             # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
@@ -102,12 +103,12 @@ class TextConditionedVAE(nn.Module):
             self.image_discriminator = None
             self.train_transform = get_train_transform_mlp()
 
-        # ---- Optional MINE module ----
-        if self.use_mine:
-            self.mine_critic = MINECritic(latent_dim if self.observation_model != "image" else latent_channel * np.prod(encoder_final_dim),
+        # ---- Optional CLUB module ----
+        if self.use_club:
+            self.club_critic = CLUBCritic(latent_dim if self.observation_model != "image" else latent_channel * np.prod(encoder_final_dim),
                                           self.decoder.text_dim)
         else:
-            self.mine_critic = None
+            self.club_critic = None
             
     def set_optimizers(self, parms):
         # VAE parameters (Encoder, Bottleneck, Decoder, Caption Discriminator)
@@ -132,9 +133,9 @@ class TextConditionedVAE(nn.Module):
         else:
             self.disc_optim = None
 
-        if self.use_mine:
-            self.mine_optim = optim.AdamW(self.mine_critic.parameters(),
-                                lr=parms.lr_mine,
+        if self.use_club:
+            self.club_optim = optim.AdamW(self.club_critic.parameters(),
+                                lr=parms.lr_club,
                                 betas=tuple(parms.betas),
                                 weight_decay=parms.weight_decay,
                                 eps=parms.eps,
@@ -147,10 +148,10 @@ class TextConditionedVAE(nn.Module):
         else:
             self.disc_scheduler = None
             
-        if self.use_mine:
-            self.mine_scheduler = self._get_scheduler(self.mine_optim, parms.scheduler)
+        if self.use_club:
+            self.club_scheduler = self._get_scheduler(self.club_optim, parms.scheduler)
         else:
-            self.mine_scheduler = None
+            self.club_scheduler = None
 
     def _get_scheduler(self, optimizer, scheduler_params):
         if scheduler_params.type == "cosine":
@@ -183,15 +184,15 @@ class TextConditionedVAE(nn.Module):
             self.scheduler.step()
         if self.disc_scheduler:
             self.disc_scheduler.step()
-        if self.mine_scheduler:
-            self.mine_scheduler.step()
+        if self.club_scheduler:
+            self.club_scheduler.step()
 
     def get_lr(self):
         lrs = {"lr": self.vae_optim.param_groups[0]["lr"]}
         if self.disc_optim:
              lrs["lr_disc"] = self.disc_optim.param_groups[0]["lr"]
-        if self.use_mine:
-            lrs["lr_mine"] = self.mine_optim.param_groups[0]["lr"]
+        if self.use_club:
+            lrs["lr_club"] = self.club_optim.param_groups[0]["lr"]
         return lrs
     
     def forward(self, x):
@@ -300,38 +301,23 @@ class TextConditionedVAE(nn.Module):
             # Add generator adversarial loss to total VAE loss (for logging/legacy)
             vae_loss = vae_loss + kwargs.get("img_adv_weight", kwargs["adv_weight"]) * gen_adv_loss
 
-        # === MINE loss ===
-        if self.use_mine and self.mine_critic is not None:
+        # === CLUB loss ===
+        if self.use_club and self.club_critic is not None:
             z_flat = posterior.latent.view(posterior.latent.size(0), -1)
-            t_flat = text_feats.mean(dim=1) # Use retrieved text_feats
+            t_flat = text_feats.detach().mean(dim=1) # Use retrieved text_feats, detached
             
-            # 1. Unbiased MI estimate for VAE Generator (minimize MI)
-            joint = self.mine_critic(z_flat, t_flat).mean()
-            shuffled_t = t_flat[torch.randperm(t_flat.size(0))]
-            marginal_scores = self.mine_critic(z_flat, shuffled_t)
+            # 1. MI upper bound for VAE (minimize) + Critic loss (maximize log-likelihood)
+            club_mi, _ = self.club_critic.mi_upper_bound(z_flat, t_flat)
             
-            marginal_log = torch.logsumexp(marginal_scores, dim=0) - math.log(max(marginal_scores.size(0), 1))
+            vae_loss = vae_loss + kwargs.get("club_weight", 0.1) * club_mi
+            vae_loss_core = vae_loss_core + kwargs.get("club_weight", 0.1) * club_mi
             
-            mi_estimate = joint - marginal_log
-            mi_for_vae = joint - marginal_log.detach()
-            
-            vae_loss = vae_loss + kwargs.get("mine_weight", 0.1) * mi_for_vae
-            vae_loss_core = vae_loss_core + kwargs.get("mine_weight", 0.1) * mi_for_vae
-            
-            # 2. Re-compute for Critic on DETACHED inputs (maximize MI)
+            # 2. Re-compute critic loss on DETACHED inputs
             z_detached = z_flat.detach()
             t_detached = t_flat.detach()
-            
-            joint_detached = self.mine_critic(z_detached, t_detached).mean()
-            shuffled_t_detached = t_detached[torch.randperm(t_detached.size(0))]
-            marginal_scores_detached = self.mine_critic(z_detached, shuffled_t_detached)
-            
-            marginal_log_detached = torch.logsumexp(marginal_scores_detached, dim=0) - math.log(max(marginal_scores_detached.size(0), 1))
-            
-            critic_loss = -(joint_detached - marginal_log_detached)
-            mine_loss = mi_estimate  # The MI estimate for logging
+            _, critic_loss = self.club_critic.mi_upper_bound(z_detached, t_detached)
         else:
-            mine_loss = torch.tensor(0.0, device=original_x.device)
+            club_mi = torch.tensor(0.0, device=original_x.device)
             critic_loss = torch.tensor(0.0, device=original_x.device)
 
         return {
@@ -342,15 +328,15 @@ class TextConditionedVAE(nn.Module):
             "kl_loss": kl_loss,
             "adversarial_loss": disc_loss,
             "critic_loss": critic_loss,
-            "mine_loss" : mine_loss,
+            "club_mi" : club_mi,
             "img_disc_loss" : img_disc_loss,
             "gen_adv_loss": gen_adv_loss
         }
         
     def optimize_generator(self, losses, accelerator, forward_output=None, **kwargs):
         self.vae_optim.zero_grad()
-        if self.use_mine:
-            self.mine_optim.zero_grad()
+        if self.use_club:
+            self.club_optim.zero_grad()
             
         # Use vae_loss_core and re-compute GAN loss if needed
         total_loss = losses["vae_loss_core"]
@@ -368,13 +354,13 @@ class TextConditionedVAE(nn.Module):
 
         accelerator.backward(total_loss)
         
-        if self.use_mine:
-            self.mine_optim.zero_grad()  # Clear unwanted grads from vae_loss on critic params
+        if self.use_club:
+            self.club_optim.zero_grad()  # Clear unwanted grads from vae_loss on critic params
             accelerator.backward(losses["critic_loss"])
             
         self.vae_optim.step()
-        if self.use_mine:
-            self.mine_optim.step()
+        if self.use_club:
+            self.club_optim.step()
 
     def optimize_discriminator(self, losses, accelerator):
         if self.image_discriminator:

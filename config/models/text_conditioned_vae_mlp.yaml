@@ -38,7 +38,7 @@ model:
   - 128
   observation_mode : ${env.observation_mode}
   use_weighted_recon: false
-  use_mine: false             # Enables mutual information minimization
+  use_club: false             # Enables CLUB mutual information minimization
 training:
   num_epochs: 250
   seed: ${models.seed}
@@ -54,7 +54,7 @@ training:
   generate_interval: 8000
   num_images_to_generate: 10
   save_weight_freequency: 50
-  mine_weight: 0.1           # Weight for MINE loss term
+  club_weight: 0.1           # Weight for CLUB MI loss term
   recon_mix_weight: 0.5
 optimizer:
   lr: 0.0001
@@ -63,7 +63,7 @@ optimizer:
   - 0.999
   weight_decay: 0.01
   eps: 1.0e-08
-  lr_mine : 1e-4
+  lr_club : 1e-4
   scheduler:
     # type: cosine
     # T_max: ${models.training.num_epochs}

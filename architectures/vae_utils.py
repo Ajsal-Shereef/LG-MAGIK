@@ -36,21 +36,59 @@ class PatchDiscriminator(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-# === MINE: Mutual Information Neural Estimator ===
-class MINECritic(nn.Module):
+# === CLUB: Contrastive Log-ratio Upper Bound for MI Minimization ===
+class CLUBCritic(nn.Module):
+    """
+    CLUB (Cheng et al., 2020) estimates an upper bound on MI(z; t).
+    Learns a conditional variational distribution q(t|z) as a diagonal Gaussian.
+    
+    MI upper bound: E[log q(t|z)] - E[log q(t'|z)]  (positive vs negative pairs)
+    Critic loss:    -E[log q(t|z)]  (maximize log-likelihood of true pairs)
+    VAE loss:       club_mi = (positive - negative).mean()  (minimize MI upper bound)
+    """
     def __init__(self, z_dim, t_dim, hidden_dim=256):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(z_dim + t_dim, hidden_dim),
+        self.shared = nn.Sequential(
+            nn.Linear(z_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
         )
+        self.mu_head = nn.Linear(hidden_dim, t_dim)
+        self.logvar_head = nn.Linear(hidden_dim, t_dim)
 
-    def forward(self, z, t):
-        zt = torch.cat([z, t], dim=-1)
-        return self.net(zt)
+    def forward(self, z):
+        """Returns (mu, logvar) of q(t|z). logvar is clamped to prevent numerical instability."""
+        h = self.shared(z)
+        mu = self.mu_head(h)
+        logvar = self.logvar_head(h).clamp(-10.0, 10.0)  # prevent exp() overflow/underflow
+        return mu, logvar
+
+    def log_prob(self, t, mu, logvar):
+        """Compute log q(t|z) under the diagonal Gaussian."""
+        return -0.5 * (logvar + (t - mu).pow(2) / logvar.exp() + 1.8378770664093453)  # ln(2*pi)
+    
+    def mi_upper_bound(self, z, t):
+        """
+        Compute CLUB MI upper bound for the VAE (to minimize).
+        Returns club_mi (for VAE) and critic_loss (for the critic).
+        """
+        mu, logvar = self.forward(z)
+        
+        # Positive: log q(t|z) for matched pairs
+        positive = self.log_prob(t, mu, logvar).sum(dim=-1)  # [B]
+        
+        # Negative: log q(t'|z) for shuffled pairs
+        shuffled_t = t[torch.randperm(t.size(0))]
+        negative = self.log_prob(shuffled_t, mu, logvar).sum(dim=-1)  # [B]
+        
+        # MI upper bound (VAE minimizes this)
+        club_mi = (positive - negative).mean()
+        
+        # Critic loss: maximize log-likelihood = minimize negative log-likelihood
+        critic_loss = -positive.mean()
+        
+        return club_mi, critic_loss
     
 # === The Core VQ-VAE Bottleneck ===
 class VectorQuantizer(nn.Module):
