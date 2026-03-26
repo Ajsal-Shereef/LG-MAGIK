@@ -16,7 +16,7 @@ from architectures.vae_utils import PatchDiscriminator, CLUBCritic
 from architectures.cnn import CNNEncoder, CNNTextConditionedDecoder
 from architectures.mlp import MLPEncoder, MLPTextConditionedDecoder
 from architectures.stochastic import GaussianSampleSpatial, GaussianSample
-from architectures.common_utils import tokenize_captions, get_train_transform_cnn, get_train_transform_mlp
+from architectures.common_utils import tokenize_captions, get_train_transform_cnn, get_train_transform_mlp, NvidiaEmbeddingCache
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -28,6 +28,8 @@ class TextConditionedVAE(nn.Module):
         
         # ---- Base configs ----
         self.observation_model = kwargs["observation_mode"]
+        self.text_encoder_type = kwargs.get("text_encoder_type", "clip")
+        self.nvidia_embed_dim = kwargs.get("nvidia_embed_dim", 2048)
         self.use_image_discriminator = kwargs.get("use_image_discriminator", False)
         self.use_caption_discriminator = kwargs.get("use_caption_discriminator", False)
         self.use_club = kwargs.get("use_club", False)
@@ -53,14 +55,15 @@ class TextConditionedVAE(nn.Module):
             
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
             self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
-            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers)
+            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers, text_encoder_type=self.text_encoder_type, nvidia_embed_dim=self.nvidia_embed_dim)
             
             # Use max_sequence_length if provided, else fall back to tokenizer default
             # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
-            if self.max_sequence_length is not None:
-                token_len = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
-            else:
-                token_len = self.decoder.tokenizer.model_max_length
+            if self.text_encoder_type != "nvidia":
+                if self.max_sequence_length is not None:
+                    token_len = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
+                else:
+                    token_len = self.decoder.tokenizer.model_max_length
             
             self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
                                              self.decoder.text_dim,
@@ -197,25 +200,32 @@ class TextConditionedVAE(nn.Module):
     
     def forward(self, x):
         """
-        x: dict containing pixel_values, input_ids, attention_masks
+        x: dict containing pixel_values, and either:
+           - input_ids + attention_masks (CLIP mode)
+           - text_embeddings (NVIDIA mode)
         """
         images = x["pixel_values"]
-        text_tokens = x["input_ids"]
-        attention_mask = x["attention_masks"]
         
         hidden = self.encoder(images)
         sampler = self.bottleneck(hidden)
         latent = sampler.latent
 
-        # Store text features from the decoder for later use (e.g., caption discriminator)
-        reconstructed_x, text_feats = self.decoder(latent, text_tokens, attention_mask, return_text_feats=True)
+        if self.text_encoder_type == "nvidia":
+            # NVIDIA mode: pass pre-computed embeddings directly
+            text_embeddings = x["text_embeddings"]
+            reconstructed_x, text_feats = self.decoder(latent, text_embeddings, return_text_feats=True)
+        else:
+            # CLIP mode: pass token IDs and attention mask
+            text_tokens = x["input_ids"]
+            attention_mask = x["attention_masks"]
+            reconstructed_x, text_feats = self.decoder(latent, text_tokens, attention_mask, return_text_feats=True)
 
         return {
                 "x": images,
                 "reconstructed_x": reconstructed_x,
                 "posterior": sampler,
                 "latent": latent,
-                "text_feats": text_feats # Add text features to the output
+                "text_feats": text_feats
                 }
 
     def loss_function(self, batch, forward_output, **kwargs):
@@ -373,7 +383,7 @@ class TextConditionedVAE(nn.Module):
         self.optimize_generator(losses, accelerator)
         self.optimize_discriminator(losses, accelerator)
         
-    def imagine(self, state, description):
+    def imagine(self, state, description, nvidia_embedder=None):
         train_transforms = self.train_transform
         if self.observation_model == "image":
             images = [Image.fromarray(image).convert("RGB") for image in np.expand_dims(state, axis=0)]
@@ -382,20 +392,32 @@ class TextConditionedVAE(nn.Module):
             states_tensors = [train_transforms(data) for data in np.expand_dims(state, axis=0)]
         state_tensor = torch.stack(states_tensors)
         
-        tokeniser = self.decoder.tokenizer
-        captions_tokenised, attention_mask = tokenize_captions(tokeniser, [description], max_length=self.max_sequence_length)
-        captions_tokenised = captions_tokenised.to(device)
-        attention_mask = attention_mask.to(device)
-        
         with torch.no_grad():
             hidden = self.encoder(state_tensor.to(device))
             sampler = self.bottleneck(hidden)
-            mean = sampler.mean # Sampled latent
+            mean = sampler.mean
             
-            # Decode conditional
-            reconstructed_x, _ = self.decoder(mean, captions_tokenised, attention_mask, return_text_feats=True)
+            if self.text_encoder_type == "nvidia":
+                # NVIDIA mode: embed the description via API
+                if nvidia_embedder is None:
+                    import os
+                    from dotenv import load_dotenv
+                    load_dotenv("config/.env")
+                    nvidia_embedder = NvidiaEmbeddingCache(
+                        dataset_dir=".",
+                        api_key=os.getenv("NVIDIA_API_KEY")
+                    )
+                embeddings = nvidia_embedder.embed_sentences([description])
+                text_emb = torch.from_numpy(embeddings).float().to(device)
+                reconstructed_x, _ = self.decoder(mean, text_emb, return_text_feats=True)
+            else:
+                # CLIP mode
+                tokeniser = self.decoder.tokenizer
+                captions_tokenised, attention_mask = tokenize_captions(tokeniser, [description], max_length=self.max_sequence_length)
+                captions_tokenised = captions_tokenised.to(device)
+                attention_mask = attention_mask.to(device)
+                reconstructed_x, _ = self.decoder(mean, captions_tokenised, attention_mask, return_text_feats=True)
             
-            # Prepare output dict similar to forward
             out = {
                 "reconstructed_x": reconstructed_x,
                 "mean": mean
@@ -424,18 +446,40 @@ class TextConditionedVAE(nn.Module):
         images = [image.convert("RGB") for image in states]
         states_tensors = [train_transforms(image) for image in images]
         
-        tokeniser = self.decoder.tokenizer
-        captions_tokenised, attention_mask = tokenize_captions(tokeniser, descriptions, max_length=self.max_sequence_length)
-        captions_tokenised = captions_tokenised.to(device)
-        attention_mask = attention_mask.to(device)
-        changed_captions_list = list(chain.from_iterable(
-            [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
-        ))
-        changed_captions_tokenised_list, changed_caption_attention_mask = tokenize_captions(tokeniser, changed_captions_list, max_length=self.max_sequence_length)
-        changed_captions_tokenised_list = changed_captions_tokenised_list.to(device)
-        changed_caption_attention_mask = changed_caption_attention_mask.to(device)
-        changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
-        changed_caption_attention_mask = [changed_caption_attention_mask[i:i+len(changed_captions)] for i in range(0, len(changed_caption_attention_mask), len(changed_captions))]
+        if self.text_encoder_type == "nvidia":
+            # NVIDIA mode: embed descriptions and changed captions via API
+            import os as _os
+            from dotenv import load_dotenv
+            load_dotenv("config/.env")
+            nvidia_embedder = NvidiaEmbeddingCache(
+                dataset_dir=".",
+                api_key=_os.getenv("NVIDIA_API_KEY")
+            )
+            # Embed original descriptions
+            desc_embeddings = nvidia_embedder.embed_sentences(descriptions)
+            desc_embeddings = torch.from_numpy(desc_embeddings).float().to(device)
+            
+            # Embed changed captions
+            changed_captions_list = list(chain.from_iterable(
+                [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
+            ))
+            changed_embeddings_all = nvidia_embedder.embed_sentences(changed_captions_list)
+            changed_embeddings_all = torch.from_numpy(changed_embeddings_all).float().to(device)
+            changed_embeddings = [changed_embeddings_all[i:i+len(changed_captions)] for i in range(0, len(changed_embeddings_all), len(changed_captions))]
+        else:
+            # CLIP mode: tokenize descriptions and changed captions
+            tokeniser = self.decoder.tokenizer
+            captions_tokenised, attention_mask = tokenize_captions(tokeniser, descriptions, max_length=self.max_sequence_length)
+            captions_tokenised = captions_tokenised.to(device)
+            attention_mask = attention_mask.to(device)
+            changed_captions_list = list(chain.from_iterable(
+                [item if isinstance(item, list) else [item] for sublist in changed_captions for item in (sublist if isinstance(sublist, list) else [sublist])]
+            ))
+            changed_captions_tokenised_list, changed_caption_attention_mask = tokenize_captions(tokeniser, changed_captions_list, max_length=self.max_sequence_length)
+            changed_captions_tokenised_list = changed_captions_tokenised_list.to(device)
+            changed_caption_attention_mask = changed_caption_attention_mask.to(device)
+            changed_captions_tokenised = [changed_captions_tokenised_list[i:i+len(changed_captions)] for i in range(0, len(changed_captions_tokenised_list), len(changed_captions))]
+            changed_caption_attention_mask = [changed_caption_attention_mask[i:i+len(changed_captions)] for i in range(0, len(changed_caption_attention_mask), len(changed_captions))]
         
         # This list will hold all images for the grid in the new order
         grid_images = []
@@ -447,22 +491,29 @@ class TextConditionedVAE(nn.Module):
 
             for i in range(len(states_tensors)):
                 # 1. ADD ORIGINAL IMAGE
-                # The original, ground-truth image tensor
                 grid_images.append(states_tensors[i].cpu())
 
                 latent_z = latents[i].unsqueeze(0)
                 
                 # 2. ADD RECONSTRUCTION
-                original_tokens = captions_tokenised[i].unsqueeze(0)
-                original_mask = attention_mask[i].unsqueeze(0)
-                recon_original, _ = self.decoder(latent_z, original_tokens, original_mask, return_text_feats=True)
+                if self.text_encoder_type == "nvidia":
+                    recon_original, _ = self.decoder(latent_z, desc_embeddings[i].unsqueeze(0), return_text_feats=True)
+                else:
+                    original_tokens = captions_tokenised[i].unsqueeze(0)
+                    original_mask = attention_mask[i].unsqueeze(0)
+                    recon_original, _ = self.decoder(latent_z, original_tokens, original_mask, return_text_feats=True)
                 grid_images.append(recon_original.squeeze(0).cpu())
 
                 # 3. ADD GENERATED IMAGES
-                changed_tokens = changed_captions_tokenised[i]
-                changed_captions_mask = changed_caption_attention_mask[i]
-                latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
-                recons_changed, _ = self.decoder(latent_z_expanded, changed_tokens, changed_captions_mask, return_text_feats=True)
+                if self.text_encoder_type == "nvidia":
+                    changed_embs = changed_embeddings[i]
+                    latent_z_expanded = latent_z.repeat(len(changed_embs), 1, 1, 1)
+                    recons_changed, _ = self.decoder(latent_z_expanded, changed_embs, return_text_feats=True)
+                else:
+                    changed_tokens = changed_captions_tokenised[i]
+                    changed_captions_mask = changed_caption_attention_mask[i]
+                    latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
+                    recons_changed, _ = self.decoder(latent_z_expanded, changed_tokens, changed_captions_mask, return_text_feats=True)
                 grid_images.extend(list(recons_changed.cpu()))
 
         # --- 4. CREATE GRID, ADD NUMBERS, AND SAVE ---
@@ -553,25 +604,37 @@ class TextConditionedVAE(nn.Module):
         reconstructions = (output["reconstructed_x"][:num_samples].detach() * 0.5 + 0.5).clamp(0, 1)
 
         # --- 3. GENERATE PROMPT-DRIVEN IMAGES ---
-        # Tokenize and encode the text prompts to get embeddings
-        if self.max_sequence_length is not None:
-            length = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
-        else:
-            length = self.decoder.tokenizer.model_max_length
-        tokenised_text = self.decoder.tokenizer(
-            prompts, max_length=length, padding="max_length", 
-            truncation=True, return_tensors="pt"
-        )
-        input_ids = tokenised_text["input_ids"].to(device)
-        attention_mask = tokenised_text["attention_mask"].to(device)
-
-        # Expand latents and embeddings to create all (z, prompt) pairs
         z_expanded = latents.repeat_interleave(num_prompts, dim=0)
-        text_embeddings_expanded = input_ids.repeat(num_samples, 1)
-        attention_mask_expanded = attention_mask.repeat(num_samples, 1)
-
-        # Decode the pairs to generate new images
-        generated_images, _ = self.decoder(z_expanded, text_embeddings_expanded, attention_mask_expanded.float(), return_text_feats=True)
+        
+        if self.text_encoder_type == "nvidia":
+            # NVIDIA mode: embed prompts via API
+            import os as _os
+            from dotenv import load_dotenv
+            load_dotenv("config/.env")
+            nvidia_embedder = NvidiaEmbeddingCache(
+                dataset_dir=".",
+                api_key=_os.getenv("NVIDIA_API_KEY")
+            )
+            prompt_embeddings = nvidia_embedder.embed_sentences(list(prompts))
+            prompt_embeddings = torch.from_numpy(prompt_embeddings).float().to(device)
+            # Expand: repeat prompt embeddings for each sample
+            text_embeddings_expanded = prompt_embeddings.repeat(num_samples, 1)
+            generated_images, _ = self.decoder(z_expanded, text_embeddings_expanded, return_text_feats=True)
+        else:
+            # CLIP mode: tokenize and encode
+            if self.max_sequence_length is not None:
+                length = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
+            else:
+                length = self.decoder.tokenizer.model_max_length
+            tokenised_text = self.decoder.tokenizer(
+                prompts, max_length=length, padding="max_length", 
+                truncation=True, return_tensors="pt"
+            )
+            input_ids = tokenised_text["input_ids"].to(device)
+            attention_mask = tokenised_text["attention_mask"].to(device)
+            text_embeddings_expanded = input_ids.repeat(num_samples, 1)
+            attention_mask_expanded = attention_mask.repeat(num_samples, 1)
+            generated_images, _ = self.decoder(z_expanded, text_embeddings_expanded, attention_mask_expanded.float(), return_text_feats=True)
         
         # Normalize generated images for visualization
         if self.observation_model == "image":

@@ -3,6 +3,8 @@ import re
 import cv2
 import json
 import math
+import time
+import hashlib
 import random
 import string
 import numpy as np
@@ -362,6 +364,120 @@ class TanhTransform(pyd.transforms.Transform):
         # https://github.com/tensorflow/probability/commit/ef6bb176e0ebd1cf6e25c6b5cecdd2428c22963f#diff-e120f70e92e6741bca649f04fcd907b7
         return 2. * (math.log(2.) - x - F.softplus(-2. * x))
 
+# --- NVIDIA Embedding Cache ---
+class NvidiaEmbeddingCache:
+    """Pre-computes and caches NVIDIA API embeddings for a dataset.
+    
+    Embeddings are saved as a .npy file alongside the dataset directory.
+    On subsequent runs, the cache is loaded directly without any API calls.
+    """
+    def __init__(self, dataset_dir, model_name="nvidia/llama-nemotron-embed-1b-v2", api_key=None):
+        self.dataset_dir = dataset_dir
+        self.model_name = model_name.replace(":free", "")
+        self.api_key = api_key
+        self.url = "https://integrate.api.nvidia.com/v1/embeddings"
+        
+        # Create a unique cache filename based on model name
+        model_hash = hashlib.md5(self.model_name.encode()).hexdigest()[:8]
+        safe_name = self.model_name.replace("/", "_").replace(".", "_")
+        self.cache_path = os.path.join(dataset_dir, f"nvidia_embeddings_{safe_name}_{model_hash}.npy")
+    
+    def load_or_compute(self, caption_key="text"):
+        """Load cached embeddings or compute them via API.
+        
+        Returns:
+            np.ndarray: Embeddings array of shape [N, embed_dim]
+        """
+        if os.path.exists(self.cache_path):
+            print(f"[NVIDIA Cache] Loading cached embeddings from {self.cache_path}")
+            embeddings = np.load(self.cache_path)
+            print(f"[NVIDIA Cache] Loaded {embeddings.shape[0]} embeddings of dim {embeddings.shape[1]}")
+            return embeddings
+        
+        print(f"[NVIDIA Cache] No cache found. Computing embeddings via API...")
+        if not self.api_key:
+            raise ValueError("NVIDIA_API_KEY is required to compute embeddings. Set it in config/.env")
+        
+        # Read all captions from metadata.jsonl
+        metadata_path = os.path.join(self.dataset_dir, "metadata.jsonl")
+        captions = []
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    entry = json.loads(line)
+                    captions.append(entry[caption_key])
+        
+        print(f"[NVIDIA Cache] Embedding {len(captions)} captions using {self.model_name}...")
+        embeddings = self._embed_batch(captions)
+        
+        # Save cache
+        np.save(self.cache_path, embeddings)
+        print(f"[NVIDIA Cache] Saved embeddings to {self.cache_path} (shape: {embeddings.shape})")
+        return embeddings
+    
+    def embed_sentences(self, sentences):
+        """Embed a small list of sentences via the NVIDIA API (for inference/generation).
+        
+        Args:
+            sentences: list of strings
+        Returns:
+            np.ndarray of shape [len(sentences), embed_dim]
+        """
+        if not self.api_key:
+            raise ValueError("NVIDIA_API_KEY is required for embedding.")
+        return self._embed_batch(sentences)
+    
+    def _embed_batch(self, sentences, batch_size=50):
+        """Call NVIDIA API to embed sentences in batches with retry logic."""
+        all_embeddings = []
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        dim = 2048  # Default for llama-nemotron
+        
+        for i in range(0, len(sentences), batch_size):
+            batch = sentences[i:i+batch_size]
+            payload = {
+                "input": batch,
+                "model": self.model_name,
+                "encoding_format": "float",
+                "input_type": "query"
+            }
+            
+            max_retries = 10
+            for attempt in range(max_retries):
+                response = requests.post(self.url, headers=headers, json=payload)
+                if response.status_code == 200:
+                    data = response.json()
+                    if "data" in data:
+                        embeds = [item["embedding"] for item in data["data"]]
+                        all_embeddings.extend(embeds)
+                        if len(embeds) > 0:
+                            dim = len(embeds[0])
+                        break
+                    else:
+                        print(f"[NVIDIA Cache] Unexpected response: {data}")
+                        all_embeddings.extend([np.zeros(dim).tolist()] * len(batch))
+                        break
+                elif response.status_code == 429:
+                    wait = 2 + attempt
+                    print(f"[NVIDIA Cache] Rate limited. Waiting {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"[NVIDIA Cache] API Error {response.status_code}: {response.text}")
+                    all_embeddings.extend([np.zeros(dim).tolist()] * len(batch))
+                    break
+            else:
+                print(f"[NVIDIA Cache] Max retries reached for batch {i//batch_size}")
+                all_embeddings.extend([np.zeros(dim).tolist()] * len(batch))
+            
+            if (i // batch_size) % 10 == 0:
+                print(f"[NVIDIA Cache] Progress: {min(i+batch_size, len(sentences))}/{len(sentences)}")
+        
+        return np.array(all_embeddings, dtype=np.float32)
+
+
 def get_dataloader(args: DictConfig) -> DataLoader:
     """
     Returns a PyTorch DataLoader for diffusion model training,
@@ -369,6 +485,25 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     """
     cfg = args.models
     observation_mode = cfg.model.get("observation_mode", "image")
+    text_encoder_type = cfg.data.get("text_encoder_type", "clip")
+
+    # -------------------------
+    # Pre-compute NVIDIA embeddings if needed
+    # -------------------------
+    nvidia_embeddings = None
+    if text_encoder_type == "nvidia" and cfg.data.get("caption_column"):
+        from dotenv import load_dotenv
+        load_dotenv("config/.env")
+        api_key = os.getenv("NVIDIA_API_KEY")
+        nvidia_model = cfg.data.get("nvidia_model_name", "nvidia/llama-nemotron-embed-1b-v2")
+        cache = NvidiaEmbeddingCache(
+            dataset_dir=cfg.data.train_dir,
+            model_name=nvidia_model,
+            api_key=api_key
+        )
+        nvidia_embeddings = cache.load_or_compute(caption_key=cfg.data.caption_column)
+        nvidia_embeddings = torch.from_numpy(nvidia_embeddings).float()
+        print(f"[Dataloader] NVIDIA embeddings ready: {nvidia_embeddings.shape}")
 
     # -------------------------
     # IMAGE MODE
@@ -379,17 +514,6 @@ def get_dataloader(args: DictConfig) -> DataLoader:
                            transforms.Normalize([0.5], [0.5]),
                         ])
 
-        def preprocess_train(examples: Dict) -> Dict:
-            images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
-            examples["pixel_values"] = [train_transforms(image) for image in images]
-            if cfg.data.caption_column:
-                tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
-                
-                max_len = cfg.model.get("max_sequence_length", 77)
-                input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
-                examples["input_ids"] = input_ids
-                examples["attention_mask"] = attention_mask
-            return examples
         # Load dataset from image folder
         data_files = {"train": os.path.join(cfg.data.train_dir, "**")}
         dataset = load_dataset(
@@ -401,6 +525,35 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         column_names = dataset["train"].column_names
         if cfg.data.image_column not in column_names:
             raise ValueError(f"Image column '{cfg.data.image_column}' not found in {column_names}")
+
+        if text_encoder_type == "nvidia" and nvidia_embeddings is not None:
+            # --- NVIDIA mode ---
+            # Add an index column so we can look up cached embeddings after shuffling.
+            nvidia_emb_lookup = nvidia_embeddings  # [N, D]
+            dataset["train"] = dataset["train"].map(
+                lambda example, idx: {"__nvidia_idx__": idx},
+                with_indices=True,
+                desc="Adding NVIDIA embedding indices"
+            )
+            
+            def preprocess_train(examples: Dict) -> Dict:
+                images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
+                examples["pixel_values"] = [train_transforms(image) for image in images]
+                # Keep __nvidia_idx__ for embedding lookup in collate_fn
+                return examples
+        else:
+            # --- CLIP mode (default) ---
+            def preprocess_train(examples: Dict) -> Dict:
+                images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
+                examples["pixel_values"] = [train_transforms(image) for image in images]
+                if cfg.data.caption_column:
+                    tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
+                    
+                    max_len = cfg.model.get("max_sequence_length", 77)
+                    input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
+                    examples["input_ids"] = input_ids
+                    examples["attention_mask"] = attention_mask
+                return examples
 
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
@@ -425,12 +578,23 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         """Collates preprocessed examples into a batch tensor."""
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        attention_masks = torch.stack([example["attention_mask"] for example in examples])
-        attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
-        if cfg.data.caption_column:
-            input_ids = torch.stack([example["input_ids"] for example in examples])
-            return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_masks" : attention_masks}
-        return {"pixel_values": pixel_values}
+        
+        if text_encoder_type == "nvidia" and nvidia_embeddings is not None:
+            # NVIDIA mode: look up cached embeddings using the __nvidia_idx__ column
+            indices = [example["__nvidia_idx__"] for example in examples]
+            text_embeddings = torch.stack([nvidia_emb_lookup[idx] for idx in indices])
+            return {
+                "pixel_values": pixel_values,
+                "text_embeddings": text_embeddings,
+            }
+        else:
+            # CLIP mode
+            attention_masks = torch.stack([example["attention_mask"] for example in examples])
+            attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
+            if cfg.data.caption_column:
+                input_ids = torch.stack([example["input_ids"] for example in examples])
+                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_masks" : attention_masks}
+            return {"pixel_values": pixel_values}
     
     # -------------------------
     # DATALOADER

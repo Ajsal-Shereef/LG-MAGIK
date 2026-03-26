@@ -586,12 +586,13 @@ class FinalTextConditionedOutput(nn.Module):
         return torch.tanh(self.conv(refined))
     
 class CNNTextConditionedDecoder(nn.Module):
-    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True, n_text_attn_layers=2):
+    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True, n_text_attn_layers=2, text_encoder_type="clip", nvidia_embed_dim=2048):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         self.use_coord_conv = use_coord_conv
         self.n_text_attn_layers = n_text_attn_layers
         self.n_upsample = n_upsample
+        self.text_encoder_type = text_encoder_type
         # Number of early blocks that use z-only FiLM (no text cross-attention)
         self.n_spatial_only = n_upsample - n_text_attn_layers
         
@@ -599,17 +600,32 @@ class CNNTextConditionedDecoder(nn.Module):
         in_channels = latent_channel + 2 if use_coord_conv else latent_channel
         self.mapping_conv = nn.Conv2d(in_channels, dim, 1)
         init.xavier_uniform_(self.mapping_conv.weight)
-        # Text encoder and tokenizer
-        self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
-        self.text_encoder = CLIPTextModel.from_pretrained(clip_model, trust_remote_code=True)
         
-        #Freeze the CLIP model parameters first
-        for params in self.text_encoder.parameters():
-            params.requires_grad = False
+        if text_encoder_type == "nvidia":
+            # --- NVIDIA mode: no CLIP, use pre-computed embeddings ---
+            self.tokenizer = None
+            self.text_encoder = None
+            # Internal text_dim for cross-attention
+            if text_encoder_type=="clip":
+                self.text_dim = 512
+            else:
+                self.text_dim = nvidia_embed_dim
+            # Project NVIDIA embedding dim -> internal text_dim
+            self.text_proj = nn.Linear(nvidia_embed_dim, self.text_dim)
+            self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
+        else:
+            # --- CLIP mode (default) ---
+            self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
+            self.text_encoder = CLIPTextModel.from_pretrained(clip_model, trust_remote_code=True)
             
-        self.text_encoder.eval()
-        self.text_dim=self.text_encoder.config.hidden_size
-        self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation = 'gelu', norm='ln')
+            # Freeze the CLIP model parameters
+            for params in self.text_encoder.parameters():
+                params.requires_grad = False
+                
+            self.text_encoder.eval()
+            self.text_dim = self.text_encoder.config.hidden_size
+            self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
+        
         self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=nhead)
         
         self.blocks=nn.ModuleList()
@@ -629,23 +645,27 @@ class CNNTextConditionedDecoder(nn.Module):
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
-    def forward(self,z,text_tockens, attention_mask, return_text_feats=False):
-        # We must pass attention_mask to handle padding correctly 
-        outputs = self.text_encoder(text_tockens, attention_mask=attention_mask, return_dict=True)
-        
-        if hasattr(outputs, 'last_hidden_state'):
-            self.text_feats = outputs.last_hidden_state
+    def forward(self, z, text_input, attention_mask=None, return_text_feats=False):
+        if self.text_encoder_type == "nvidia":
+            # --- NVIDIA mode ---
+            # text_input is pre-computed embeddings [B, nvidia_embed_dim]
+            # Project to internal text_dim and reshape to [B, 1, text_dim]
+            self.text_feats = self.text_proj(text_input).unsqueeze(1)  # [B, 1, text_dim]
+            self.text_feats = self.text_adapter(self.text_feats)
+            # Create attention mask of all ones [B, 1] (single valid token)
+            attention_mask = torch.ones(text_input.shape[0], 1, device=z.device)
         else:
-            self.text_feats = outputs[0] # Tuple fallback
+            # --- CLIP mode ---
+            # text_input is token IDs, attention_mask is the padding mask
+            outputs = self.text_encoder(text_input, attention_mask=attention_mask, return_dict=True)
             
-        # self.text_feats = self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
-        self.text_feats = self.text_adapter(self.text_feats)
-        # Expand text_feat to spatial (broadcast over H_z, W_z)
-        # text_global = self.text_feats.mean(dim=1)  # [B, D]
-        # text_proj = self.text_to_latent(text_global).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1]
-        # text_proj = text_proj.expand(-1, -1, z.size(2), z.size(3))  # match z spatial size
+            if hasattr(outputs, 'last_hidden_state'):
+                self.text_feats = outputs.last_hidden_state
+            else:
+                self.text_feats = outputs[0]  # Tuple fallback
+                
+            self.text_feats = self.text_adapter(self.text_feats)
 
-        # z = torch.cat([z, text_proj], dim=1)  # concat along channel
         # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
         B, C, H, W = z.shape
         z = z.view(B, C, H*W).permute(0,2,1)
