@@ -239,7 +239,6 @@ class TextConditionedVAE(nn.Module):
             perceptual_loss = torch.tensor(0.0, device=original_x.device)
         
         # === Adversarial disentanglement loss ===
-        # === Adversarial disentanglement loss ===
         z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
         pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
         

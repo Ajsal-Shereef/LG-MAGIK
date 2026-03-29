@@ -6,7 +6,7 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: null
 data:
-  train_dir: cached_data/MiniWorld_attempt_6
+  train_dir: data/MiniGridRelational/agent
   cache_dir: null
   batch_size: 32
   num_workers: 8
@@ -15,7 +15,7 @@ data:
   text_encoder_path: "zer0int/LongCLIP-GmP-ViT-L-14" #openai/clip-vit-base-patch32
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
-  n_downsample: 4
+  n_downsample: 3
   encoder_n_res: 3
   input_dim: 3
   dim: 64
@@ -23,8 +23,8 @@ model:
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
-  - 5
-  - 5
+  - 8
+  - 8
   latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:

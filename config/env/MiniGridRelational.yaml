@@ -1,0 +1,17 @@
+name: MiniGridRelational
+size: 8
+max_steps: 150
+verbose: False
+tile_size : 8
+task_mode: source
+n_downsample : 3
+total_timestep : 4500000
+fps : 2.5
+observation_mode : image
+mission : ???
+validation_prompts : 
+  - "Agent is at (4, 5) facing left. The blue ball is at (3, 1). The red target area is at (4, 4)."
+  - "Agent is at (2, 4) facing right. The blue ball is at (2, 6). The red target area is at (1, 2)."
+  - "Agent is at (6, 2) facing up. The blue ball is at (4, 4). The red target area is at (6, 6)."
+  - "Agent is at (6, 6) facing down. The blue ball is at (2, 4). The red target area is at (1, 1)."
+  - "Agent is at (1, 1) facing up. The blue ball is at (5, 5). The red target area is at (3, 3)."
