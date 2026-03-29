@@ -28,19 +28,6 @@ def main(args: DictConfig) -> None:
         env = ImgObsWrapper(env)
         env_name = env.unwrapped.env_name
         env_description = env.unwrapped.env_description
-    elif args.env.name ==  "Magik_env":
-        if args.mode == "transfer":
-            args.env.verbose = True
-        args.env.is_single_object = False
-        args.env.reward_object = "Both"
-        from env.Magik_env import MultiObjectMiniGridEnv
-        env = MultiObjectMiniGridEnv(args.env)
-        from minigrid.wrappers import RGBImgPartialObsWrapper
-        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
-        from minigrid.wrappers import ImgObsWrapper
-        env = ImgObsWrapper(env)
-        env_name = env.unwrapped.env_name
-        env_description = env.unwrapped.env_description
     elif args.env.name ==  "PickEnv":
         if args.mode == "transfer":
             args.env.verbose = True
@@ -55,6 +42,17 @@ def main(args: DictConfig) -> None:
         env = PickObjectEnv(args.env)
         env_name = env.env_name
         env_description = env.env_description
+    elif args.env.name == "MiniGridRelational":
+        if args.mode == "transfer":
+            args.env.verbose = True
+        from env.MiniGridRelational import RelationalPickPlaceEnv
+        env = RelationalPickPlaceEnv(args.env)
+        from minigrid.wrappers import RGBImgObsWrapper
+        env = RGBImgObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+        env_name = env.unwrapped.env_name
+        env_description = env.unwrapped.env_description
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -231,7 +229,7 @@ def main(args: DictConfig) -> None:
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
         print(f"----------- Episode done:  {episode} ----------------")
     
-    if args.env.name ==  "SimplePickup":
+    if args.env.name ==  "SimplePickup" or args.env.name ==  "MiniGridRelational":
         agent_performance = env.unwrapped.get_performance_metric()
     else:
         agent_performance = env.get_performance_metric()

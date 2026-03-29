@@ -605,14 +605,10 @@ class CNNTextConditionedDecoder(nn.Module):
             # --- NVIDIA mode: no CLIP, use pre-computed embeddings ---
             self.tokenizer = None
             self.text_encoder = None
-            # Internal text_dim for cross-attention
-            if text_encoder_type=="clip":
-                self.text_dim = 512
-            else:
-                self.text_dim = nvidia_embed_dim
+            self.text_dim = nvidia_embed_dim
             # Project NVIDIA embedding dim -> internal text_dim
             self.text_proj = nn.Linear(nvidia_embed_dim, self.text_dim)
-            self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
+            # self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
         else:
             # --- CLIP mode (default) ---
             self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
@@ -624,7 +620,8 @@ class CNNTextConditionedDecoder(nn.Module):
                 
             self.text_encoder.eval()
             self.text_dim = self.text_encoder.config.hidden_size
-            self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
+            # self.text_dim = 256
+            # self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
         
         self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=nhead)
         
@@ -651,7 +648,7 @@ class CNNTextConditionedDecoder(nn.Module):
             # text_input is pre-computed embeddings [B, nvidia_embed_dim]
             # Project to internal text_dim and reshape to [B, 1, text_dim]
             self.text_feats = self.text_proj(text_input).unsqueeze(1)  # [B, 1, text_dim]
-            self.text_feats = self.text_adapter(self.text_feats)
+            # self.text_feats = self.text_adapter(self.text_feats)
             # Create attention mask of all ones [B, 1] (single valid token)
             attention_mask = torch.ones(text_input.shape[0], 1, device=z.device)
         else:
@@ -664,7 +661,7 @@ class CNNTextConditionedDecoder(nn.Module):
             else:
                 self.text_feats = outputs[0]  # Tuple fallback
                 
-            self.text_feats = self.text_adapter(self.text_feats)
+            # self.text_feats = self.text_adapter(self.text_feats)
 
         # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
         B, C, H, W = z.shape

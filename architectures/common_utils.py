@@ -528,12 +528,22 @@ def get_dataloader(args: DictConfig) -> DataLoader:
 
         if text_encoder_type == "nvidia" and nvidia_embeddings is not None:
             # --- NVIDIA mode ---
-            # Add an index column so we can look up cached embeddings after shuffling.
+            # Create a robust lookup from caption text to the embedding index.
+            # This ensures alignment even if HF dataset reorders elements.
             nvidia_emb_lookup = nvidia_embeddings  # [N, D]
+            metadata_path = os.path.join(cfg.data.train_dir, "metadata.jsonl")
+            text_to_idx = {}
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                for idx, line in enumerate(f):
+                    if line.strip():
+                        entry = json.loads(line)
+                        text = entry.get(cfg.data.caption_column, "")
+                        if text not in text_to_idx:
+                            text_to_idx[text] = idx
+                            
             dataset["train"] = dataset["train"].map(
-                lambda example, idx: {"__nvidia_idx__": idx},
-                with_indices=True,
-                desc="Adding NVIDIA embedding indices"
+                lambda example: {"__nvidia_idx__": text_to_idx.get(example[cfg.data.caption_column], 0)},
+                desc="Aligning NVIDIA embeddings"
             )
             
             def preprocess_train(examples: Dict) -> Dict:

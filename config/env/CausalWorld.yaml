@@ -1,0 +1,12 @@
+name: CausalWorld
+task_mode: "source"  # Use "source" for training, "target" for unseen tests
+max_steps: 100
+render_mode: "rgb_array"
+size: 10
+obs_width: 80
+obs_height: 80
+total_timestep: 500000
+fps: 10
+verbose: True
+observation_mode: "image"
+mission: ???

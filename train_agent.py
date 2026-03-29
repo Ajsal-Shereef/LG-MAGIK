@@ -254,11 +254,23 @@ def main(args: DictConfig) -> None:
         from env.MiniWorld import PickObjectEnv
         env = PickObjectEnv(args.env)
         mission = env.unwrapped.mission
+    elif args.env.name == "CausalWorld":
+        from env.CausalWorld import CausalWorldPickEnv
+        env = CausalWorldPickEnv(args.env)
+        mission = env.unwrapped.mission
     elif args.env.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
         env = SimplePickup(args.env)
         from minigrid.wrappers import RGBImgPartialObsWrapper
         env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+        mission = env.unwrapped.mission
+    elif args.env.name ==  "MiniGridRelational":
+        from env.MiniGridRelational import RelationalPickPlaceEnv
+        env = RelationalPickPlaceEnv(args.env)
+        from minigrid.wrappers import RGBImgObsWrapper
+        env = RGBImgObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         mission = env.unwrapped.mission
@@ -316,7 +328,7 @@ def main(args: DictConfig) -> None:
             model = DQN.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000)
+            model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=10000)
     else:
         raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC")
         
