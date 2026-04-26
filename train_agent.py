@@ -133,6 +133,7 @@ class DataCollectorCallback(BaseCallback):
         self.saving_func = saving_func
         self.number_data_to_collect = number_data_to_collect
         self.observation_mode = observation_mode
+        self.step_count = 0
         
     def _on_step(self) -> bool:
         """
@@ -155,12 +156,24 @@ class DataCollectorCallback(BaseCallback):
                 current_obs[i] = info["terminal_observation"]
 
         description = [info["description"] for info in infos]
-        sensor_data = [info.get("sensor_data", "") for info in infos]
+        sensor_data = [info.get("sensor_data", None) for info in infos]
         
-        # Append data. 
-        self.all_states.append(current_obs)
-        self.all_description.append(description) # Append infos
-        self.all_sensor_data.append(sensor_data)
+        # Reservoir sampling of batches to prevent OOM
+        n_envs = current_obs.shape[0]
+        max_batches = int(np.ceil(self.number_data_to_collect / n_envs))
+        
+        self.step_count += 1
+        
+        if len(self.all_states) < max_batches:
+            self.all_states.append(current_obs)
+            self.all_description.append(description)
+            self.all_sensor_data.append(sensor_data)
+        else:
+            j = np.random.randint(0, self.step_count)
+            if j < max_batches:
+                self.all_states[j] = current_obs
+                self.all_description[j] = description
+                self.all_sensor_data[j] = sensor_data
         
         return True
 

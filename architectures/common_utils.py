@@ -78,7 +78,7 @@ def rollout(env, remaining_steps, collect_data=False):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
         if collect_data:
-            paired_data.append({"frame" : obs.copy(), "description" : info["description"], "sensor_data" : info.get("sensor_data", "")})
+            paired_data.append({"frame" : obs.copy(), "description" : info["description"], "sensor_data" : info.get("sensor_data", None)})
         else:
             env.render()
         steps += 1
@@ -122,7 +122,7 @@ def save_dataset_for_features(dataset, save_dir):
             metadata_entry = {
                 "file_name": os.path.join("features", base_filename),
                 "text": item["description"],
-                "sensor_data": item.get("sensor_data", "")
+                "sensor_data": item.get("sensor_data", None)
             }
             metadata_entries.append(metadata_entry)
 
@@ -174,7 +174,7 @@ def save_dataset_for_images(dataset, save_dir):
             metadata_entry = {
                 "file_name": os.path.join("images", base_filename),
                 "text": item["description"],
-                "sensor_data": item.get("sensor_data", "")
+                "sensor_data": item.get("sensor_data", None)
             }
             metadata_entries.append(metadata_entry)
 
@@ -1597,6 +1597,51 @@ def preprocess_llm_output(raw_text: str) -> dict:
 
     return {"imagine": bool(imagine), "description": description}
 
+def clean_llm_artefacts(caption: str) -> str:
+    """
+    Remove common LLM artefacts like <think> tags, markdown, and conversational fillers.
+    """
+    import re
+    
+    # Replace unicode non-breaking spaces, em dashes, and other irregular spaces with standard space
+    caption = re.sub(r'[\u202f\xa0\u200b\u2014\u00a0]+', ' ', caption)
+    
+    # Remove <think>...</think> blocks if present
+    caption = re.sub(r'<think>.*?</think>', '', caption, flags=re.DOTALL)
+    
+    # Remove common prefixes used by LLMs
+    prefixes = [
+        "thus final answer:",
+        "final answer:",
+        "output:",
+        "rewritten caption:",
+        "paraphrased caption:",
+        "description:",
+        "here is the rewritten text:",
+        "here is the paraphrased text:",
+        "here is the paraphrase:"
+    ]
+    
+    lower_cap = caption.lower()
+    last_idx = -1
+    for prefix in prefixes:
+        idx = lower_cap.rfind(prefix)
+        if idx > last_idx:
+            last_idx = idx + len(prefix)
+            
+    if last_idx != -1:
+        caption = caption[last_idx:]
+        
+    # Remove markdown bolding and formatting
+    caption = caption.replace('**', '').replace('###', '')
+    
+    # Remove surrounding quotes
+    caption = caption.strip()
+    if (caption.startswith('"') and caption.endswith('"')) or (caption.startswith("'") and caption.endswith("'")):
+        caption = caption[1:-1]
+        
+    return caption.strip()
+
 def post_process_caption(caption: str) -> str:
     """
     Post-process the caption by removing non-alphanumeric characters 
@@ -1608,6 +1653,9 @@ def post_process_caption(caption: str) -> str:
     Returns:
         str: The cleaned and standardized caption.
     """
+    # Clean LLM artefacts first
+    caption = clean_llm_artefacts(caption)
+
     # Remove newlines first
     caption = caption.replace('\n', ' ')
 

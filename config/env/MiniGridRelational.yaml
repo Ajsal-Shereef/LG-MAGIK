@@ -3,15 +3,16 @@ size: 8
 max_steps: 150
 verbose: False
 tile_size : 8
-task_mode: source
+task_mode: target
 n_downsample : 3
-total_timestep : 4500000
+total_timestep : 4_000_000
 fps : 2.5
 observation_mode : image
 mission : ???
 validation_prompts : 
-  - "Agent is at (4, 5) facing left. The blue ball is at (3, 1). The red target area is at (4, 4)."
-  - "Agent is at (2, 4) facing right. The blue ball is at (2, 6). The red target area is at (1, 2)."
-  - "Agent is at (6, 2) facing up. The blue ball is at (4, 4). The red target area is at (6, 6)."
-  - "Agent is at (6, 6) facing down. The blue ball is at (2, 4). The red target area is at (1, 1)."
-  - "Agent is at (1, 1) facing up. The blue ball is at (5, 5). The red target area is at (3, 3)."
+  - "The agent, positioned at (3,4) and facing downward, is holding a blue ball. A green target is located at (5,2)."
+  - "Agent is at (2, 4) facing right. The blue ball is at (2, 6). The green target is at (1, 2)."
+  - "At position (4, 3), the agent faces left. The blue ball is located at (1, 2), and the green target is at (6, 1)."
+  - "Located at grid coordinate (4,4), the agent faces downward. The blue ball occupies (4,5) while the green target is placed at (4,2)."
+  - "At (2,4) the agent faces upward, while the blue ball is at (4,1) and the green target is at (4,5)."
+  - "The agent is positioned at coordinates (1, 4) and is currently facing in the left direction, with the blue ball in its possession. Meanwhile, the target, which is green in color, is located at coordinates (3, 5)."

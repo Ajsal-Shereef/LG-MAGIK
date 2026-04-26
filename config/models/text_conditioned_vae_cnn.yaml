@@ -42,18 +42,18 @@ model:
     norm: in
   is_perceptual_loss : true
   use_image_discriminator : false
-  use_caption_discriminator : false
+  use_caption_discriminator : true
   use_club: true           # Enables CLUB mutual information minimization
   use_ema: false
   use_coord_conv : false
-  n_text_attn_layers: 2    # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
+  n_text_attn_layers: 3    # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
   ema_decay: 0.999
   max_grad_norm: 1.0
   max_sequence_length: 110
 training:
-  num_epochs: 250
+  num_epochs: 350
   seed: ${models.seed}
-  kl_weight: 1.5
+  kl_weight: 1.0
   kl_annealing:
     enable: true
     start: 1.0
@@ -61,7 +61,7 @@ training:
     n_cycles: 1
     ratio: 0.5
   adv_lambda: 1.0
-  adv_weight: 15.0
+  adv_weight: 10.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
@@ -105,4 +105,4 @@ accelerator:
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
 test:
-  model_dir: model_weights/VAE/MiniWorld/2026-01-10_17-08-48_6DRQ77/VAE.tar
+  model_dir: model_weights/VAE/MiniGridRelational/2026-04-07_14-11-50_GZC6II/TextConditionedVAE.tar

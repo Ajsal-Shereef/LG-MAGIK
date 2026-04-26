@@ -1,0 +1,36 @@
+defaults:
+  - _self_
+
+hydra:
+  job:
+    chdir: false
+
+paths:
+  source_dir: "data/MiniGridRelational/agent/images"
+  output_dir: "cached_data/MiniGridRelational_paraphrased"
+
+model:
+  anthropic_main: "claude-sonnet-4-6"
+  anthropic_alt: "claude-haiku-4-5-20251001"
+  nvidia_main: "meta/llama-3.3-70b-instruct"
+  nvidia_alt: "nvidia/nemotron-3-super-120b-a12b" 
+  openrouter_main: "openai/gpt-oss-20b:free"
+  openrouter_alt: "nvidia/nemotron-3-super-120b-a12b:free"
+  temperature: 0.9
+  batch_size: 2
+
+api:
+  anthropic_env_var: "ANTHROPIC_API_KEY"
+  nvidia_env_var: "NVIDIA_API_KEY"
+  openrouter_env_var: "OPENROUTER_API_KEY"
+
+prompt:
+  system: |
+    You are an expert linguistics paraphraser for gridworld reinforcement learning environments.
+    Your task is to take standard template text descriptions and paraphrase them to make them more diverse and natural-sounding, as if it were written by a human annotator.
+    
+    **Constraints:**
+    * **Stick to the Original Info:** Only paraphrase the information explicitly stated. Do NOT add new details, properties, or attributes to any objects.
+    * **Do Not Infer Relative Positioning:** If the original text provides coordinates (e.g., (X, Y)), keep the exact coordinates. DO NOT attempt to deduce or add relative positions (such as "to the left of", "above", "behind") because you may deduce them incorrectly.
+    * **No Hallucination:** DO NOT invent measurements, angles, distances, or environmental details that are absent from the text (such as walls, sky, floor color).
+    * **Direct Description:** Output the paraphrase directly. No conversational text.

@@ -17,8 +17,8 @@ from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper, ImgObsW
 class RelationalPickPlaceEnv(MiniGridEnv):
     """
     MiniGrid environment for relational pick-and-place task.
-    - task_mode == "source": Agent picks a blue ball and places it on a red floor target area.
-    - task_mode == "target": Agent picks a green ball and places it *beside* a yellow box (duckie).
+    - task_mode == "source": Agent picks a blue ball and places it on a green floor target area.
+    - task_mode == "target": Agent picks a purple ball and places it *beside* a yellow box (box).
     """
 
     def __init__(self, config: DictConfig, **kwargs):
@@ -30,9 +30,9 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         
         def gen_mission():
             if self.task_mode == "source":
-                return "Pick up the blue ball and drop it on the flat red target area."
+                return "Pick up the blue ball and drop it on the flat green target grid."
             else:
-                return "Pick up the green ball and drop it beside the yellow duckie."
+                return "Pick up the green ball and drop it near the grid where the yellow box is."
 
         mission_space = MissionSpace(mission_func=gen_mission)
         
@@ -65,20 +65,19 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         """
         description = (
             "Environment context:\n"
-            "- The agent operates in a fully observable 2D gridworld-like room. The agent sees the entire room.\n"
+            "- The agent operates in a fully observable 2D gridworld of size 8x8 enclosed room with walls. The agent sees the entire room.\n"
             "- At the start of each episode, the agent, tool objects, and landmarks/target areas are randomly initialised in the environment.\n"
-            "- The agent can perform the following actions: rotate left, rotate right, move forward, pick up objects, and drop objects.\n"
-            "- The environment contains objects such as balls (tools to pick up), boxes (landmarks like a 'duckie'), and colored floor tiles (target areas).\n"
+            "- The agent can perform the following actions: rotate left, rotate right, move forward, pick up objects, and drop objects. The drop action simply drops the carried object in the grid cell directly in front of the agent.\n"
+            "- The environment contains objects such as balls (tools to pick up), boxes (landmarks like a 'box'), and colored floor tiles (target areas).\n"
             "- The agent's task is a relational pick-and-place task according to the mission string.\n"
-            "- Depending on the task mode, the agent must either pick a specific object and drop it ON a target area, or drop it BESIDE a landmark.\n"
+            "- Depending on the task mode, the agent must either pick a specific object and drop it ON a target area, or drop it BESIDE (Nearest possible grid cell) a landmark grid cell.\n"
             "- The agent can carry only one object at a time. Once picked up, it is in the agent's inventory until dropped.\n"
             "- Non-interactive elements (walls, background) cannot be acted upon, but colored floor tiles can be walked over or dropped upon.\n"
+            "- If an interactable object is present in the grid, the agent can't step onto that grid unless the agent picks it up.\n"
             "- The agent receives a reward upon successfully completing the target task (dropping the correct object at the correct relational location).\n"
             "- Each episode ends once the target task is completed or a maximum step limit is reached."
         )
         return description
-
-
 
     def _gen_grid(self, width, height):
         self.grid = Grid(width, height)
@@ -90,12 +89,12 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             self.place_obj(self.tool_block)
             
             # Target Area (Floor tile allows the agent to intrinsically step over it, but breaks generic drops without override)
-            self.target_area = Floor(color="red")
+            self.target_area = Floor(color="green")
             self.target_pos = self.place_obj(self.target_area)
             self.landmark = None
             self.landmark_pos = None
         else:
-            self.tool_block = Ball(color="green")
+            self.tool_block = Ball(color="purple")
             self.place_obj(self.tool_block)
             
             # Landmark ("Yellow Duckie")
@@ -105,7 +104,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             self.target_pos = None
             
         self.place_agent()
-        self.mission = "Pick up the blue ball and drop it on the flat red target area." if self.task_mode == "source" else "Pick up the green ball and drop it beside the yellow duckie."
+        self.mission = "Pick up the blue ball and drop it on the green target." if self.task_mode == "source" else "Pick up the purple ball and drop it strictly beside the grid where the yellow box is."
 
     def get_description(self, obs):
         dir_names = {0: "right", 1: "down", 2: "left", 3: "up"}
@@ -119,11 +118,11 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             
         if self.task_mode == "source":
             if self.target_pos is not None:
-                parts.append(f"The red target area is at ({self.target_pos[0]}, {self.target_pos[1]}).")
+                parts.append(f"The green target is at ({self.target_pos[0]}, {self.target_pos[1]}).")
         else:
             if self.landmark_pos is not None:
                 # Assuming the landmark is never picked up since it's a Box and the agent drops tool blocks beside it
-                parts.append(f"The yellow duckie is at ({self.landmark_pos[0]}, {self.landmark_pos[1]}).")
+                parts.append(f"The yellow box is at ({self.landmark_pos[0]}, {self.landmark_pos[1]}).")
                 
         return " ".join(parts)
 
@@ -134,8 +133,9 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         if action == self.actions.drop and self.carrying:
             fwd_pos = self.front_pos
             fwd_cell = self.grid.get(*fwd_pos)
-            # In source mode, we physically allow placing ON the red floor despite collision
-            if fwd_cell is not None and isinstance(fwd_cell, Floor) and fwd_cell.color == "red":
+            # In source mode, we physically allow placing ON the green floor despite collision
+            if fwd_cell is not None and isinstance(fwd_cell, Floor) and fwd_cell.color == "green":
+                self.carrying.cur_pos = np.array(fwd_pos)
                 self.grid.set(*fwd_pos, self.carrying)
                 self.carrying = None
 
@@ -162,7 +162,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
                     terminated = True
                     self.agent_performance["successful_drop"] += 1
                     if self.verbose:
-                        print("Success! Dropped exactly on red floor.")
+                        print("Success! Dropped exactly on green floor.")
                 else:
                     terminated = True
                     if self.verbose:
@@ -183,6 +183,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
 
         self.obs = obs
         info["description"] = self.get_description(obs)
+        info["sensor_data"] = None
             
         return obs, float(reward), terminated, truncated, info
 
@@ -191,6 +192,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         self.obs = obs
         if self.verbose:
             info["description"] = self.get_description(obs)
+        info["sensor_data"] = None
         return obs, info
 
 @hydra.main(version_base=None, config_path="../config/env", config_name="MiniGridRelational.yaml")
