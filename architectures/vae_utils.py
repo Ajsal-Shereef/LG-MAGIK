@@ -76,11 +76,11 @@ class CLUBCritic(nn.Module):
         mu, logvar = self.forward(z)
         
         # Positive: log q(t|z) for matched pairs
-        positive = self.log_prob(t, mu, logvar).sum(dim=-1)  # [B]
+        positive = self.log_prob(t, mu, logvar).mean(dim=-1)  # [B]
         
         # Negative: log q(t'|z) for shuffled pairs
         shuffled_t = t[torch.randperm(t.size(0))]
-        negative = self.log_prob(shuffled_t, mu, logvar).sum(dim=-1)  # [B]
+        negative = self.log_prob(shuffled_t, mu, logvar).mean(dim=-1)  # [B]
         
         # MI upper bound (VAE minimizes this)
         club_mi = (positive - negative).mean()

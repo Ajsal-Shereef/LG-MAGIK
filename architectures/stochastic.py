@@ -14,17 +14,14 @@ class Stochastic(nn.Module):
     parametrised by mu and log_var.
     """
     def reparametrize(self, mu, log_var):
-        epsilon = Variable(torch.randn(mu.size()), requires_grad=False)
-
-        if mu.is_cuda:
-            epsilon = epsilon.cuda()
+        epsilon = torch.randn_like(mu)
 
         # log_std = 0.5 * log_var
         # std = exp(log_std)
-        std = log_var.mul(0.5).exp_()
+        std = (0.5 * log_var).exp()
         if self.training:
             # z = std * epsilon + mu
-            return mu.addcmul(std, epsilon)
+            return mu + std * epsilon
         else:
             return mu
 
@@ -47,7 +44,7 @@ class GaussianSample(Stochastic):
     def forward(self, x):
         # x = x*self.attention(x)
         self.mean = self.mu(x)
-        self.log_variance = F.softplus(self.log_var(x))
+        self.log_variance = self.log_var(x).clamp(-10, 10)
         self.latent = self.reparametrize(self.mean, self.log_variance)
         return self
     
@@ -98,7 +95,7 @@ class GaussianSampleSpatial(Stochastic):
         """
         # x is expected to be a 4D tensor: (batch, channels, height, width)
         self.mean = self.mu_conv(x)
-        self.log_variance = F.softplus(self.log_var_conv(x))
+        self.log_variance = self.log_var_conv(x).clamp(-10, 10)
         
         # The reparametrize trick works seamlessly with spatial tensors
         self.latent = self.reparametrize(self.mean, self.log_variance)

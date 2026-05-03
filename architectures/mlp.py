@@ -448,6 +448,13 @@ class MLPTextConditionedDecoder(nn.Module):
             x=blk(x,z,self.text_feats, attention_mask)
             x=linear(x)
         return self.final(x, self.text_feats, attention_mask)
+
+    def train(self, mode=True):
+        """Override to keep frozen text encoder in eval mode."""
+        super().train(mode)
+        if self.text_encoder is not None:
+            self.text_encoder.eval()
+        return self
     
 class Embed(nn.Module):
     def __init__(

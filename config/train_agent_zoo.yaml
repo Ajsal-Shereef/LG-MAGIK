@@ -1,6 +1,6 @@
 defaults:
-  - env : PandaGymInbuilt
-agent_name : PPO
+  - env : PandaGym
+agent_name : TQC
 save_every : 500000
 use_wandb : false
 log_every : 100
@@ -9,5 +9,4 @@ data_dave_dir : data
 save_model_dir : model_weights
 number_data_to_collect : 150000
 fine_tune : false
-fine_tune_checkpoint : model_weights/${agent_name}/2026-01-22_13-07-03_RVBGSP/${agent_name}.zip 
-use_her : false
+fine_tune_checkpoint : model_weights/${agent_name}/2026-01-22_13-07-03_RVBGSP/${agent_name}.zip

@@ -54,6 +54,7 @@ class FrameStackHW(gym.Wrapper):
     def _get_obs(self):
         # Concatenate along the last axis (channel axis)
         return np.concatenate(list(self.frames), axis=-1)
+
 class WandbLoggingCallback(BaseCallback):
     def __init__(self, verbose=1):
         super(WandbLoggingCallback, self).__init__(verbose)
@@ -132,7 +133,7 @@ class DataCollectorCallback(BaseCallback):
     A custom callback to collect and save interaction data
     (s, info) for all algorithms.
     """
-    def __init__(self, save_path: str, saving_func, number_data_to_collect, observation_mode, verbose=0):
+    def __init__(self, save_path: str, saving_func, number_data_to_collect, observation_mode, use_her=False, verbose=0):
         super(DataCollectorCallback, self).__init__(verbose)
         self.save_path = save_path
         # We'll store all the data in these lists
@@ -142,6 +143,7 @@ class DataCollectorCallback(BaseCallback):
         self.saving_func = saving_func
         self.number_data_to_collect = number_data_to_collect
         self.observation_mode = observation_mode
+        self.use_her = use_her
         
     def _on_step(self) -> bool:
         """
@@ -158,16 +160,29 @@ class DataCollectorCallback(BaseCallback):
         # Handle terminal observations
         # If an episode is done, 'new_obs' is the reset observation of the NEW episode.
         # We want the terminal observation of the COMPLETED episode, which is in info['terminal_observation'].
-        current_obs = s.copy()
-        for i, info in enumerate(infos):
-            if "terminal_observation" in info:
-                current_obs[i] = info["terminal_observation"]
+        if self.use_her and isinstance(s, dict):
+            keys = ["observation", "achieved_goal", "desired_goal"]
+            keys = [k for k in keys if k in s] or sorted(s.keys())
+            
+            flat_s = np.concatenate([s[k].reshape(s[k].shape[0], -1) for k in keys], axis=-1)
+            current_obs = flat_s.copy()
+            
+            for i, info in enumerate(infos):
+                if "terminal_observation" in info:
+                    term_obs = info["terminal_observation"]
+                    flat_term_obs = np.concatenate([term_obs[k].reshape(-1) for k in keys], axis=-1)
+                    current_obs[i] = flat_term_obs
+        else:
+            current_obs = s.copy()
+            for i, info in enumerate(infos):
+                if "terminal_observation" in info:
+                    current_obs[i] = info["terminal_observation"]
 
-        description = [info["description"] for info in infos]
+        description = [info.get("description", "") for info in infos]
         sensor_data = [info.get("sensor_data", "") for info in infos]
         
         # Append data. 
-        self.all_states.append(current_obs)
+        self.all_states.append(np.squeeze(current_obs))
         self.all_description.append(description) # Append infos
         self.all_sensor_data.append(sensor_data)
         
@@ -195,7 +210,7 @@ class DataCollectorCallback(BaseCallback):
             # 1. Stack rollouts along a new time axis
             data_np = np.stack(data_list, axis=0) # (total_steps, n_envs, *shape)
             # 2. Swap n_envs and steps axes
-            if observation_mode == "image":
+            if observation_mode == "image" and data_np.ndim == 5:
                 data_np = data_np.transpose(1, 0, 3, 4, 2)
             else:
                 data_np = data_np.swapaxes(0, 1) 
@@ -290,7 +305,7 @@ class CheckpointAndPruneCallback(CheckpointCallback):
         return result
 
 
-@hydra.main(version_base=None, config_path="config", config_name="train_agent")
+@hydra.main(version_base=None, config_path="config", config_name="train_agent_zoo")
 def main(args: DictConfig) -> None:
     # --- ENVIRONMENT SETUP ---
     if args.env.name == "PickEnv":
@@ -309,10 +324,14 @@ def main(args: DictConfig) -> None:
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         mission = env.unwrapped.mission
+    elif args.env.name == "PandaGym":
+        from env.PandaGym import PandaGymPickPlaceEnv
+        env = PandaGymPickPlaceEnv(args.env, render_mode="rgb_array")
+        mission = env.unwrapped.mission
     elif args.env.name == "PandaGymInbuilt":
-        from env.PandaGymInbuilt import PandaGymInbuiltEnv
-        env = PandaGymInbuiltEnv(args.env)
-        mission = env.mission
+        import panda_gym
+        env = gym.make("PandaPickAndPlace-v3", render_mode="rgb_array")
+        mission = "random mission string"
     
     # Setting the mission string
     args.env.mission = mission
@@ -332,11 +351,61 @@ def main(args: DictConfig) -> None:
     config_path = os.path.join(model_save_dir, "config.yaml")
     OmegaConf.save(config=args, f=config_path)
 
-    # --- TRAINING ---
-    timesteps = args.env.total_timestep
+    # --- HYPERPARAMS FROM RL_ZOO3 ---
+    import yaml
+    import rl_zoo3
+    from stable_baselines3 import HerReplayBuffer
     
-    if getattr(args, "use_her", False):
+    zoo_path = os.path.dirname(rl_zoo3.__file__)
+    algo_lower = args.agent_name.lower()
+    hp_path = os.path.join(zoo_path, 'hyperparams', f'{algo_lower}.yml')
+    
+    zoo_kwargs = {}
+    if os.path.exists(hp_path):
+        with open(hp_path) as f:
+            data = yaml.safe_load(f)
+            # Default to PandaPickAndPlace-v1 if PandaGymInbuilt maps to it
+            env_key = "PandaPickAndPlace-v1"
+            if env_key in data:
+                zoo_kwargs = data[env_key]
+                print(f"[INFO] Loaded {args.agent_name} hyperparameters for {env_key} from rl_zoo3.")
+            else:
+                print(f"[WARNING] No hyperparameters found for {env_key} in {hp_path}.")
+    else:
+        print(f"[WARNING] rl_zoo3 hyperparams file not found: {hp_path}")
+
+    # Process zoo_kwargs
+    kwargs = {}
+    
+    for k, v in zoo_kwargs.items():
+        if k in ["n_timesteps", "policy"]:
+            continue
+        if isinstance(v, str) and v.startswith("dict("):
+            # Safe eval for dict
+            try:
+                v = eval(v, {"dict": dict})
+            except Exception as e:
+                print(f"[WARNING] Failed to eval {k}: {v}. Error: {e}")
+        elif isinstance(v, str) and v.startswith("["):
+            try:
+                v = eval(v)
+            except:
+                pass
+        
+        if k == "replay_buffer_class" and v == "HerReplayBuffer":
+            kwargs["replay_buffer_class"] = HerReplayBuffer
+            continue
+
+        kwargs[k] = v
+
+    # --- TRAINING ---
+    # timesteps = zoo_kwargs.get("n_timesteps", args.env.total_timestep)
+    
+    if getattr(args.env, "use_her", False):
         policy = "MultiInputPolicy"
+        kwargs["replay_buffer_class"] = HerReplayBuffer
+    elif "policy" in zoo_kwargs:
+        policy = zoo_kwargs["policy"]
     elif args.env.observation_mode == "feature":
         policy = "MlpPolicy"
     else:
@@ -352,18 +421,20 @@ def main(args: DictConfig) -> None:
     if args.fine_tune and not os.path.exists(args.fine_tune_checkpoint):
         raise FileNotFoundError(f"Checkpoint not found at {args.fine_tune_checkpoint}")
 
-    kwargs = {}
-    if getattr(args, "use_her", False):
-        from stable_baselines3 import HerReplayBuffer
-        kwargs["replay_buffer_class"] = HerReplayBuffer
-
     if args.agent_name == "SAC":
         from stable_baselines3 import SAC
         if args.fine_tune:
             model = SAC.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = SAC(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000, **kwargs)
+            model = SAC(policy, env, verbose=1, **kwargs)
+    elif args.agent_name == "TQC":
+        from sb3_contrib import TQC
+        if args.fine_tune:
+            model = TQC.load(args.fine_tune_checkpoint, env=env)
+            print(f"[INFO] Loaded TQC model from {args.fine_tune_checkpoint} for fine tuning")
+        else:
+            model = TQC(policy, env, verbose=0, **kwargs)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
         if getattr(args, "use_her", False):
@@ -372,30 +443,30 @@ def main(args: DictConfig) -> None:
             model = PPO.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loadied PPO model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = PPO(policy, env, verbose=0, ent_coef = 0.00)
+            model = PPO(policy, env, verbose=1, **kwargs)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         if args.fine_tune:
             model = DQN.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DQN(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000, **kwargs)
+            model = DQN(policy, env, verbose=1, **kwargs)
     elif args.agent_name == "DDPG":
         from stable_baselines3 import DDPG
         if args.fine_tune:
             model = DDPG.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DDPG model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DDPG(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000, **kwargs)
+            model = DDPG(policy, env, verbose=1, **kwargs)
     elif args.agent_name == "TD3":
         from stable_baselines3 import TD3
         if args.fine_tune:
             model = TD3.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded TD3 model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = TD3(policy, env, verbose=0, buffer_size=int(timesteps / 5), learning_starts=5000, **kwargs)
+            model = TD3(policy, env, verbose=1, **kwargs)
     else:
-        raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC, DDPG, TD3") 
+        raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC, DDPG, TD3, TQC") 
         
     if args.use_wandb:
         wandb.watch(model.policy, log="all", log_freq=100)
@@ -417,13 +488,15 @@ def main(args: DictConfig) -> None:
     
     # --- ADDED DATA COLLECTION CALLBACK ---
     data_save_path = os.path.join(args.data_dave_dir, args.env.name, "agent")
+    use_her = getattr(args.env, "use_her", False)
     data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
                                                     number_data_to_collect=int(args.number_data_to_collect),  
-                                                    observation_mode=args.env.observation_mode, verbose=1)
+                                                    observation_mode=args.env.observation_mode, use_her=use_her, verbose=1)
     call_backs = [data_collector_callback, checkpoint_callback, video_callback]
+    # call_backs = []
     all_callbacks = call_backs + [wandb_callback] if args.use_wandb else call_backs
     
-    model.learn(total_timesteps=timesteps,
+    model.learn(total_timesteps=int(args.env.total_timestep),
                 callback=all_callbacks)
 
     # --- SAVE ---

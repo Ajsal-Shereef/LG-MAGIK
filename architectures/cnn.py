@@ -586,7 +586,7 @@ class FinalTextConditionedOutput(nn.Module):
         return torch.tanh(self.conv(refined))
     
 class CNNTextConditionedDecoder(nn.Module):
-    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True, n_text_attn_layers=2, text_encoder_type="clip", nvidia_embed_dim=2048):
+    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True, n_text_attn_layers=2, text_encoder_type="clip", nvidia_embed_dim=2048, nvidia_proj_dim=512):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         self.use_coord_conv = use_coord_conv
@@ -605,10 +605,10 @@ class CNNTextConditionedDecoder(nn.Module):
             # --- NVIDIA mode: no CLIP, use pre-computed embeddings ---
             self.tokenizer = None
             self.text_encoder = None
-            self.text_dim = nvidia_embed_dim
+            self.text_dim = nvidia_proj_dim
             # Project NVIDIA embedding dim -> internal text_dim
             self.text_proj = nn.Linear(nvidia_embed_dim, self.text_dim)
-            # self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
+            self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
         else:
             # --- CLIP mode (default) ---
             self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
@@ -621,7 +621,7 @@ class CNNTextConditionedDecoder(nn.Module):
             self.text_encoder.eval()
             self.text_dim = self.text_encoder.config.hidden_size
             # self.text_dim = 256
-            # self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
+            self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
         
         self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=nhead)
         
@@ -648,7 +648,7 @@ class CNNTextConditionedDecoder(nn.Module):
             # text_input is pre-computed embeddings [B, nvidia_embed_dim]
             # Project to internal text_dim and reshape to [B, 1, text_dim]
             self.text_feats = self.text_proj(text_input).unsqueeze(1)  # [B, 1, text_dim]
-            # self.text_feats = self.text_adapter(self.text_feats)
+            self.text_feats = self.text_adapter(self.text_feats)
             # Create attention mask of all ones [B, 1] (single valid token)
             attention_mask = torch.ones(text_input.shape[0], 1, device=z.device)
         else:
@@ -661,7 +661,7 @@ class CNNTextConditionedDecoder(nn.Module):
             else:
                 self.text_feats = outputs[0]  # Tuple fallback
                 
-            # self.text_feats = self.text_adapter(self.text_feats)
+            self.text_feats = self.text_adapter(self.text_feats)
 
         # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
         B, C, H, W = z.shape
@@ -691,6 +691,13 @@ class CNNTextConditionedDecoder(nn.Module):
         if return_text_feats:
             return out, self.text_feats
         return out
+
+    def train(self, mode=True):
+        """Override to keep frozen text encoder in eval mode."""
+        super().train(mode)
+        if self.text_encoder is not None:
+            self.text_encoder.eval()
+        return self
     
 class CNNTwoLatentDecoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, z_dim, y_dim, res_norm='adain', activ='relu', pad_type='zero', fc_input_dim=[10,10]):

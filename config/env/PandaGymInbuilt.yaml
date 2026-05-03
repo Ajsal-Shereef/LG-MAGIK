@@ -1,0 +1,14 @@
+name: PandaGymInbuilt
+task_mode: "source"
+max_steps: 200
+total_timestep: 2_000_000
+fps: 5
+verbose: False
+observation_mode: feature
+use_vec_normalize: false
+use_her: false
+reward_type: dense
+control_type: ee
+near_threshold: 0.05
+mission: ???
+validation_prompts: []

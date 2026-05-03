@@ -6,7 +6,7 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: null
 data:
-  train_dir: data/MiniGridRelational/agent
+  train_dir: cached_data/MiniWorld_attempt_6
   cache_dir: null
   batch_size: 32
   num_workers: 8
@@ -17,7 +17,7 @@ data:
   nvidia_model_name: "nvidia/llama-nemotron-embed-1b-v2"
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
-  n_downsample: 3
+  n_downsample: 4
   encoder_n_res: 3
   input_dim: 3
   dim: 64
@@ -25,12 +25,13 @@ model:
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
-  - 8
-  - 8
+  - 5
+  - 5
   latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   text_encoder_type: ${models.data.text_encoder_type}
   nvidia_embed_dim: 2048
+  nvidia_proj_dim: 512
   discriminator_fc_hidden:
   - 64
   - 128
@@ -46,7 +47,7 @@ model:
   use_club: true           # Enables CLUB mutual information minimization
   use_ema: false
   use_coord_conv : false
-  n_text_attn_layers: 3    # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
+  n_text_attn_layers: 4   # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
   ema_decay: 0.999
   max_grad_norm: 1.0
   max_sequence_length: 110
@@ -56,12 +57,12 @@ training:
   kl_weight: 1.0
   kl_annealing:
     enable: true
-    start: 1.0
+    start: 0.0
     stop: ${models.training.kl_weight}
     n_cycles: 1
     ratio: 0.5
   adv_lambda: 1.0
-  adv_weight: 10.0
+  adv_weight: 1.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}
@@ -71,7 +72,7 @@ training:
   generate_interval: 8000
   num_images_to_generate : 10
   save_weight_freequency : 50
-  img_adv_weight : 10.0
+  img_adv_weight : 1.0
   img_adv_lambda : 1
   club_weight: 0.1           # Weight for CLUB MI loss term
   critic_updates: 1        # Number of discriminator updates per generator update

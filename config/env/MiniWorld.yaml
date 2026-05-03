@@ -21,22 +21,22 @@ mission : ???
 #   - The agent is in a room with grass floor and concrete walls. A blue ball is found to the right at angle 22.7 at a distance of 2.5 units.
 #   - The agent is in a room with grass floor and concrete walls. A green box is found to the left at angle 28.7 at a distance of 1.3 units.
 
-# validation_prompts :
-#   - A green ball is found to the left at angle 21.5 at a distance of 2.6 units on a green grass floor surrounded by gray wall under a blue sky.
-#   - A green ball is visible at a distance of 5.2 units and an angle of 24.0 degrees to the left, located on a green grass floor surrounded by gray walls under a blue sky.
-#   - The agent is in a room with a green grass floor and concrete walls under a blue sky, and no objects are visible.
-#   - A green ball is visible at a distance of 1.6 units and an angle of 36.5 degrees to the right, located on a green grass floor surrounded by a gray wall under a blue sky.
-#   - A blue box is visible at 2.0 units and 1.0 degrees to the left, located on a green grass floor surrounded by gray walls under a blue sky.
-#   - The image depicts a room with a green floor and gray walls. The sky is visible and is blue. No objects are present in the room.
-#   - In a room with a grey wall and green grass floor, a blue box is visible at 4.4 units and 20.0 degrees to the left, and a green ball is visible at 1.9 units and 26.8 degrees to the right.
-#   - In a grassy area with a grey wall, a blue box is visible at 3.2 units and 7.7 degrees to the left, and a green ball is visible at 2.2 units and 14.2 degrees to the right.
-
 validation_prompts :
-  - A blue box is visible on a green grass floor surrounded by a gray wall under a blue sky.
-  - A green ball is visible on a green grass floor surrounded by a gray wall under a blue sky.
-  - No objects are visible on a green grass floor surrounded by a gray wall under a blue sky.
-  - A blue box and a green ball are visible on a green grass floor surrounded by a gray wall under a blue sky.
+  - A green ball is found to the left at angle 21.5 at a distance of 2.6 units on a green grass floor surrounded by gray wall under a blue sky.
+  - A green ball is visible at a distance of 5.2 units and an angle of 24.0 degrees to the left, located on a green grass floor surrounded by gray walls under a blue sky.
+  - The agent is in a room with a green grass floor and concrete walls under a blue sky, and no objects are visible.
+  - A green ball is visible at a distance of 1.6 units and an angle of 36.5 degrees to the right, located on a green grass floor surrounded by a gray wall under a blue sky.
+  - A blue box is visible at 2.0 units and 1.0 degrees to the left, located on a green grass floor surrounded by gray walls under a blue sky.
   - The image depicts a room with a green floor and gray walls. The sky is visible and is blue. No objects are present in the room.
-  - In a room with a green grass floor and gray walls under a blue sky, a blue box is visible at 2.0 units and 1.0 degrees to the left.
+  - In a room with a grey wall and green grass floor, a blue box is visible at 4.4 units and 20.0 degrees to the left, and a green ball is visible at 1.9 units and 26.8 degrees to the right.
+  - In a grassy area with a grey wall, a blue box is visible at 3.2 units and 7.7 degrees to the left, and a green ball is visible at 2.2 units and 14.2 degrees to the right.
+
+# validation_prompts :
+#   - A blue box is visible on a green grass floor surrounded by a gray wall under a blue sky.
+#   - A green ball is visible on a green grass floor surrounded by a gray wall under a blue sky.
+#   - No objects are visible on a green grass floor surrounded by a gray wall under a blue sky.
+#   - A blue box and a green ball are visible on a green grass floor surrounded by a gray wall under a blue sky.
+#   - The image depicts a room with a green floor and gray walls. The sky is visible and is blue. No objects are present in the room.
+#   - In a room with a green grass floor and gray walls under a blue sky, a blue box is visible at 2.0 units and 1.0 degrees to the left.
   
   

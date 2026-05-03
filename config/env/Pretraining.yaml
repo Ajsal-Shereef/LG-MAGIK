@@ -1,8 +1,0 @@
-size: 10
-max_steps: 200
-wall_color_options:
-  - grey
-  - blue
-max_objects: 4
-agent_view_size: 5
-see_through_walls: false

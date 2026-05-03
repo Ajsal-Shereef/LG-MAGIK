@@ -102,6 +102,23 @@ def train(args: DictConfig) -> None:
 
     vae.set_optimizers(cfg.optimizer)
     
+    # --- Prepare Optimizers/Schedulers with Accelerator ---
+    _vae = accelerator.unwrap_model(vae)
+    _vae.vae_optim = accelerator.prepare(_vae.vae_optim)
+    _vae.caption_disc_optim = accelerator.prepare(_vae.caption_disc_optim)
+    if _vae.scheduler is not None:
+        _vae.scheduler = accelerator.prepare(_vae.scheduler)
+    if _vae.caption_disc_scheduler is not None:
+        _vae.caption_disc_scheduler = accelerator.prepare(_vae.caption_disc_scheduler)
+    if _vae.disc_optim is not None:
+        _vae.disc_optim = accelerator.prepare(_vae.disc_optim)
+        if _vae.disc_scheduler is not None:
+            _vae.disc_scheduler = accelerator.prepare(_vae.disc_scheduler)
+    if _vae.use_club:
+        _vae.club_optim = accelerator.prepare(_vae.club_optim)
+        if _vae.club_scheduler is not None:
+            _vae.club_scheduler = accelerator.prepare(_vae.club_scheduler)
+    
     # --- EMA Setup ---
     use_ema = cfg.model.get("use_ema", False)
     ema_model = None
@@ -151,10 +168,6 @@ def train(args: DictConfig) -> None:
                 if global_step % critic_updates == 0:
                     vae.optimize_generator(losses, accelerator, forward_output=output, **loss_kwargs)
                     
-                    # Gradient Clipping (Only for generator/VAE params)
-                    if cfg.model.get("max_grad_norm", None):
-                        accelerator.clip_grad_norm_(vae.parameters(), cfg.model.max_grad_norm)
-                    
                     # Update EMA (Only when generator updates)
                     if use_ema:
                         ema_model.update_parameters(vae)
@@ -172,7 +185,6 @@ def train(args: DictConfig) -> None:
                 # Step the scheduler (Moved to per-batch for OneCycleLR)
                 vae.step_schedulers()
 
-                # --- DYNAMIC LOGGING ---
                 if accelerator.is_main_process and log_values_and_images:
                     # Create the log payload, including dynamic losses and static values
                     log_payload = {

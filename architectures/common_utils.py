@@ -553,11 +553,11 @@ def get_dataloader(args: DictConfig) -> DataLoader:
                 return examples
         else:
             # --- CLIP mode (default) ---
+            tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
             def preprocess_train(examples: Dict) -> Dict:
                 images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
                 examples["pixel_values"] = [train_transforms(image) for image in images]
                 if cfg.data.caption_column:
-                    tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
                     
                     max_len = cfg.model.get("max_sequence_length", 77)
                     input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
@@ -603,7 +603,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
             attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
             if cfg.data.caption_column:
                 input_ids = torch.stack([example["input_ids"] for example in examples])
-                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_masks" : attention_masks}
+                return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_mask" : attention_masks}
             return {"pixel_values": pixel_values}
     
     # -------------------------

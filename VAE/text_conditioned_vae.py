@@ -30,9 +30,11 @@ class TextConditionedVAE(nn.Module):
         self.observation_model = kwargs["observation_mode"]
         self.text_encoder_type = kwargs.get("text_encoder_type", "clip")
         self.nvidia_embed_dim = kwargs.get("nvidia_embed_dim", 2048)
+        self.nvidia_proj_dim = kwargs.get("nvidia_proj_dim", 512)
         self.use_image_discriminator = kwargs.get("use_image_discriminator", False)
         self.use_caption_discriminator = kwargs.get("use_caption_discriminator", False)
         self.use_club = kwargs.get("use_club", False)
+        self.max_grad_norm = kwargs.get("max_grad_norm", None)
         disc_params = kwargs.get("disc_params", {})
 
         # ---- Encoder/Decoder ----
@@ -55,7 +57,7 @@ class TextConditionedVAE(nn.Module):
             
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
             self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
-            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers, text_encoder_type=self.text_encoder_type, nvidia_embed_dim=self.nvidia_embed_dim)
+            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers, text_encoder_type=self.text_encoder_type, nvidia_embed_dim=self.nvidia_embed_dim, nvidia_proj_dim=self.nvidia_proj_dim)
             
             # Use max_sequence_length if provided, else fall back to tokenizer default
             # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
@@ -114,12 +116,20 @@ class TextConditionedVAE(nn.Module):
             self.club_critic = None
             
     def set_optimizers(self, parms):
-        # VAE parameters (Encoder, Bottleneck, Decoder, Caption Discriminator)
-        vae_params = list(self.encoder.parameters()) + list(self.bottleneck.parameters()) + list(self.decoder.parameters()) + \
-                          list(self.caption_discriminator.parameters())
+        # VAE parameters (Encoder, Bottleneck, Decoder — no discriminators)
+        vae_params = list(self.encoder.parameters()) + list(self.bottleneck.parameters()) + list(self.decoder.parameters())
         
         self.vae_optim = optim.AdamW(vae_params,
                                 lr=parms.lr,
+                                betas=tuple(parms.betas),
+                                weight_decay=parms.weight_decay,
+                                eps=parms.eps,
+                               )
+        
+        # Caption Discriminator (separate optimizer for proper adversarial training)
+        caption_disc_lr = parms.get("lr_caption_disc", parms.lr)
+        self.caption_disc_optim = optim.AdamW(self.caption_discriminator.parameters(),
+                                lr=caption_disc_lr,
                                 betas=tuple(parms.betas),
                                 weight_decay=parms.weight_decay,
                                 eps=parms.eps,
@@ -146,6 +156,7 @@ class TextConditionedVAE(nn.Module):
         
         # Initialize schedulers
         self.scheduler = self._get_scheduler(self.vae_optim, parms.scheduler)
+        self.caption_disc_scheduler = self._get_scheduler(self.caption_disc_optim, parms.scheduler)
         if self.disc_optim:
             self.disc_scheduler = self._get_scheduler(self.disc_optim, parms.scheduler)
         else:
@@ -185,6 +196,8 @@ class TextConditionedVAE(nn.Module):
     def step_schedulers(self):
         if self.scheduler:
             self.scheduler.step()
+        if self.caption_disc_scheduler:
+            self.caption_disc_scheduler.step()
         if self.disc_scheduler:
             self.disc_scheduler.step()
         if self.club_scheduler:
@@ -192,6 +205,7 @@ class TextConditionedVAE(nn.Module):
 
     def get_lr(self):
         lrs = {"lr": self.vae_optim.param_groups[0]["lr"]}
+        lrs["lr_caption_disc"] = self.caption_disc_optim.param_groups[0]["lr"]
         if self.disc_optim:
              lrs["lr_disc"] = self.disc_optim.param_groups[0]["lr"]
         if self.use_club:
@@ -201,7 +215,7 @@ class TextConditionedVAE(nn.Module):
     def forward(self, x):
         """
         x: dict containing pixel_values, and either:
-           - input_ids + attention_masks (CLIP mode)
+           - input_ids + attention_mask (CLIP mode)
            - text_embeddings (NVIDIA mode)
         """
         images = x["pixel_values"]
@@ -217,7 +231,7 @@ class TextConditionedVAE(nn.Module):
         else:
             # CLIP mode: pass token IDs and attention mask
             text_tokens = x["input_ids"]
-            attention_mask = x["attention_masks"]
+            attention_mask = x["attention_mask"]
             reconstructed_x, text_feats = self.decoder(latent, text_tokens, attention_mask, return_text_feats=True)
 
         return {
@@ -230,7 +244,7 @@ class TextConditionedVAE(nn.Module):
 
     def loss_function(self, batch, forward_output, **kwargs):
         # Retrieve attention masks from the original batch for pooling
-        attention_mask = batch.get("attention_masks", None)
+        attention_mask = batch.get("attention_mask", None)
         
         original_x = batch["pixel_values"]
         reconstructed_x = forward_output["reconstructed_x"]
@@ -247,30 +261,23 @@ class TextConditionedVAE(nn.Module):
             kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
 
         if self.is_perceptual_loss:
-            perceptual_loss = self.vgg_loss(original_x, reconstructed_x)
+            perceptual_loss = self.vgg_loss(reconstructed_x * 0.5 + 0.5, original_x * 0.5 + 0.5)
         else:
             perceptual_loss = torch.tensor(0.0, device=original_x.device)
         
+        # --- Compute pooled text representation (used by discriminator and CLUB) ---
+        if attention_mask is not None:
+            mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
+            sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
+            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
+            pooled_text = sum_embeddings / sum_mask  # [B, D]
+        else:
+            pooled_text = text_feats.detach().mean(dim=1)
+
         # === Adversarial disentanglement loss ===
         if self.use_caption_discriminator:
             z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
             pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
-            
-            # --- Pooled Embedding Logic ---
-            if attention_mask is not None:
-                # text_feats: [B, T, D]
-                # attention_mask: [B, T] -> [B, T, 1]
-                mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
-                
-                # Masked Sum
-                sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
-                # Sum of mask (valid token count)
-                sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
-                
-                pooled_text = sum_embeddings / sum_mask # [B, D]
-            else:
-                # Fallback if no mask provided (shouldn't happen with correct dataloader)
-                pooled_text = text_feats.detach().mean(dim=1)
 
             # Normalize
             pred_n = F.normalize(pred, dim=-1)
@@ -314,7 +321,7 @@ class TextConditionedVAE(nn.Module):
         # === CLUB loss ===
         if self.use_club and self.club_critic is not None:
             z_flat = posterior.latent.view(posterior.latent.size(0), -1)
-            t_flat = text_feats.detach().mean(dim=1) # Use retrieved text_feats, detached
+            t_flat = pooled_text  # Use masked-pooled text (computed above, already detached)
             
             # 1. MI upper bound for VAE (minimize) + Critic loss (maximize log-likelihood)
             club_mi, _ = self.club_critic.mi_upper_bound(z_flat, t_flat)
@@ -345,6 +352,7 @@ class TextConditionedVAE(nn.Module):
         
     def optimize_generator(self, losses, accelerator, forward_output=None, **kwargs):
         self.vae_optim.zero_grad()
+        self.caption_disc_optim.zero_grad()
         if self.use_club:
             self.club_optim.zero_grad()
             
@@ -364,11 +372,17 @@ class TextConditionedVAE(nn.Module):
 
         accelerator.backward(total_loss)
         
+        # Gradient clipping before optimizer step
+        if self.max_grad_norm is not None:
+            params_to_clip = [p for group in self.vae_optim.param_groups for p in group['params']]
+            accelerator.clip_grad_norm_(params_to_clip, self.max_grad_norm)
+        
         if self.use_club:
             self.club_optim.zero_grad()  # Clear unwanted grads from vae_loss on critic params
             accelerator.backward(losses["critic_loss"])
             
         self.vae_optim.step()
+        self.caption_disc_optim.step()
         if self.use_club:
             self.club_optim.step()
 

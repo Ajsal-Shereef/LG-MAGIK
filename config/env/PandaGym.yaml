@@ -1,0 +1,15 @@
+name: PandaGym
+task_mode: "source"           # "source" for training, "target" for transfer
+max_steps: 200                # panda-gym default episode is 50; 100 gives more exploration
+obs_width: 512
+obs_height: 512
+total_timestep: 2_000_000
+fps: 5
+verbose: False
+observation_mode: feature
+use_vec_normalize: false      # set true for VecNormalize wrapping (incompatible with use_her)
+use_her: true                # set true to enable HER (requires use_vec_normalize: false)
+reward_type: dense            # "dense" or "sparse"
+control_type: ee              # "ee" (end-effector 4D) or "joints" (7D+gripper)
+near_threshold: 0.05          # success radius in metres
+mission : ???
