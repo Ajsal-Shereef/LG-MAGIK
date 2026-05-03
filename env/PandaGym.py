@@ -218,12 +218,7 @@ class PandaGymPickPlaceEnv(gym.Env):
         self._enforce_min_separation(obs_dict)
 
         # PyBullet visual target representation.
-        if self.task_mode in ["source", "target1"]:
-            self._set_goal(self._target1_pos)
-        elif self.task_mode == "target2":
-            self._set_goal(self._target2_pos)
-        else:
-            self._set_goal((self._target1_pos + self._target2_pos) / 2.0)
+        self._update_visual_targets()
 
         observation = self._build_observation(obs_dict)
 
@@ -236,19 +231,41 @@ class PandaGymPickPlaceEnv(gym.Env):
         self.agent_performance["episodes"] += 1
         return observation, info_out
 
-    def _set_goal(self, goal: np.ndarray):
+    def _update_visual_targets(self):
         """
-        Store goal in self._goal and sync it into the panda-gym task and
-        pybullet physics so the ghost target marker matches.
+        Creates and updates two ghost spheres in pybullet to represent
+        the blue and red landmarks.
         """
-        self._goal = goal.astype(np.float32)
         inner_task = getattr(self._inner.unwrapped, "task", None)
         if inner_task is not None:
+            # Maintain inner task goal for compatibility
+            if self.task_mode in ["source", "target1"]:
+                self._goal = self._target1_pos.copy()
+            elif self.task_mode == "target2":
+                self._goal = self._target2_pos.copy()
+            else:
+                self._goal = ((self._target1_pos + self._target2_pos) / 2.0).astype(np.float32)
             inner_task.goal = self._goal.copy()
-        # Move the pybullet ghost target to match (no-op if name not found)
+
         try:
+            import pybullet as p
             sim = self._inner.unwrapped.sim
-            sim.set_base_pose("target", self._goal, np.array([0.0, 0.0, 0.0, 1.0]))
+            
+            if not hasattr(self, '_target1_id'):
+                v1 = sim.physics_client.createVisualShape(p.GEOM_SPHERE, radius=0.02, rgbaColor=[0.1, 0.1, 0.9, 0.6])
+                self._target1_id = sim.physics_client.createMultiBody(baseMass=0, baseVisualShapeIndex=v1)
+                
+                v2 = sim.physics_client.createVisualShape(p.GEOM_SPHERE, radius=0.02, rgbaColor=[0.9, 0.1, 0.1, 0.6])
+                self._target2_id = sim.physics_client.createMultiBody(baseMass=0, baseVisualShapeIndex=v2)
+                
+                # Hide the original panda-gym target
+                try:
+                    sim.set_base_pose("target", np.array([0.0, 0.0, -1.0]), np.array([0.0, 0.0, 0.0, 1.0]))
+                except Exception:
+                    pass
+
+            sim.physics_client.resetBasePositionAndOrientation(self._target1_id, self._target1_pos, [0, 0, 0, 1])
+            sim.physics_client.resetBasePositionAndOrientation(self._target2_id, self._target2_pos, [0, 0, 0, 1])
         except Exception:
             pass
 
@@ -267,11 +284,12 @@ class PandaGymPickPlaceEnv(gym.Env):
             
             if inner_task is not None and hasattr(inner_task, "_sample_goal"):
                 new_goal = inner_task._sample_goal()
+                new_goal[2] = np.random.uniform(0.02, 0.20)
             else:
                 new_goal = np.array([
                     np.random.uniform(-0.15, 0.15),
                     np.random.uniform(-0.15, 0.15),
-                    np.random.uniform(-0.15, 0.15),
+                    np.random.uniform(0.02, 0.20),
                 ])
             self._target1_pos = new_goal
 
@@ -281,7 +299,7 @@ class PandaGymPickPlaceEnv(gym.Env):
             new_t2 = np.array([
                 np.random.uniform(-0.15, 0.15),
                 np.random.uniform(-0.15, 0.15),
-                np.random.uniform(-0.15, 0.15),
+                np.random.uniform(0.02, 0.20),
             ])
             dist_c = np.linalg.norm(cube_pos[:2] - new_t2[:2])
             dist_1 = np.linalg.norm(self._target1_pos[:2] - new_t2[:2])

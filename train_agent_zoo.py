@@ -81,7 +81,6 @@ class WandbLoggingCallback(BaseCallback):
             
         return True
 
-
 class VideoRolloutCallback(BaseCallback):
     """
     Record rollout videos during training.
@@ -182,7 +181,7 @@ class DataCollectorCallback(BaseCallback):
         sensor_data = [info.get("sensor_data", "") for info in infos]
         
         # Append data. 
-        self.all_states.append(np.squeeze(current_obs))
+        self.all_states.append(current_obs)
         self.all_description.append(description) # Append infos
         self.all_sensor_data.append(sensor_data)
         
