@@ -29,7 +29,7 @@ import pybullet_utils.bullet_client as _bc
 
 # _orig_sig = inspect.signature(_bc.BulletClient.__init__)
 # if "options" not in _orig_sig.parameters:
-#     _OrigBulletClient = _bc.BulletClient
+#     _OrigBulletClient = _bc.BulletClient∏
 
 #     class _PatchedBulletClient(_OrigBulletClient):
 #         """BulletClient that silently accepts (and ignores) `options`."""
@@ -568,9 +568,9 @@ class PandaGymPickPlaceEnv(gym.Env):
 # ======================================================================
 # Standalone testing
 # ======================================================================
-@hydra.main(version_base=None, config_path="../config/env", config_name="PandaGymSimple")
+@hydra.main(version_base=None, config_path="../config/env", config_name="PandaGym")
 def main(args: DictConfig) -> None:
-    env = PandaGymSimpleEnv(args)
+    env = PandaGymPickPlaceEnv(args)
     print("Mission:", env.mission)
     print("Env name:", env.env_name)
     print("Obs space:", env.observation_space)
@@ -579,7 +579,7 @@ def main(args: DictConfig) -> None:
     for episode in range(5):
         obs, info = env.reset()
         print(f"\n--- Episode {episode + 1} ---")
-        print("Obs shape:", obs.shape, "| dtype:", obs.dtype)
+        # print("Obs shape:", obs.shape, "| dtype:", obs.dtype)
         print("Description:", info["description"])
 
         done = False
