@@ -426,7 +426,7 @@ def main(args: DictConfig) -> None:
             model = SAC.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = SAC(policy, env, verbose=1, **kwargs)
+            model = SAC(policy, env, verbose=0, **kwargs)
     elif args.agent_name == "TQC":
         from sb3_contrib import TQC
         if args.fine_tune:
@@ -436,34 +436,35 @@ def main(args: DictConfig) -> None:
             model = TQC(policy, env, verbose=0, **kwargs)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
-        if getattr(args, "use_her", False):
-            raise ValueError("HER is not supported for on-policy algorithms like PPO.")
+        if "replay_buffer_class" in kwargs:
+            print("[WARNING] PPO does not support HER. Ignoring HerReplayBuffer and running with standard RolloutBuffer.")
+            kwargs.pop("replay_buffer_class")
         if args.fine_tune:
             model = PPO.load(args.fine_tune_checkpoint, env=env)
-            print(f"[INFO] Loadied PPO model from {args.fine_tune_checkpoint} for fine tuning")
+            print(f"[INFO] Loaded PPO model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = PPO(policy, env, verbose=1, **kwargs)
+            model = PPO(policy, env, verbose=0, **kwargs)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         if args.fine_tune:
             model = DQN.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DQN(policy, env, verbose=1, **kwargs)
+            model = DQN(policy, env, verbose=0, **kwargs)
     elif args.agent_name == "DDPG":
         from stable_baselines3 import DDPG
         if args.fine_tune:
             model = DDPG.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DDPG model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DDPG(policy, env, verbose=1, **kwargs)
+            model = DDPG(policy, env, verbose=0, **kwargs)
     elif args.agent_name == "TD3":
         from stable_baselines3 import TD3
         if args.fine_tune:
             model = TD3.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded TD3 model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = TD3(policy, env, verbose=1, **kwargs)
+            model = TD3(policy, env, verbose=0, **kwargs)
     else:
         raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC, DDPG, TD3, TQC") 
         

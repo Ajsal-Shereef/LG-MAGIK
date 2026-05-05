@@ -258,11 +258,14 @@ class PandaGymPickPlaceEnv(gym.Env):
                 v2 = sim.physics_client.createVisualShape(p.GEOM_SPHERE, radius=0.02, rgbaColor=[0.9, 0.1, 0.1, 0.6])
                 self._target2_id = sim.physics_client.createMultiBody(baseMass=0, baseVisualShapeIndex=v2)
                 
-                # Hide the original panda-gym target
-                try:
-                    sim.set_base_pose("target", np.array([0.0, 0.0, -1.0]), np.array([0.0, 0.0, 0.0, 1.0]))
-                except Exception:
-                    pass
+            # Hide the original panda-gym target (needs to be done every reset as panda-gym puts it back)
+            try:
+                sim.set_base_pose("target", np.array([0.0, 0.0, -1.0]), np.array([0.0, 0.0, 0.0, 1.0]))
+                target_id = sim._bodies_idx.get("target")
+                if target_id is not None:
+                    sim.physics_client.changeVisualShape(target_id, -1, rgbaColor=[0, 0, 0, 0])
+            except Exception:
+                pass
 
             sim.physics_client.resetBasePositionAndOrientation(self._target1_id, self._target1_pos, [0, 0, 0, 1])
             sim.physics_client.resetBasePositionAndOrientation(self._target2_id, self._target2_pos, [0, 0, 0, 1])
@@ -277,7 +280,7 @@ class PandaGymPickPlaceEnv(gym.Env):
         inner_task = getattr(self._inner.unwrapped, "task", None)
 
         # 1) Fix target 1 separation from cube
-        for _ in range(50):
+        for _ in range(1000):
             xy_dist = np.linalg.norm(cube_pos[:2] - self._target1_pos[:2])
             if xy_dist >= MIN_SEPARATION:
                 break
@@ -293,9 +296,14 @@ class PandaGymPickPlaceEnv(gym.Env):
                 ])
             self._target1_pos = new_goal
 
+        # Fallback for target 1
+        xy_dist = np.linalg.norm(cube_pos[:2] - self._target1_pos[:2])
+        if xy_dist < MIN_SEPARATION:
+            self._target1_pos[0] = -cube_pos[0]
+
         # 2) Sample target 2, ensuring separation from both cube AND target 1
         self._target2_pos = self._target1_pos.copy()
-        for _ in range(50):
+        for _ in range(1000):
             new_t2 = np.array([
                 np.random.uniform(-0.15, 0.15),
                 np.random.uniform(-0.15, 0.15),
@@ -307,6 +315,15 @@ class PandaGymPickPlaceEnv(gym.Env):
             if dist_c >= MIN_SEPARATION and dist_1 >= MIN_SEPARATION * 1.5:
                 self._target2_pos = new_t2
                 break
+
+        # Fallback for target 2
+        dist_c = np.linalg.norm(cube_pos[:2] - self._target2_pos[:2])
+        dist_1 = np.linalg.norm(self._target1_pos[:2] - self._target2_pos[:2])
+        if dist_c < MIN_SEPARATION or dist_1 < MIN_SEPARATION * 1.5:
+            # Force separation
+            self._target2_pos = self._target1_pos + np.array([MIN_SEPARATION * 1.5, MIN_SEPARATION * 1.5, 0])
+            # Keep within bounds
+            self._target2_pos[:2] = np.clip(self._target2_pos[:2], -0.15, 0.15)
 
         if self.verbose:
             dist_c1 = np.linalg.norm(cube_pos[:2] - self._target1_pos[:2])
@@ -594,7 +611,7 @@ def main(args: DictConfig) -> None:
     print("Obs space:", env.observation_space)
     print("Act space:", env.action_space)
 
-    for episode in range(5):
+    for episode in range(10):
         obs, info = env.reset()
         print(f"\n--- Episode {episode + 1} ---")
         # print("Obs shape:", obs.shape, "| dtype:", obs.dtype)
