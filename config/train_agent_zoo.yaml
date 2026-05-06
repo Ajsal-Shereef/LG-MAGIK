@@ -1,6 +1,6 @@
 defaults:
-  - env : PandaGym
-agent_name : SAC
+  - env : PandaGymStack
+agent_name : TQC
 save_every : 500000
 use_wandb : false
 log_every : 100

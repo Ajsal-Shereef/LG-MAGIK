@@ -30,9 +30,9 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         
         def gen_mission():
             if self.task_mode == "source":
-                return "Pick up the blue ball and drop it on the flat green target grid."
+                return "Pick up the blue ball and drop it on the green target."
             else:
-                return "Pick up the green ball and drop it near the grid where the yellow box is."
+                return "Pick up the red ball and drop it beside the yellow box."
 
         mission_space = MissionSpace(mission_func=gen_mission)
         
@@ -94,17 +94,16 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             self.landmark = None
             self.landmark_pos = None
         else:
-            self.tool_block = Ball(color="purple")
+            self.tool_block = Ball(color="red")
             self.place_obj(self.tool_block)
             
-            # Landmark ("Yellow Duckie")
             self.landmark = Box(color="yellow")
             self.landmark_pos = self.place_obj(self.landmark)
             self.target_area = None
             self.target_pos = None
             
         self.place_agent()
-        self.mission = "Pick up the blue ball and drop it on the green target." if self.task_mode == "source" else "Pick up the purple ball and drop it strictly beside the grid where the yellow box is."
+        self.mission = "Pick up the blue ball and drop it on the green target." if self.task_mode == "source" else "Pick up the red ball and drop it beside the yellow box."
 
     def get_description(self, obs):
         dir_names = {0: "right", 1: "down", 2: "left", 3: "up"}
@@ -166,7 +165,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
                 else:
                     terminated = True
                     if self.verbose:
-                        print(f"Failed. Dropped at {drop_pos} instead of target {self.target_pos}.")
+                        print(f"Failed! Dropped at {drop_pos} instead of target {self.target_pos}.")
                         
             elif self.task_mode == "target":
                 dist = abs(drop_pos[0] - self.landmark_pos[0]) + abs(drop_pos[1] - self.landmark_pos[1])

@@ -1,7 +1,7 @@
-name: PandaGymInbuilt
+name: PandaGymStack
 task_mode: "source"
 max_steps: 200
-total_timestep: 2_000_000
+total_timestep: 10_000_000
 fps: 5
 verbose: False
 observation_mode: feature

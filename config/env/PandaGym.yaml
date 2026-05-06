@@ -1,6 +1,6 @@
 name: PandaGym
 task_mode: "source"           # "source" for training, "target" for transfer
-max_steps: 200                # panda-gym default episode is 50; 100 gives more exploration
+max_steps: 100                # panda-gym default episode is 50; 100 gives more exploration
 obs_width: 512
 obs_height: 512
 total_timestep: 5_000_000

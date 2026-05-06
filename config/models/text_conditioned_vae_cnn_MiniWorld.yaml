@@ -6,7 +6,7 @@ project_name: TextConditionedVAE
 model_name : "VAE"
 seed: null
 data:
-  train_dir: cached_data/MiniWorld_attempt_6
+  train_dir: data/${env.name}
   cache_dir: null
   batch_size: 32
   num_workers: 8

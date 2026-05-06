@@ -159,7 +159,7 @@ class DataCollectorCallback(BaseCallback):
         # Handle terminal observations
         # If an episode is done, 'new_obs' is the reset observation of the NEW episode.
         # We want the terminal observation of the COMPLETED episode, which is in info['terminal_observation'].
-        if self.use_her and isinstance(s, dict):
+        if isinstance(s, dict):
             keys = ["observation", "achieved_goal", "desired_goal"]
             keys = [k for k in keys if k in s] or sorted(s.keys())
             
@@ -327,10 +327,10 @@ def main(args: DictConfig) -> None:
         from env.PandaGym import PandaGymPickPlaceEnv
         env = PandaGymPickPlaceEnv(args.env, render_mode="rgb_array")
         mission = env.unwrapped.mission
-    elif args.env.name == "PandaGymInbuilt":
-        import panda_gym
-        env = gym.make("PandaPickAndPlace-v3", render_mode="rgb_array")
-        mission = "random mission string"
+    elif args.env.name == "PandaGymStack":
+        from env.PandaGymStack import PandaGymStackEnv
+        env = PandaGymStackEnv(args.env)
+        mission = env.mission
     
     # Setting the mission string
     args.env.mission = mission
@@ -364,7 +364,7 @@ def main(args: DictConfig) -> None:
         with open(hp_path) as f:
             data = yaml.safe_load(f)
             # Default to PandaPickAndPlace-v1 if PandaGymInbuilt maps to it
-            env_key = "PandaPickAndPlace-v1"
+            env_key = "PandaStack-v1"
             if env_key in data:
                 zoo_kwargs = data[env_key]
                 print(f"[INFO] Loaded {args.agent_name} hyperparameters for {env_key} from rl_zoo3.")
@@ -396,6 +396,13 @@ def main(args: DictConfig) -> None:
             continue
 
         kwargs[k] = v
+
+    # --- Ensure learning_starts is safe for HER ---
+    if kwargs.get("replay_buffer_class") is HerReplayBuffer:
+        min_starts = int(getattr(args.env, "max_steps", 200)) + 1
+        if kwargs.get("learning_starts", 0) < min_starts:
+            kwargs["learning_starts"] = min_starts
+            print(f"[INFO] Set learning_starts={min_starts} (must be > max_steps for HER)")
 
     # --- TRAINING ---
     # timesteps = zoo_kwargs.get("n_timesteps", args.env.total_timestep)
@@ -503,7 +510,8 @@ def main(args: DictConfig) -> None:
     model.save(f"{model_save_dir}/{args.agent_name}")
 
     env.close()
-    wandb.finish()
+    if args.use_wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":

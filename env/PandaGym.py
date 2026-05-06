@@ -117,7 +117,8 @@ class PandaGymPickPlaceEnv(gym.Env):
             gym_id = "PandaPickAndPlace-v3"
 
         self._inner = gym.make(gym_id, render_mode="rgb_array",
-                               control_type=self.control_type)
+                               control_type=self.control_type,
+                               max_episode_steps=self.max_steps)
 
         # ---- Observation space ------------------------------------------
         # HER mode: Dict obs with separate achieved/desired goal keys
@@ -340,13 +341,11 @@ class PandaGymPickPlaceEnv(gym.Env):
         cube_pos = obs_dict["achieved_goal"]          # current cube position
         ee_pos   = obs_dict["observation"][:3]         # end-effector position
 
-        reward       = 0.0
         is_grasping  = self._is_grasping(obs_dict)
 
-        # ---- One-time grasp bonus ----------------------------------------
+        # ---- One-time grasp bonus (metrics only) -------------------------
         if is_grasping and not self._grasp_bonus_given:
             self._grasp_bonus_given = True
-            reward += 5.0
             self.agent_performance["successful_pick"] += 1
             if self.verbose:
                 print("Intermediate: Grasped the cube!")
@@ -359,32 +358,21 @@ class PandaGymPickPlaceEnv(gym.Env):
         else: # target3
             goal_pos = (self._target1_pos + self._target2_pos) / 2.0
 
-        dist_ee_cube   = np.linalg.norm(ee_pos - cube_pos)
         dist_cube_goal = np.linalg.norm(cube_pos - goal_pos)
 
-        # ---- Shaped reward (hack-proof) ----------------------------------
-        # Always penalise cube-to-goal distance so dropping never helps.
-        # Additionally penalise EE-to-cube distance when not grasping.
-        if self.task_mode == "source" or self.task_mode == "target3":
-            reward += -dist_cube_goal
-        else:
-            ideal_dist = (LANDMARK_RADIUS + self.near_threshold * 2) / 2.0
-            reward += -abs(dist_cube_goal - ideal_dist)
+        # ---- Consistent Reward -------------------------------------------
+        # Use compute_reward directly to ensure consistency with HER relabeling
+        reward = float(self.compute_reward(cube_pos, goal_pos, {}))
 
-        if not is_grasping:
-            reward += -dist_ee_cube
-
-        # ---- Placement success ------------------------------------------
+        # ---- Placement success ------------------------------------------\
         if self.task_mode == "source" or self.task_mode == "target3":
             if dist_cube_goal < self.near_threshold:
-                reward += 10.0
                 terminated = True
                 self.agent_performance["successful_place"] += 1
                 if self.verbose:
                     print(f"Success! Placed on point (dist={dist_cube_goal:.3f}).")
         else:
             if LANDMARK_RADIUS < dist_cube_goal <= self.near_threshold * 2:
-                reward += 10.0
                 terminated = True
                 self.agent_performance["successful_place"] += 1
                 if self.verbose:
@@ -403,6 +391,47 @@ class PandaGymPickPlaceEnv(gym.Env):
         }
 
         return observation, float(reward), terminated, truncated, info_out
+
+    def _build_observation(self, obs_dict):
+        """
+        Build the observation returned to the agent.
+
+        Raw panda-gym observation layout (19D):
+            obs[0:3]  → EE position
+            obs[3:6]  → EE velocity
+            obs[6]    → fingers width
+            obs[7:10] → object (cube) position
+            obs[10:13]→ object rotation (Euler)
+            obs[13:16]→ object linear velocity
+            obs[16:19]→ object angular velocity
+
+        HER mode  → Dict{observation(25D), achieved_goal(3D), desired_goal(3D)}
+        Flat mode → 25D concatenation [raw (19D) | target1 pos (3D) | target2 pos (3D)]
+        """
+        raw      = obs_dict["observation"].astype(np.float32)
+        cube_pos = raw[7:10]
+        
+        if self.task_mode == "source" or self.task_mode == "target1":
+            goal_pos = self._target1_pos
+        elif self.task_mode == "target2":
+            goal_pos = self._target2_pos
+        else:
+            goal_pos = (self._target1_pos + self._target2_pos) / 2.0
+
+        target1 = self._target1_pos if self._target1_pos is not None else np.zeros(3)
+        target2 = self._target2_pos if self._target2_pos is not None else np.zeros(3)
+        full_obs = np.concatenate([raw, target1, target2]).astype(np.float32)
+
+        if self.use_her:
+            # Dict observation required by HerReplayBuffer
+            self.obs = {
+                "observation":   full_obs,              # 25D
+                "achieved_goal": cube_pos.copy(),       # 3D — current cube pos
+                "desired_goal":  goal_pos.copy(),       # 3D — target pos
+            }
+        else:
+            self.obs = full_obs
+        return self.obs
 
     def _build_observation(self, obs_dict):
         """
