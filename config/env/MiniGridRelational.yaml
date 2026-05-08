@@ -1,6 +1,6 @@
 name: MiniGridRelational
 size: 8
-max_steps: 25
+max_steps: 30
 verbose: False
 tile_size : 8
 task_mode: source

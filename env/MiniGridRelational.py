@@ -18,6 +18,17 @@ from minigrid.utils.rendering import (
 )
 from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper, ImgObsWrapper
 
+class RelationalBall(Ball):
+    def __init__(self, color: str = "blue"):
+        super().__init__(color)
+        self.on_target_color = None
+
+    def render(self, img):
+        if self.on_target_color is not None:
+            color = COLORS[self.on_target_color] / 2
+            fill_coords(img, point_in_rect(0.031, 1, 0.031, 1), color)
+        super().render(img)
+
 class Box(WorldObj):
     def __init__(self, color, contains: WorldObj | None = None):
         super().__init__("box", color)
@@ -133,7 +144,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
 
         if self.task_mode == "source":
             # Tool Block
-            self.tool_block = Ball(color="blue")
+            self.tool_block = RelationalBall(color="blue")
             self.place_obj(self.tool_block)
             
             # Target Area (Floor tile allows the agent to intrinsically step over it, but breaks generic drops without override)
@@ -143,7 +154,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             self.landmark_pos = None
         else:
             # Both "target" and "target2" use a red ball + yellow box
-            self.tool_block = Ball(color="red")
+            self.tool_block = RelationalBall(color="red")
             self.place_obj(self.tool_block)
             
             self.landmark = Box(color="yellow")
@@ -188,7 +199,10 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             fwd_cell = self.grid.get(*fwd_pos)
             # In source mode, we physically allow placing ON the green floor target despite collision
             if fwd_cell is not None and isinstance(fwd_cell, Floor) and fwd_cell.color == "green":
+                if hasattr(self.carrying, 'on_target_color'):
+                    self.carrying.on_target_color = fwd_cell.color
                 self.grid.set(*fwd_pos, self.carrying)
+                self.carrying.cur_pos = fwd_pos
                 self.carrying = None
 
         self.previous_state = self.obs
@@ -199,6 +213,8 @@ class RelationalPickPlaceEnv(MiniGridEnv):
 
         # add intermediate reward for picking up the correct tool ball
         if action == self.actions.pickup and carrying_before is None and self.carrying is not None:
+            if hasattr(self.carrying, 'on_target_color'):
+                self.carrying.on_target_color = None
             if self.carrying == self.tool_block:
                 reward += 1.0
                 self.agent_performance["successful_pick"] += 1
