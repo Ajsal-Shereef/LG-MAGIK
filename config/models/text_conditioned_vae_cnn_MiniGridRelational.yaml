@@ -17,7 +17,7 @@ data:
   nvidia_model_name: "nvidia/llama-nemotron-embed-1b-v2"
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
-  n_downsample: 3
+  n_downsample: 4
   encoder_n_res: 3
   input_dim: 3
   dim: 64
@@ -25,8 +25,8 @@ model:
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
-  - 8
-  - 8
+  - 4
+  - 4
   latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   text_encoder_type: ${models.data.text_encoder_type}

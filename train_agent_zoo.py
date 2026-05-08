@@ -143,6 +143,7 @@ class DataCollectorCallback(BaseCallback):
         self.number_data_to_collect = number_data_to_collect
         self.observation_mode = observation_mode
         self.use_her = use_her
+        self.step_count = 0
         
     def _on_step(self) -> bool:
         """
@@ -180,10 +181,22 @@ class DataCollectorCallback(BaseCallback):
         description = [info.get("description", "") for info in infos]
         sensor_data = [info.get("sensor_data", "") for info in infos]
         
-        # Append data. 
-        self.all_states.append(current_obs)
-        self.all_description.append(description) # Append infos
-        self.all_sensor_data.append(sensor_data)
+        n_envs = current_obs.shape[0]
+        max_steps = max(1, self.number_data_to_collect // n_envs)
+        
+        # Reservoir sampling
+        if len(self.all_states) < max_steps:
+            self.all_states.append(current_obs)
+            self.all_description.append(description)
+            self.all_sensor_data.append(sensor_data)
+        else:
+            j = np.random.randint(0, self.step_count + 1)
+            if j < max_steps:
+                self.all_states[j] = current_obs
+                self.all_description[j] = description
+                self.all_sensor_data[j] = sensor_data
+                
+        self.step_count += 1
         
         return True
 
@@ -318,8 +331,8 @@ def main(args: DictConfig) -> None:
     elif args.env.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
         env = SimplePickup(args.env)
-        from minigrid.wrappers import RGBImgPartialObsWrapper
-        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import RGBImgObsWrapper
+        env = RGBImgObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         mission = env.unwrapped.mission
@@ -331,6 +344,16 @@ def main(args: DictConfig) -> None:
         from env.PandaGymStack import PandaGymStackEnv
         env = PandaGymStackEnv(args.env)
         mission = env.mission
+    elif args.env.name == "MiniGridRelational":
+        from env.MiniGridRelational import RelationalPickPlaceEnv
+        env = RelationalPickPlaceEnv(args.env)
+        from minigrid.wrappers import RGBImgObsWrapper
+        env = RGBImgObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import ImgObsWrapper
+        env = ImgObsWrapper(env)
+        mission = env.unwrapped.mission
+    else:
+        raise ValueError(f"Unknown environment: {args.env.name}")
     
     # Setting the mission string
     args.env.mission = mission
@@ -499,7 +522,7 @@ def main(args: DictConfig) -> None:
     data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
                                                     number_data_to_collect=int(args.number_data_to_collect),  
                                                     observation_mode=args.env.observation_mode, use_her=use_her, verbose=1)
-    call_backs = [data_collector_callback, checkpoint_callback, video_callback]
+    call_backs = [data_collector_callback, checkpoint_callback]
     # call_backs = []
     all_callbacks = call_backs + [wandb_callback] if args.use_wandb else call_backs
     

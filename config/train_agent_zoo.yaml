@@ -1,6 +1,6 @@
 defaults:
-  - env : PandaGymStack
-agent_name : TQC
+  - env : MiniGridRelational
+agent_name : DQN
 save_every : 500000
 use_wandb : false
 log_every : 100
