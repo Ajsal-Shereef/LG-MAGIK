@@ -1,6 +1,6 @@
-# ASPECT
+# PRISM (Policy Reuse via Imagined SemanticMappings)
 
-ASPECT is a framework for training agents to solve target tasks by leveraging knowledge from analogous source tasks. The core idea is to use a text-conditioned VAE to transform observations from a target task into analogous source task observations, allowing an agent trained on the source task to operate in the target environment.
+PRISM is a framework for training agents to solve target tasks by leveraging knowledge from analogous source tasks. The core idea is to use a text-conditioned VAE to transform observations from a target task into analogous source task observations, allowing an agent trained on the source task to operate in the target environment.
 
 ## Workflow
 
@@ -111,7 +111,12 @@ In the latent view, the left shows the input image and its corresponding latent,
 
 #### Imagination Mode
 ![Imagination View](test/Imagiantion_view.png)
-In the imagination mode, it outputs the generation of image using the text and display the latent of the input and the latent of the generated image.
+The Imagination Mode tests how the latent representation changes when a new image is generated using a text prompt.
+
+*   **Left Panel:** Displays the original image and its corresponding latent visualization.
+*   **Right Panel:** Displays the newly generated image (based on the provided text prompt) and its latent visualization.
+
+Upon inspecting the two latents, the first two rows remain the same. This indicates that these positions encode common features shared between the images. The remaining positions encode aspects that differ from the original image, such as the object itself, orientation, size, color, etc.
 
 ## Results
 Below are the episode rollout of the agent with imagination module in different environements and tasks. For MiiWorld and MiniGrid the full view is the top-down view of the environment and the partial view is the first-person view of the agent.
