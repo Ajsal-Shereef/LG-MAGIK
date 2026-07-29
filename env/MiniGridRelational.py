@@ -286,8 +286,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
     def reset(self, *, seed=None, options=None):
         obs, info = super().reset(seed=seed, options=options)
         self.obs = obs
-        if self.verbose:
-            info["description"] = self.get_description(obs)
+        info["description"] = self.get_description(obs)
         return obs, info
 
 @hydra.main(version_base=None, config_path="../config/env", config_name="MiniGridRelational.yaml")
@@ -295,22 +294,72 @@ def main(args: DictConfig) -> None:
     env = RelationalPickPlaceEnv(args)
     env = RGBImgObsWrapper(env, tile_size=8) # Un-comment to force hard pixel pipeline instead of int arrays 
     env = ImgObsWrapper(env)
-    for episode in range(500):
+    
+    save_data = False
+    target_datapoints = 150000
+    
+    if save_data:
+        import json
+        save_dir = "data/MiniGridRelational/random"
+        images_dir = os.path.join(save_dir, "images")
+        os.makedirs(images_dir, exist_ok=True)
+        metadata_file = open(os.path.join(save_dir, "metadata.jsonl"), "w")
+        step_idx = 0
+
+    episode = 0
+    while True:
+        if save_data and step_idx >= target_datapoints:
+            break
+        if not save_data and episode >= 500:
+            break
+            
         obs, info = env.reset()
         if episode == 0:
             print("Mission:", env.unwrapped.mission)
-        print(f"\n--- Episode {episode + 1} ---")
-        print("Initial Info:", info.get("description", ""))
+        # print(f"\n--- Episode {episode + 1} ---")
+        # print("Initial Info:", info.get("description", ""))
         
         done = False
         while not done:
+            if save_data:
+                if step_idx >= target_datapoints:
+                    break
+                    
+                img_name = f"{step_idx:06d}.png"
+                img_path = os.path.join(images_dir, img_name)
+                Image.fromarray(obs).save(img_path)
+                
+                desc = info.get("description", "")
+                metadata_file.write(json.dumps({
+                    "file_name": f"images/{img_name}",
+                    "text": desc,
+                    "sensor_data": ""
+                }) + "\n")
+                step_idx += 1
+
             action = env.action_space.sample()
             obs, reward, term, trunc, info = env.step(action)
             done = term or trunc
             
-        print("Final Step Info:", info.get("description", ""))
-        
+        # print("Final Step Info:", info.get("description", ""))
+        if save_data and step_idx < target_datapoints:
+            img_name = f"{step_idx:06d}.png"
+            img_path = os.path.join(images_dir, img_name)
+            Image.fromarray(obs).save(img_path)
+            
+            desc = info.get("description", "")
+            metadata_file.write(json.dumps({
+                "file_name": f"images/{img_name}",
+                "text": desc,
+                "sensor_data": ""
+            }) + "\n")
+            step_idx += 1
+            
+        episode += 1
+            
+    if save_data:
+        metadata_file.close()
     env.close()
 
 if __name__ == "__main__":
-    main() 
+    main()
