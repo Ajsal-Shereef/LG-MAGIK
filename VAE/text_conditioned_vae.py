@@ -679,9 +679,9 @@ class TextConditionedVAE(nn.Module):
     def load_params(self, path):
         """Load model and optimizer parameters."""
         params = torch.load(path, map_location=device)
-        self.encoder.load_state_dict(params["encoder"])
-        self.bottleneck.load_state_dict(params["bottleneck"])
-        self.decoder.load_state_dict(params["decoder"])
+        self.encoder.load_state_dict(params["encoder"], strict=False)
+        self.bottleneck.load_state_dict(params["bottleneck"], strict=False)
+        self.decoder.load_state_dict(params["decoder"], strict=False)
         try:
             self.caption_discriminator.load_state_dict(params["caption_discriminator"])
         except RuntimeError as e:

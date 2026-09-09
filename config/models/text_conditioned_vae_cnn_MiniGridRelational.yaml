@@ -105,5 +105,3 @@ accelerator:
   log_with: wandb
   project_dir: ${models.training.logs}
   logging_dir: ${models.training.logs}/logs
-test:
-  model_dir: model_weights/VAE/MiniGridRelational/2026-04-07_14-11-50_GZC6II/TextConditionedVAE.tar

@@ -3,6 +3,7 @@ import re
 import json
 import hydra
 import torch
+import logging
 import numpy as np
 from PIL import Image
 from dotenv import load_dotenv
@@ -11,12 +12,18 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from accelerate.utils import ProjectConfiguration
 from architectures.common_utils import save_gif, preprocess_llm_output, initialize_llm_hf_pipeline, query_llm, post_process_caption
-from captioner import encode_image, query_llm as query_llm_vision
+from utils.captioner import encode_image, query_llm as query_llm_vision
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 @hydra.main(version_base=None, config_path="config", config_name="test_imagination")
 def main(args: DictConfig) -> None:
+    # Suppress HTTP request logs from httpx, httpcore, and urllib3
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     if args.env.name ==  "SimplePickup":
         if args.mode == "transfer":
             args.env.verbose = True
@@ -64,15 +71,15 @@ def main(args: DictConfig) -> None:
     #Make the agent
     if args.agent_name == "SAC":
         from stable_baselines3 import SAC
-        agent = SAC.load(args.model_dir)
+        agent = SAC.load(args.dqn_model_dir)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
-        agent = PPO.load(args.model_dir)
+        agent = PPO.load(args.dqn_model_dir)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
-        agent = DQN.load(args.model_dir)
+        agent = DQN.load(args.dqn_model_dir)
         
-    agent_model_dir = args.model_dir
+    agent_model_dir = args.dqn_model_dir
     if os.path.exists(os.path.dirname(agent_model_dir) + "/config.yaml"):
         agent_model_args =  OmegaConf.load(os.path.dirname(agent_model_dir) + "/config.yaml")
         args.env = agent_model_args.env
@@ -101,12 +108,11 @@ def main(args: DictConfig) -> None:
     )
     if args.mode == "transfer":
         #Load the vision models
-        vision_model_path = args.models.test.model_dir
-        vison_model_dir = os.path.dirname(args.models.test.model_dir)
+        vision_model_path = args.vae_model_dir
+        vison_model_dir = os.path.dirname(vision_model_path)
         if os.path.exists(vison_model_dir + "/config.yaml"):
             vision_model_args =  OmegaConf.load(vison_model_dir + "/config.yaml")
             cfg = vision_model_args.models
-            args.models.test.model_dir = vision_model_path
         else:
             raise FileNotFoundError(f"Config file not found in {vison_model_dir}/config.yaml")
         accelerator.print("Initializing VAE model...")
@@ -218,7 +224,7 @@ def main(args: DictConfig) -> None:
             done = truncated + terminated
             cumulative_reward += reward
             state = next_state
-            print(f"Episode step done: {episode_step}")
+            # print(f"Episode step done: {episode_step}")
             episode_step += 1
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":

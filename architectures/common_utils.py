@@ -1348,6 +1348,7 @@ def initialize_llm_hf_pipeline(model_id):
     """
     Initializes and returns a Hugging Face model and tokenizer.
     This function handles loading the model with necessary arguments for modern architectures.
+    Supports both standard HuggingFace models and local PEFT LoRA adapters.
     """
     from transformers import AutoModelForCausalLM, AutoTokenizer
     try:
@@ -1357,23 +1358,67 @@ def initialize_llm_hf_pipeline(model_id):
         # Make sure remote code execution is allowed
         os.environ["TRANSFORMERS_TRUST_REMOTE_CODE"] = "1"
         
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        # Check if model_id is a PEFT LoRA adapter directory
+        adapter_path = None
+        if os.path.isdir(model_id):
+            if os.path.exists(os.path.join(model_id, "adapter_config.json")):
+                adapter_path = model_id
+            elif os.path.exists(os.path.join(model_id, "final", "adapter_config.json")):
+                adapter_path = os.path.join(model_id, "final")
+
+        if adapter_path is not None:
+            from peft import PeftModel
+            with open(os.path.join(adapter_path, "adapter_config.json"), "r") as f:
+                adapter_cfg = json.load(f)
+            base_model_name = adapter_cfg.get("base_model_name_or_path")
+            print(f"[INFO] Detected PEFT LoRA adapter at '{adapter_path}' targeting base model '{base_model_name}'")
+
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(adapter_path, trust_remote_code=True)
+            except AttributeError:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    adapter_path,
+                    trust_remote_code=True,
+                    extra_special_tokens={"video_token": "<|video|>"}
+                )
+            base_model = AutoModelForCausalLM.from_pretrained(
+                base_model_name,
+                device_map="auto",
+                torch_dtype="auto",
+                trust_remote_code=True
+            )
+            model = PeftModel.from_pretrained(base_model, adapter_path)
+            try:
+                model = model.merge_and_unload()
+                print("[INFO] Successfully merged LoRA weights into base model.")
+            except Exception as merge_err:
+                print(f"[INFO] Using PeftModel directly (could not merge weights: {merge_err})")
+        else:
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+            except AttributeError:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_id,
+                    trust_remote_code=True,
+                    extra_special_tokens={"video_token": "<|video|>"}
+                )
+            
+            # Modern GPUs (Ampere, Hopper, etc.) benefit greatly from bfloat16
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                device_map="auto",
+                torch_dtype="auto",  
+                trust_remote_code=True 
+            )
         
-        # Modern GPUs (Ampere, Hopper, etc.) benefit greatly from bfloat16
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            device_map="auto",
-            torch_dtype="auto",  
-            trust_remote_code=True 
-        )
-        
+        model.eval()
         print("Model and tokenizer loaded successfully.")
         return tokenizer, model
 
     except ImportError:
         raise ImportError(
             "The required libraries are not installed. "
-            "Please run: pip install torch transformers accelerate bitsandbytes"
+            "Please run: pip install torch transformers accelerate peft bitsandbytes"
         )
     except Exception as e:
         print("--- DETAILED TRACEBACK ---")
@@ -1504,7 +1549,10 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
                                                ).to(model.device)
  
         generated = model.generate(**inputs, max_new_tokens=4096)
-        reasoning, final = split_gptoss_analysis_final(tokenizer.decode(generated[0][inputs["input_ids"].shape[-1] :]))
+        raw_output = tokenizer.decode(generated[0][inputs["input_ids"].shape[-1] :])
+        reasoning, final = split_gptoss_analysis_final(raw_output)
+        if final is None:
+            final = raw_output
         return final, reasoning
 
     elif mode == "google":

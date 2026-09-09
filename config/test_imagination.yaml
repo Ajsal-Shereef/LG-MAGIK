@@ -1,14 +1,15 @@
 defaults:
-  - models: text_conditioned_vae_cnn
+  - models: text_conditioned_vae_cnn_MiniGridRelational
   - env: MiniGridRelational
 
 agent_name : DQN
-model_dir : model_weights/${agent_name}/2026-04-11_23-47-28_LKA45O/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+dqn_model_dir : model_weights/MiniGridRelational/dqn/DQN.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+vae_model_dir: model_weights/MiniGridRelational/vae/TextConditionedVAE.tar
 num_episode: 10
 result_dir: result
 mode: transfer
-querry_mode: openrouter # Querry mode for LLM. options openrouter/huggingface
-llm_model: "qwen/qwen3.6-plus:free" #meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.5-flash-lite-preview-09-2025, google/gemini-2.5-pro, x-ai/grok-4.1-fast
+querry_mode: huggingface # Querry mode for LLM. options openrouter/huggingface
+llm_model: "model_weights/FineTunedGemma/final" #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free
 alternate_llm_model : nvidia/nemotron-3-super-120b-a12b:free
 vllm_model: "x-ai/grok-4.1-fast"
 alternative_vllm : "google/gemini-2.5-flash"
@@ -155,7 +156,9 @@ system_prompt: |
   of the current scene so the target becomes solvable using the same skill.
 
   Imagination operates strictly in observation space, the physical world is unchanged. 
-  The agent's actions are real, only what it perceives is altered.
+  The agent's actions are real, only what it perceives is altered: the perception module 
+  (a text-conditioned VAE) alters the current observation into a source observation 
+  conditioned on the remapped caption.
 
   ###CORE PRINCIPLES
 
@@ -174,15 +177,11 @@ system_prompt: |
   2. **Role-Aware Remapping**
      - Map objects by their structural role in the task, not by their surface identity.
 
-  3. **Relational Goal Grounding**
-     - The goal location in the target task may be described relationally rather 
-       than absolutely: "beside X", "between X and Y", "in the direction agent faces."
-     - You must:
-         (a) Identify the relational anchor objects
-         (b) Compute or infer the implied absolute goal from the relation
-         (c) Place the source goal object at that inferred goal
-         (d) Remove the anchor objects from the imagined scene — they do not exist 
-             in the source task world
+  3. **Structural Rigidity (CRITICAL)**
+     - The perception module (VAE) alters the current observation to a source observation using the remapped caption. Because this module is trained on strict linguistic templates, it is extremely brittle. Your output MUST perfectly match this sentence structure, with exactly one piece of location data per sentence:
+       "Agent is at (<x>, <y>) facing <direction>. The blue ball is at (<x>, <y>). The green target is at (<x>, <y>)."
+       OR (if the agent is carrying the ball):
+       "Agent is at (<x>, <y>) facing <direction>. Agent is carrying the blue ball. The green target is at (<x>, <y>)."
 
   4. **Minimal Transformation**
      - MODIFY only what is necessary to make the target task solvable using the 
@@ -257,22 +256,12 @@ system_prompt: |
 
   {
     "imagine": true | false,
-    "inferred_goal": "<the inferred source goal object and coordinate, e.g. 
-                      'green tile at (7,4)' — or null if goal is unchanged>",
-    "role_mapping": {
-      "<target object 1>": "<source object or 'removed'>",
-      "<target object 2>": "<source object or 'removed'>"
-    },
     "description": "<complete rewritten scene description in the same format 
                      as the input caption, containing only source-world objects>"
   }
 
   - "imagine": true if any transformation was applied; false if source and target 
     are identical and no remapping is needed.
-  - "inferred_goal": the result of relational goal grounding, explicitly stated. 
-    null if the goal location was already absolute and unchanged.
-  - "role_mapping": every object from the current caption mapped to its source 
-    equivalent or marked as removed. This makes the reasoning auditable.
   - "description": the final imagined scene description. Must be in the same 
     structured format as the input caption. Must contain only source-world objects 
     at valid coordinates.
