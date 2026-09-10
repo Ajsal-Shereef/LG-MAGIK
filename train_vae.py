@@ -65,7 +65,6 @@ def train(args: DictConfig) -> None:
         args.seed = seed
 
     seed_everything(seed)
-    set_seed(seed, device_specific=True)
 
     # Creating the directory to save the model weights and configs: model_weights/{env_name}/{model_name}/seed_{seed}
     seed_name = f"seed_{seed}" if not str(seed).startswith("seed_") else str(seed)
@@ -89,6 +88,7 @@ def train(args: DictConfig) -> None:
         log_with=log_with, # Use the conditional logger
         project_config=accelerator_project_config,
     )
+    set_seed(seed, device_specific=True)
     
     # Conditionally initialize trackers
     if accelerator.is_main_process and log_values_and_images:
@@ -133,10 +133,6 @@ def train(args: DictConfig) -> None:
         _vae.disc_optim = accelerator.prepare(_vae.disc_optim)
         if _vae.disc_scheduler is not None:
             _vae.disc_scheduler = accelerator.prepare(_vae.disc_scheduler)
-    if _vae.use_club:
-        _vae.club_optim = accelerator.prepare(_vae.club_optim)
-        if _vae.club_scheduler is not None:
-            _vae.club_scheduler = accelerator.prepare(_vae.club_scheduler)
     
     # --- 6. Training Loop ---
     accelerator.print("Starting VAE training loop...")

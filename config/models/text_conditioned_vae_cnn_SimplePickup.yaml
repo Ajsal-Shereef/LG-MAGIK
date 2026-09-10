@@ -19,7 +19,7 @@ model:
   encoder_n_res: 3
   input_dim: 3
   dim: 64
-  norm: ln
+  norm: group
   activ: lrelu
   pad_type: replicate
   encoder_final_dim:
@@ -32,15 +32,8 @@ model:
   - 128
   - 256
   observation_mode : ${env.observation_mode}
-  disc_params:
-    base_channels: 64
-    n_layers: 3
-    norm: in
   is_perceptual_loss : true
-  use_image_discriminator : false
-  use_caption_discriminator : true
-  use_club: true           # Enables CLUB mutual information minimization
-  use_coord_conv : false
+  use_coord_conv : true
   n_text_attn_layers: 4   # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
   max_grad_norm: 1.0
   max_sequence_length: 110
@@ -65,9 +58,6 @@ training:
   generate_interval: 8000
   num_images_to_generate : 10
   save_weight_freequency : 50
-  img_adv_weight : 1.0
-  img_adv_lambda : 1
-  club_weight: 0.1           # Weight for CLUB MI loss term
   critic_updates: 1        # Number of discriminator updates per generator update
   recon_mix_weight: 0.5
   is_model_fine_tune : false
@@ -78,7 +68,6 @@ optimizer:
   - 0.999
   weight_decay: 0.01
   eps: 1.0e-08
-  lr_club : 0.00001
   scheduler:
     # type: cosine
     # T_max: ${models.training.num_epochs}
