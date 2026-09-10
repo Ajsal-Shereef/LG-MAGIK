@@ -20,7 +20,7 @@ model:
   input_dim: 3
   dim: 64
   norm: group
-  activ: lrelu
+  activ: gelu
   pad_type: replicate
   encoder_final_dim:
   - 4

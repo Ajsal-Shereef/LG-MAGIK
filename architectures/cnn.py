@@ -446,7 +446,7 @@ class FiLMSpatialOnly(nn.Module):
 
         # Local conv processing
         self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-        self.norm = get_normalisation_2d(norm, channels)
+        self.norm = get_normalisation_2d(norm, channels, affine=False)
 
         # Activation
         self.act = nn.GELU()
@@ -506,7 +506,7 @@ class CrossAttentionFiLMSpatial(nn.Module):
 
         # Local conv processing
         self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-        self.norm = get_normalisation_2d(norm, channels)
+        self.norm = get_normalisation_2d(norm, channels, affine=False)
 
         # Cross-attention
         self.cross = CrossAttention(channels, text_dim)

@@ -686,40 +686,39 @@ def get_activation(activation):
     else:
         assert 0, "Unsupported activation: {}".format(activation)
         
-def get_normalisation_2d(norm, norm_dim):
+def get_normalisation_2d(norm, norm_dim, affine=True):
     if norm == 'bn':
-        return nn.BatchNorm2d(norm_dim)
+        return nn.BatchNorm2d(norm_dim, affine=affine)
     elif norm == 'in':
-        return nn.InstanceNorm2d(norm_dim)
+        return nn.InstanceNorm2d(norm_dim, affine=affine)
     elif norm == 'ln':
         from architectures.cnn import LayerNorm
-        return LayerNorm(norm_dim)
+        return LayerNorm(norm_dim, affine=affine)
     elif norm == 'adain':
         from architectures.cnn import AdaptiveInstanceNorm2d
         return AdaptiveInstanceNorm2d(norm_dim)
     elif norm == 'group':
-        return nn.GroupNorm(8, norm_dim)
+        num_groups = min(8, norm_dim)
+        while norm_dim % num_groups != 0 and num_groups > 1:
+            num_groups -= 1
+        return nn.GroupNorm(num_groups, norm_dim, affine=affine)
     elif norm == 'none':
         return None
     else:
         assert 0, "Unsupported normalization: {}".format(norm)
         
-def get_normalisation_1d(norm, norm_dim):
+def get_normalisation_1d(norm, norm_dim, affine=True):
     if norm == 'bn':
-        return nn.BatchNorm1d(norm_dim)
+        return nn.BatchNorm1d(norm_dim, affine=affine)
     elif norm == 'in':
-        return nn.InstanceNorm1d(norm_dim)
+        return nn.InstanceNorm1d(norm_dim, affine=affine)
     elif norm == 'ln':
-        return nn.LayerNorm(norm_dim)
+        return nn.LayerNorm(norm_dim, elementwise_affine=affine)
     elif norm == 'group':
-        # GroupNorm requires norm_dim to be divisible by the number of groups.
-        # Using 8 as a default, which might need adjustment.
-        num_groups = 8 
-        if norm_dim % num_groups != 0:
-            # Find the largest divisor of norm_dim <= num_groups if 8 is not suitable
-            # For simplicity, we'll assert here, but you could add smarter logic.
-            raise ValueError(f"norm_dim {norm_dim} must be divisible by num_groups {num_groups}")
-        return nn.GroupNorm(num_groups, norm_dim)
+        num_groups = min(8, norm_dim)
+        while norm_dim % num_groups != 0 and num_groups > 1:
+            num_groups -= 1
+        return nn.GroupNorm(num_groups, norm_dim, affine=affine)
     elif norm == 'none':
         return None
     else:
