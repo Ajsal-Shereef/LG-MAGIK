@@ -13,14 +13,7 @@ from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
 from torchvision.utils import make_grid
 from utils import seed_everything
-from architectures.common_utils import get_dataloader, create_dump_directory
-from torch.optim.swa_utils import AveragedModel
-
-# --- Helper: EMA Update Function ---
-def get_ema_avg_fn(decay=0.999):
-    def ema_avg(averaged_model_parameter, model_parameter, num_averaged):
-        return decay * averaged_model_parameter + (1 - decay) * model_parameter
-    return ema_avg
+from architectures.common_utils import get_dataloader
 
 # --- Helper: KL Annealing ---
 def get_kl_weight(step, total_steps, cfg_anneal, max_kl_weight):
@@ -50,8 +43,6 @@ def train(args: DictConfig) -> None:
         cfg (DictConfig): The Hydra configuration object.
     """
     cfg = args.models
-    # Creating the directory to save the model weights and configs: model_weights/{env_name}/{model_name}/{timestamp_hash}
-    save_dir = create_dump_directory(os.path.join(args.save_path, args.env.name, cfg.model_name))
     # --- 1. Initialization and Setup ---
     seed = getattr(args, "seed", None)
     if seed is None and hasattr(cfg, "training") and cfg.training is not None:
@@ -75,6 +66,11 @@ def train(args: DictConfig) -> None:
 
     seed_everything(seed)
     set_seed(seed, device_specific=True)
+
+    # Creating the directory to save the model weights and configs: model_weights/{env_name}/{model_name}/seed_{seed}
+    seed_name = f"seed_{seed}" if not str(seed).startswith("seed_") else str(seed)
+    save_dir = os.path.join(args.save_path, args.env.name, cfg.model_name, seed_name)
+    os.makedirs(save_dir, exist_ok=True)
 
     # Check for the logging flag in the config. Defaults to True if not present.
     log_values_and_images = cfg.training.get("log_values_and_images", True)
@@ -142,15 +138,6 @@ def train(args: DictConfig) -> None:
         if _vae.club_scheduler is not None:
             _vae.club_scheduler = accelerator.prepare(_vae.club_scheduler)
     
-    # --- EMA Setup ---
-    use_ema = cfg.model.get("use_ema", False)
-    ema_model = None
-    if use_ema:
-        accelerator.print("Initializing EMA model...")
-        ema_avg_fn = get_ema_avg_fn(decay=cfg.model.get("ema_decay", 0.999))
-        ema_model = AveragedModel(vae, avg_fn=ema_avg_fn)
-        # We don't prepare EMA model with accelerator as it's just a shadow copy
-    
     # --- 6. Training Loop ---
     accelerator.print("Starting VAE training loop...")
     global_step = 0
@@ -190,10 +177,6 @@ def train(args: DictConfig) -> None:
                 critic_updates = cfg.training.get("critic_updates", 5)
                 if global_step % critic_updates == 0:
                     vae.optimize_generator(losses, accelerator, forward_output=output, **loss_kwargs)
-                    
-                    # Update EMA (Only when generator updates)
-                    if use_ema:
-                        ema_model.update_parameters(vae)
                 
                 # Reduce all loss components across processes and convert to scalar
                 reduced_losses = {
@@ -221,16 +204,7 @@ def train(args: DictConfig) -> None:
 
                     # Log images at regular intervals based on config
                     if global_step > 0 and global_step % cfg.training.log_media_interval == 0:
-                        # Use EMA model for generation if enabled
-                        eval_model = ema_model if use_ema else vae
-                        # Need to put EMA model in eval mode and maybe move to device if not handled
-                        # AveragedModel keeps params on same device as source usually, but let's be safe
-                        
                         num_images_to_log = min(batch["pixel_values"].shape[0], 8)
-                        
-                        # For reconstruction logging, we can just use the current batch output (from main model)
-                        # or run a forward pass with EMA model. Let's stick to main model for training progress,
-                        # and maybe use EMA for generation.
                         
                         img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
                         recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
@@ -250,42 +224,25 @@ def train(args: DictConfig) -> None:
                             "Original vs. Reconstructed": wandb.Image(comparison_grid)
                         }, step=global_step)
                         
-                        #Generate sample images
+                        # Generate sample images
                         if global_step % cfg.training.generate_interval == 0:
                             validation_prompts = cfg.training.get("validation_prompts", [])
                             if validation_prompts:
-                                # Use eval_model (EMA or regular) for generation
-                                # Note: AveragedModel wraps the module, so we access it via .module if needed, 
-                                # but it also forwards calls. However, `generate` is a custom method on VAE.
-                                # AveragedModel doesn't automatically forward custom methods unless we subclass.
-                                # So we need to call eval_model.module.generate if it's an AveragedModel.
-                                generator = eval_model.module if use_ema else eval_model
-                                
-                                # Ensure generator is in eval mode
-                                was_training = generator.training
-                                generator.eval()
+                                was_training = vae.training
+                                vae.eval()
                                 
                                 with torch.no_grad():
-                                    # We need 'output' for the latents. If using EMA, we should probably re-run forward
-                                    # to get consistent latents, or just use the batch.
-                                    # The `generate` method takes `output` dict.
-                                    # Let's re-run forward with generator to get consistent state
-                                    gen_output = generator(batch)
-                                    
-                                    generated_images = generator.generate(gen_output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
+                                    gen_output = vae(batch)
+                                    generated_images = vae.generate(gen_output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
                                 
                                 if was_training:
-                                    generator.train()
+                                    vae.train()
 
                                 if args.models.model.observation_mode == "image":
                                     tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
                 global_step += 1
         if epoch % cfg.training.save_weight_freequency == 0:
             vae.save(f"{save_dir}/", save_name=f"{cfg.project_name}")       
-            if use_ema:
-                # Save EMA model too
-                # Access underlying module
-                ema_model.module.save(f"{save_dir}/", save_name=f"{cfg.project_name}_ema")
 
         # Print epoch summary
         avg_epoch_losses = {key: value / len(dataloader) for key, value in epoch_losses.items()}
@@ -303,12 +260,6 @@ def train(args: DictConfig) -> None:
         pipeline_save_path = f"{save_dir}/{cfg.model_name}"
         unwrapped_vae.save(f"{save_dir}/", save_name=f"{cfg.model_name}")
         accelerator.print(f"VAE model saved for pipeline integration at: {pipeline_save_path}")
-        
-        if use_ema:
-            # Save EMA model
-            # AveragedModel -> module -> save
-            ema_model.module.save(f"{save_dir}/", save_name=f"{cfg.model_name}_ema")
-            accelerator.print(f"EMA VAE model saved at: {save_dir}/{cfg.model_name}_ema")
 
     # Conditionally end training
     if log_values_and_images:

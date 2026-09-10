@@ -15,7 +15,7 @@ import gymnasium as gym
 from PIL import Image
 from collections import deque
 from omegaconf import DictConfig, OmegaConf
-from architectures.common_utils import create_dump_directory, save_gif
+from architectures.common_utils import save_gif
 from utils import seed_everything
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 from stable_baselines3.common.utils import set_random_seed
@@ -325,10 +325,6 @@ class CheckpointAndPruneCallback(CheckpointCallback):
 
 @hydra.main(version_base=None, config_path="config", config_name="train_agent")
 def main(args: DictConfig) -> None:
-    # Model save dir: model_weights/{env_name}/{agent_name}/{timestamp_hash}
-    model_save_dir = create_dump_directory(os.path.join(args.save_model_dir, args.env.name, args.agent_name))
-    print("[INFO] Model save directory: ", model_save_dir)
-
     # --- SEED SETUP ---
     seed = args.get("seed", None)
     if seed is None:
@@ -341,6 +337,12 @@ def main(args: DictConfig) -> None:
     args.seed = seed
     seed_everything(seed)
     set_random_seed(seed, using_cuda=torch.cuda.is_available())
+
+    # Model save dir: model_weights/{env_name}/{agent_name}/seed_{seed}
+    seed_name = f"seed_{seed}" if not str(seed).startswith("seed_") else str(seed)
+    model_save_dir = os.path.join(args.save_model_dir, args.env.name, args.agent_name, seed_name)
+    os.makedirs(model_save_dir, exist_ok=True)
+    print("[INFO] Model save directory: ", model_save_dir)
 
     # --- ENVIRONMENT SETUP ---
     if args.env.name == "PickEnv":

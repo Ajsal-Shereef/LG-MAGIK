@@ -3,7 +3,7 @@ size: 8
 max_steps: 30
 verbose: False
 tile_size : 8
-task_mode: target1
+task_mode: source
 n_downsample : 3
 total_timestep : 10000000
 fps : 2.5
