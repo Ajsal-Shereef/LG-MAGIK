@@ -164,6 +164,8 @@ class RandomObjectsEnv(MiniGridEnv):
         return final_desc
 
     def reset(self, *, seed=None, options=None):
+        if seed is not None:
+            random.seed(seed)
         obs, info = super().reset(seed=seed, options=options)
         info["description"] = self.get_description(obs)
         self.obs = obs

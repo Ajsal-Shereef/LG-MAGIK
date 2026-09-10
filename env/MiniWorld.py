@@ -340,6 +340,11 @@ class PickObjectEnv(MiniWorldEnv):
         This also randomizes many environment parameters (domain randomization)
         """
 
+        if seed is not None:
+            super().reset(seed=seed)
+            random.seed(seed)
+            np.random.seed(seed)
+
         # Step count since episode start
         self.step_count = 0
 

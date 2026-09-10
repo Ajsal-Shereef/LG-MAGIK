@@ -4,6 +4,8 @@ import pyglet
 pyglet.options['headless'] = True
 pyglet.options['headless_device'] = 0
 import os
+import random
+import torch
 import wandb
 import pickle
 import hydra
@@ -14,7 +16,9 @@ from PIL import Image
 from collections import deque
 from omegaconf import DictConfig, OmegaConf
 from architectures.common_utils import create_dump_directory, save_gif
+from utils import seed_everything
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
+from stable_baselines3.common.utils import set_random_seed
 
 
 class FrameStackHW(gym.Wrapper):
@@ -132,7 +136,7 @@ class DataCollectorCallback(BaseCallback):
     A custom callback to collect and save interaction data
     (s, info) for all algorithms.
     """
-    def __init__(self, save_path: str, saving_func, number_data_to_collect, observation_mode, use_her=False, verbose=0):
+    def __init__(self, save_path: str, saving_func, number_data_to_collect, observation_mode, use_her=False, seed: int = None, verbose=0):
         super(DataCollectorCallback, self).__init__(verbose)
         self.save_path = save_path
         # We'll store all the data in these lists
@@ -143,6 +147,8 @@ class DataCollectorCallback(BaseCallback):
         self.number_data_to_collect = number_data_to_collect
         self.observation_mode = observation_mode
         self.use_her = use_her
+        self.seed = seed
+        self.rng = np.random.default_rng(seed) if seed is not None else np.random
         self.step_count = 0
         
     def _on_step(self) -> bool:
@@ -190,7 +196,7 @@ class DataCollectorCallback(BaseCallback):
             self.all_description.append(description)
             self.all_sensor_data.append(sensor_data)
         else:
-            j = np.random.randint(0, self.step_count + 1)
+            j = int(self.rng.integers(0, self.step_count + 1)) if hasattr(self.rng, "integers") else int(self.rng.randint(0, self.step_count + 1))
             if j < max_steps:
                 self.all_states[j] = current_obs
                 self.all_description[j] = description
@@ -249,7 +255,7 @@ class DataCollectorCallback(BaseCallback):
                 print(f"[DataCollector] Randomly sampling {num_to_sample} data points.")
 
             # Generate random indices without replacement
-            indices = np.random.choice(total_samples, size=num_to_sample, replace=False)
+            indices = self.rng.choice(total_samples, size=num_to_sample, replace=False)
             
             # Select the random samples
             sampled_states = all_states[indices]
@@ -317,8 +323,25 @@ class CheckpointAndPruneCallback(CheckpointCallback):
         return result
 
 
-@hydra.main(version_base=None, config_path="config", config_name="train_agent_zoo")
+@hydra.main(version_base=None, config_path="config", config_name="train_agent")
 def main(args: DictConfig) -> None:
+    # Model save dir: model_weights/{env_name}/{agent_name}/{timestamp_hash}
+    model_save_dir = create_dump_directory(os.path.join(args.save_model_dir, args.env.name, args.agent_name))
+    print("[INFO] Model save directory: ", model_save_dir)
+
+    # --- SEED SETUP ---
+    seed = args.get("seed", None)
+    if seed is None:
+        seed = int.from_bytes(os.urandom(4), "big") & 0x7FFFFFFF
+        print(f"[INFO] Seed was None. Sampled random seed: {seed}")
+    else:
+        seed = int(seed)
+        print(f"[INFO] Using provided random seed: {seed}")
+
+    args.seed = seed
+    seed_everything(seed)
+    set_random_seed(seed, using_cuda=torch.cuda.is_available())
+
     # --- ENVIRONMENT SETUP ---
     if args.env.name == "PickEnv":
         from env.PickEnv import PickEnv
@@ -357,6 +380,22 @@ def main(args: DictConfig) -> None:
     
     # Setting the mission string
     args.env.mission = mission
+
+    # Seed the environment
+    if seed is not None:
+        try:
+            env.reset(seed=seed)
+        except Exception as e:
+            print(f"[WARNING] Could not set seed on env.reset(): {e}")
+        try:
+            env.action_space.seed(seed)
+        except Exception:
+            pass
+        try:
+            if hasattr(env, "observation_space") and hasattr(env.observation_space, "seed"):
+                env.observation_space.seed(seed)
+        except Exception:
+            pass
      
     # Initialize wandb
     if args.use_wandb:
@@ -365,77 +404,13 @@ def main(args: DictConfig) -> None:
             name=f"{args.agent_name}_{args.env.name}",
             config=OmegaConf.to_container(args, resolve=True)
         )
-
-    model_save_dir = create_dump_directory(f"{args.save_model_dir}/{args.agent_name}")
-    print("[INFO] Model save directory: ", model_save_dir)
     
-    # SAving the training config
+    # Saving the training config
     config_path = os.path.join(model_save_dir, "config.yaml")
     OmegaConf.save(config=args, f=config_path)
 
-    # --- HYPERPARAMS FROM RL_ZOO3 ---
-    import yaml
-    import rl_zoo3
-    from stable_baselines3 import HerReplayBuffer
-    
-    zoo_path = os.path.dirname(rl_zoo3.__file__)
-    algo_lower = args.agent_name.lower()
-    hp_path = os.path.join(zoo_path, 'hyperparams', f'{algo_lower}.yml')
-    
-    zoo_kwargs = {}
-    if os.path.exists(hp_path):
-        with open(hp_path) as f:
-            data = yaml.safe_load(f)
-            # Default to PandaPickAndPlace-v1 if PandaGymInbuilt maps to it
-            env_key = "PandaStack-v1"
-            if env_key in data:
-                zoo_kwargs = data[env_key]
-                print(f"[INFO] Loaded {args.agent_name} hyperparameters for {env_key} from rl_zoo3.")
-            else:
-                print(f"[WARNING] No hyperparameters found for {env_key} in {hp_path}.")
-    else:
-        print(f"[WARNING] rl_zoo3 hyperparams file not found: {hp_path}")
-
-    # Process zoo_kwargs
-    kwargs = {}
-    
-    for k, v in zoo_kwargs.items():
-        if k in ["n_timesteps", "policy"]:
-            continue
-        if isinstance(v, str) and v.startswith("dict("):
-            # Safe eval for dict
-            try:
-                v = eval(v, {"dict": dict})
-            except Exception as e:
-                print(f"[WARNING] Failed to eval {k}: {v}. Error: {e}")
-        elif isinstance(v, str) and v.startswith("["):
-            try:
-                v = eval(v)
-            except:
-                pass
-        
-        if k == "replay_buffer_class" and v == "HerReplayBuffer":
-            kwargs["replay_buffer_class"] = HerReplayBuffer
-            continue
-
-        kwargs[k] = v
-
-    # --- Ensure learning_starts is safe for HER ---
-    if kwargs.get("replay_buffer_class") is HerReplayBuffer:
-        min_starts = int(getattr(args.env, "max_steps", 200)) + 1
-        if kwargs.get("learning_starts", 0) < min_starts:
-            kwargs["learning_starts"] = min_starts
-            print(f"[INFO] Set learning_starts={min_starts} (must be > max_steps for HER)")
-
     # --- TRAINING ---
-    # timesteps = zoo_kwargs.get("n_timesteps", args.env.total_timestep)
-    
-    if getattr(args.env, "use_her", False):
-        policy = "MultiInputPolicy"
-        kwargs["replay_buffer_class"] = HerReplayBuffer
-    elif "policy" in zoo_kwargs:
-        policy = zoo_kwargs["policy"]
-    elif args.env.observation_mode == "feature":
+    if args.env.observation_mode == "feature":
         policy = "MlpPolicy"
     else:
         policy = "CnnPolicy"
@@ -456,47 +431,47 @@ def main(args: DictConfig) -> None:
             model = SAC.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = SAC(policy, env, verbose=0, **kwargs)
+            model = SAC(policy, env, verbose=0, seed=seed)
     elif args.agent_name == "TQC":
         from sb3_contrib import TQC
         if args.fine_tune:
             model = TQC.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded TQC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = TQC(policy, env, verbose=0, **kwargs)
+            model = TQC(policy, env, verbose=0, seed=seed)
     elif args.agent_name == "PPO":
         from stable_baselines3 import PPO
-        if "replay_buffer_class" in kwargs:
-            print("[WARNING] PPO does not support HER. Ignoring HerReplayBuffer and running with standard RolloutBuffer.")
-            kwargs.pop("replay_buffer_class")
         if args.fine_tune:
             model = PPO.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded PPO model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = PPO(policy, env, verbose=0, **kwargs)
+            model = PPO(policy, env, verbose=0, seed=seed)
     elif args.agent_name == "DQN":
         from stable_baselines3 import DQN
         if args.fine_tune:
             model = DQN.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DQN(policy, env, verbose=0, **kwargs)
+            model = DQN(policy, env, verbose=0, seed=seed)
     elif args.agent_name == "DDPG":
         from stable_baselines3 import DDPG
         if args.fine_tune:
             model = DDPG.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DDPG model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = DDPG(policy, env, verbose=0, **kwargs)
+            model = DDPG(policy, env, verbose=0, seed=seed)
     elif args.agent_name == "TD3":
         from stable_baselines3 import TD3
         if args.fine_tune:
             model = TD3.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded TD3 model from {args.fine_tune_checkpoint} for fine tuning")
         else:
-            model = TD3(policy, env, verbose=0, **kwargs)
+            model = TD3(policy, env, verbose=0, seed=seed)
     else:
         raise ValueError("Algorithm not supported. Supported Algorithms are DQN, PPO, SAC, DDPG, TD3, TQC") 
+
+    if seed is not None and hasattr(model, "set_random_seed"):
+        model.set_random_seed(seed)
         
     if args.use_wandb:
         wandb.watch(model.policy, log="all", log_freq=100)
@@ -521,7 +496,7 @@ def main(args: DictConfig) -> None:
     use_her = getattr(args.env, "use_her", False)
     data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
                                                     number_data_to_collect=int(args.number_data_to_collect),  
-                                                    observation_mode=args.env.observation_mode, use_her=use_her, verbose=1)
+                                                    observation_mode=args.env.observation_mode, use_her=use_her, seed=seed, verbose=1)
     call_backs = [data_collector_callback, checkpoint_callback]
     # call_backs = []
     all_callbacks = call_backs + [wandb_callback] if args.use_wandb else call_backs

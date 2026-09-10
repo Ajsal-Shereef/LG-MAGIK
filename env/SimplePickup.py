@@ -228,6 +228,8 @@ class SimplePickup(MiniGridEnv):
             return f"Pick the {rewarding_object_str} and avoid {non_rewarding_object_str} from the room with {location_str}"
 
     def reset(self, *, seed=None, options=None):
+        if seed is not None:
+            random.seed(seed)
         obs, info = super().reset(seed=seed, options=options)
         info["description"] = self.get_description(obs)
         return obs, info

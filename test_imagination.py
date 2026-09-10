@@ -68,6 +68,11 @@ def main(args: DictConfig) -> None:
     print("[INFO] Env:", args.env.name)
     print(f"[INFO] Using device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
     
+    # Environment seed configuration (increments per episode)
+    base_seed = args.get("seed", 0)
+    if base_seed is not None:
+        print(f"[INFO] Environment seeding enabled with base_seed: {base_seed}")
+    
     #Make the agent
     if args.agent_name == "SAC":
         from stable_baselines3 import SAC
@@ -152,7 +157,9 @@ def main(args: DictConfig) -> None:
     for episode in range(args.num_episode):
         frame_array_partial = []
         frame_array_full = []
-        state, info = env.reset()
+        episode_seed = (base_seed + episode) if base_seed is not None else None
+        print(f"----------- Starting Episode {episode} (seed: {episode_seed}) ----------------")
+        state, info = env.reset(seed=episode_seed)
         episode_step = 1
         frame_array_full.append(env.unwrapped.get_frame())
         cumulative_reward = 0

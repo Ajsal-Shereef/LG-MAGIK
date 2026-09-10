@@ -1,6 +1,8 @@
 import os
+import random
 import hydra
 import torch
+import numpy as np
 import torch.nn as nn
 import wandb
 import torch.nn.functional as F
@@ -10,6 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
 from torchvision.utils import make_grid
+from utils import seed_everything
 from architectures.common_utils import get_dataloader, create_dump_directory
 from torch.optim.swa_utils import AveragedModel
 
@@ -47,11 +50,31 @@ def train(args: DictConfig) -> None:
         cfg (DictConfig): The Hydra configuration object.
     """
     cfg = args.models
-    # Creating the directory to save the model weights and configs. Placed at the top to generate different dir name before seeding
-    save_dir = create_dump_directory(os.path.join(args.save_path, cfg.model_name, args.env.name))
+    # Creating the directory to save the model weights and configs: model_weights/{env_name}/{model_name}/{timestamp_hash}
+    save_dir = create_dump_directory(os.path.join(args.save_path, args.env.name, cfg.model_name))
     # --- 1. Initialization and Setup ---
-    if cfg.training.seed is not None:
-        set_seed(cfg.training.seed)
+    seed = getattr(args, "seed", None)
+    if seed is None and hasattr(cfg, "training") and cfg.training is not None:
+        seed = cfg.training.get("seed", None)
+    if seed is None and hasattr(cfg, "seed"):
+        seed = cfg.get("seed", None)
+
+    if seed is None:
+        seed = int.from_bytes(os.urandom(4), "big") & 0x7FFFFFFF
+        print(f"[INFO] Seed was None. Sampled random seed: {seed}")
+    else:
+        seed = int(seed)
+        print(f"[INFO] Using provided random seed: {seed}")
+
+    if hasattr(cfg, "training") and cfg.training is not None:
+        cfg.training.seed = seed
+    if hasattr(cfg, "seed"):
+        cfg.seed = seed
+    if hasattr(args, "seed"):
+        args.seed = seed
+
+    seed_everything(seed)
+    set_seed(seed, device_specific=True)
 
     # Check for the logging flag in the config. Defaults to True if not present.
     log_values_and_images = cfg.training.get("log_values_and_images", True)

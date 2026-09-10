@@ -528,6 +528,8 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         return obs, float(reward), terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):
+        if seed is not None:
+            random.seed(seed)
         obs, info = super().reset(seed=seed, options=options)
         self.obs = obs
         if self.verbose:

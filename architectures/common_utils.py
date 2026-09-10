@@ -609,6 +609,25 @@ def get_dataloader(args: DictConfig) -> DataLoader:
     # -------------------------
     # DATALOADER
     # -------------------------
+    seed = None
+    if hasattr(cfg, "training") and cfg.training is not None:
+        seed = cfg.training.get("seed", None)
+    if seed is None and hasattr(cfg, "seed"):
+        seed = cfg.get("seed", None)
+    if seed is None and hasattr(args, "seed"):
+        seed = args.seed
+
+    generator = None
+    worker_init_fn = None
+    if seed is not None:
+        generator = torch.Generator()
+        generator.manual_seed(int(seed))
+        def seed_worker(worker_id):
+            worker_seed = (torch.initial_seed() + worker_id) % (2**32)
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
+        worker_init_fn = seed_worker
+
     dataloader = DataLoader(
         train_dataset,
         batch_size=cfg.data.batch_size,
@@ -616,6 +635,8 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         num_workers=cfg.data.num_workers,
         pin_memory=True,
         collate_fn=collate_fn,
+        generator=generator,
+        worker_init_fn=worker_init_fn,
     )
 
     return dataloader
@@ -1548,7 +1569,7 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
                                                 return_dict=True,
                                                ).to(model.device)
  
-        generated = model.generate(**inputs, max_new_tokens=4096)
+        generated = model.generate(**inputs, max_new_tokens=4096, do_sample=False)
         raw_output = tokenizer.decode(generated[0][inputs["input_ids"].shape[-1] :])
         reasoning, final = split_gptoss_analysis_final(raw_output)
         if final is None:
@@ -1803,16 +1824,49 @@ def hard_update(local, target):
     target.load_state_dict(local.state_dict())
 
 
-def set_random_seed(seed, env):
-    """
-    Set random seed
-    seed: int
-    env: gym.Env
-    """
-    env.seed(seed)
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+def seed_everything(seed: int) -> None:
+    """Set random seeds across Python, NumPy, PyTorch, CUDA, and cuDNN for reproducible training."""
+    seed = int(seed)
     random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+
+def set_random_seed(seed, env=None):
+    """
+    Set random seed across Python, NumPy, PyTorch, CUDA, and Gym/Gymnasium environment.
+    seed: int
+    env: gym.Env or gymnasium.Env (optional)
+    """
+    seed_everything(seed)
+
+    if env is not None:
+        if hasattr(env, "reset"):
+            try:
+                env.reset(seed=seed)
+            except Exception:
+                pass
+        if hasattr(env, "action_space") and hasattr(env.action_space, "seed"):
+            try:
+                env.action_space.seed(seed)
+            except Exception:
+                pass
+        if hasattr(env, "observation_space") and hasattr(env.observation_space, "seed"):
+            try:
+                env.observation_space.seed(seed)
+            except Exception:
+                pass
+        if hasattr(env, "seed"):
+            try:
+                env.seed(seed)
+            except Exception:
+                pass
 
 
 def make_one_hot(labels, c):
