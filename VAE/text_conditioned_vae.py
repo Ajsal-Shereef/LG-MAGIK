@@ -199,6 +199,8 @@ class TextConditionedVAE(nn.Module):
             perceptual_loss = torch.tensor(0.0, device=original_x.device)
         
         # --- Compute pooled text representation (used by caption discriminator) ---
+        # Note: text_feats is detached so it acts as a fixed ground-truth target for the
+        # discriminator, preventing adversarial/GRL gradients from leaking into the text adapter.
         if attention_mask is not None:
             mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
             sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)

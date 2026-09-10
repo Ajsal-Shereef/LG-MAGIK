@@ -89,6 +89,9 @@ def train(args: DictConfig) -> None:
         project_config=accelerator_project_config,
     )
     set_seed(seed, device_specific=True)
+    torch.backends.cudnn.benchmark = True
+    if torch.cuda.is_available():
+        torch.set_float32_matmul_precision('high')
     
     # Conditionally initialize trackers
     if accelerator.is_main_process and log_values_and_images:
@@ -174,21 +177,18 @@ def train(args: DictConfig) -> None:
                 if global_step % critic_updates == 0:
                     vae.optimize_generator(losses, accelerator, forward_output=output, **loss_kwargs)
                 
-                # Reduce all loss components across processes and convert to scalar
-                reduced_losses = {
-                    key: accelerator.reduce(value.detach(), reduction="mean").item()
-                    for key, value in losses.items()
-                }
-
-                # Update the running totals for the epoch
-                for key, value in reduced_losses.items():
-                    epoch_losses[key] += value
-
                 # Step the scheduler (Moved to per-batch for OneCycleLR)
                 vae.step_schedulers()
 
                 if accelerator.is_main_process and log_values_and_images:
-                    # Create the log payload, including dynamic losses and static values
+                    # Reduce all loss components across processes only when logging to WandB
+                    reduced_losses = {
+                        key: accelerator.reduce(value.detach(), reduction="mean").item()
+                        for key, value in losses.items()
+                    }
+                    for key, value in reduced_losses.items():
+                        epoch_losses[key] += value
+
                     log_payload = {
                         **reduced_losses,
                         **vae.get_lr(),
@@ -197,6 +197,9 @@ def train(args: DictConfig) -> None:
                         "kl_weight": current_kl_weight,
                     }
                     accelerator.log(log_payload, step=global_step)
+                else:
+                    for key, value in losses.items():
+                        epoch_losses[key] += value.detach()
 
                     # Log images at regular intervals based on config
                     if global_step > 0 and global_step % cfg.training.log_media_interval == 0:
@@ -241,7 +244,10 @@ def train(args: DictConfig) -> None:
             vae.save(f"{save_dir}/", save_name=f"{cfg.project_name}")       
 
         # Print epoch summary
-        avg_epoch_losses = {key: value / len(dataloader) for key, value in epoch_losses.items()}
+        avg_epoch_losses = {
+            key: (value.item() if torch.is_tensor(value) else value) / len(dataloader)
+            for key, value in epoch_losses.items()
+        }
         # Create a dynamic string for printing the epoch summary
         loss_summary_str = " | ".join([f"{key}: {value:.4f}" for key, value in avg_epoch_losses.items()])
         accelerator.print(f"Epoch {epoch+1}/{cfg.training.num_epochs} | {loss_summary_str}")

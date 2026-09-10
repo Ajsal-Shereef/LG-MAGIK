@@ -82,7 +82,7 @@ optimizer:
     final_div_factor: 10000.0
     anneal_strategy: cos
 accelerator:
-  mixed_precision: 'no'
+  mixed_precision: 'bf16'
   gradient_accumulation_steps: 1
   log_with: wandb
   project_dir: ${models.training.logs}

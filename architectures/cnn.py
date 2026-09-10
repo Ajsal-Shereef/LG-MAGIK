@@ -297,17 +297,9 @@ class CrossAttention(nn.Module):
         k = self.key_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
         v = self.value_proj(text_feat).view(B, -1, H, d).transpose(1, 2)  # [B,H,T,d]
 
-        # Attention scores
-        attn = (q @ k.transpose(-2, -1)) / (d ** 0.5)  # [B,H,N,T]
-
-        if attention_mask is not None:
-            # expand mask: [B,T] -> [B,1,1,T]
-            mask = attention_mask[:, None, None, :].to(attn.dtype)
-            attn = attn.masked_fill(mask == 0, float('-inf'))
-
-        attn = attn.softmax(dim=-1)
-
-        out = attn @ v  # [B,H,N,d]
+        # Use PyTorch's native FlashAttention / Memory-Efficient SDPA kernel
+        mask = attention_mask[:, None, None, :].bool() if attention_mask is not None else None
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)  # [B,H,N,d]
         out = out.transpose(1, 2).contiguous().view(B, N, C)
         return self.out_proj(out)
 
@@ -633,11 +625,12 @@ class CNNTextConditionedDecoder(nn.Module):
         
     def forward(self, z, text_input, attention_mask=None, return_text_feats=False):
         # text_input is token IDs, attention_mask is the padding mask
-        outputs = self.text_encoder(text_input, attention_mask=attention_mask, return_dict=True)
-        if hasattr(outputs, 'last_hidden_state'):
-            self.text_feats = outputs.last_hidden_state
-        else:
-            self.text_feats = outputs[0]  # Tuple fallback
+        with torch.no_grad():
+            outputs = self.text_encoder(text_input, attention_mask=attention_mask, return_dict=True)
+            if hasattr(outputs, 'last_hidden_state'):
+                self.text_feats = outputs.last_hidden_state
+            else:
+                self.text_feats = outputs[0]  # Tuple fallback
             
         self.text_feats = self.text_adapter(self.text_feats)
 

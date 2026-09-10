@@ -465,6 +465,7 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         shuffle=True,
         num_workers=cfg.data.num_workers,
         pin_memory=True,
+        persistent_workers=True if cfg.data.num_workers > 0 else False,
         collate_fn=collate_fn,
         generator=generator,
         worker_init_fn=worker_init_fn,
@@ -581,7 +582,8 @@ class VGGLoss(nn.Module):
 
         # Extract features from the intermediate VGG layer
         pred_features = self.vgg_feature_extractor(y_pred_norm)
-        true_features = self.vgg_feature_extractor(y_true_norm)
+        with torch.no_grad():
+            true_features = self.vgg_feature_extractor(y_true_norm)
 
         # Calculate perceptual loss as the mean squared error between the feature maps
         perceptual_loss = F.mse_loss(pred_features, true_features)

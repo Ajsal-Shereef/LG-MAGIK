@@ -356,8 +356,8 @@ def main(args: DictConfig) -> None:
     elif args.env.name ==  "SimplePickup":
         from env.SimplePickup import SimplePickup
         env = SimplePickup(args.env)
-        from minigrid.wrappers import RGBImgObsWrapper
-        env = RGBImgObsWrapper(env, tile_size=args.env.tile_size)
+        from minigrid.wrappers import RGBImgPartialObsWrapper
+        env = RGBImgPartialObsWrapper(env, tile_size=args.env.tile_size)
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         mission = env.unwrapped.mission
