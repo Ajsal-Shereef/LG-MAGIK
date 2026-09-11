@@ -2,8 +2,9 @@
 defaults:
   - _self_
 
-project_name: TextConditionedVAE
+project_name: LG_MAGIK_VAE_TRAINING
 model_name : "VAE"
+use_text_discriminator: true
 seed: null
 data:
   train_dir: data/${env.name}
@@ -15,6 +16,7 @@ data:
   text_encoder_path: "openai/clip-vit-base-patch32" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
+  use_text_discriminator: ${models.use_text_discriminator}
   n_downsample: 4
   encoder_n_res: 3
   input_dim: 3

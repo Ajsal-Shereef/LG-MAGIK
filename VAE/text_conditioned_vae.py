@@ -28,6 +28,7 @@ class TextConditionedVAE(nn.Module):
         # ---- Base configs ----
         self.observation_model = kwargs["observation_mode"]
         self.max_grad_norm = kwargs.get("max_grad_norm", None)
+        self.use_text_discriminator = kwargs.get("use_text_discriminator", True)
 
         # ---- Encoder/Decoder ----
         if self.observation_model == "image":
@@ -58,9 +59,12 @@ class TextConditionedVAE(nn.Module):
             else:
                 self.max_sequence_length = self.decoder.tokenizer.model_max_length
             
-            self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
-                                             self.decoder.text_dim,
-                                             discriminator_fc_hidden)
+            if self.use_text_discriminator:
+                self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
+                                                 self.decoder.text_dim,
+                                                 discriminator_fc_hidden)
+            else:
+                self.caption_discriminator = None
                 
             self.train_transform = get_train_transform_cnn()
             if self.is_perceptual_loss:
@@ -84,9 +88,12 @@ class TextConditionedVAE(nn.Module):
             self.encoder = MLPEncoder(input_dim, hidden_dims, encoder_out_dim, num_resblocks, norm, activ, dropout)
             self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)
             self.decoder = MLPTextConditionedDecoder(latent_dim, input_dim, decoder_hidden_dims, clip_model)
-            self.caption_discriminator = MLP(latent_dim,
-                                             self.decoder.text_dim,
-                                             discriminator_fc_hidden)
+            if self.use_text_discriminator:
+                self.caption_discriminator = MLP(latent_dim,
+                                                 self.decoder.text_dim,
+                                                 discriminator_fc_hidden)
+            else:
+                self.caption_discriminator = None
             self.train_transform = get_train_transform_mlp()
             
     def set_optimizers(self, parms):
@@ -101,20 +108,24 @@ class TextConditionedVAE(nn.Module):
                                )
         
         # Caption Discriminator (separate optimizer for proper adversarial training)
-        caption_disc_lr = parms.get("lr_caption_disc", parms.lr)
-        self.caption_disc_optim = optim.AdamW(self.caption_discriminator.parameters(),
-                                lr=caption_disc_lr,
-                                betas=tuple(parms.betas),
-                                weight_decay=parms.weight_decay,
-                                eps=parms.eps,
-                               )
+        if self.use_text_discriminator and self.caption_discriminator is not None:
+            caption_disc_lr = parms.get("lr_caption_disc", parms.lr)
+            self.caption_disc_optim = optim.AdamW(self.caption_discriminator.parameters(),
+                                    lr=caption_disc_lr,
+                                    betas=tuple(parms.betas),
+                                    weight_decay=parms.weight_decay,
+                                    eps=parms.eps,
+                                   )
+            self.caption_disc_scheduler = self._get_scheduler(self.caption_disc_optim, parms.scheduler)
+        else:
+            self.caption_disc_optim = None
+            self.caption_disc_scheduler = None
         
         self.disc_optim = None
         self.disc_scheduler = None
 
         # Initialize schedulers
         self.scheduler = self._get_scheduler(self.vae_optim, parms.scheduler)
-        self.caption_disc_scheduler = self._get_scheduler(self.caption_disc_optim, parms.scheduler)
 
     def _get_scheduler(self, optimizer, scheduler_params):
         if scheduler_params.type == "cosine":
@@ -150,7 +161,8 @@ class TextConditionedVAE(nn.Module):
 
     def get_lr(self):
         lrs = {"lr": self.vae_optim.param_groups[0]["lr"]}
-        lrs["lr_caption_disc"] = self.caption_disc_optim.param_groups[0]["lr"]
+        if self.caption_disc_optim is not None:
+            lrs["lr_caption_disc"] = self.caption_disc_optim.param_groups[0]["lr"]
         return lrs
     
     def forward(self, x):
@@ -198,31 +210,36 @@ class TextConditionedVAE(nn.Module):
         else:
             perceptual_loss = torch.tensor(0.0, device=original_x.device)
         
-        # --- Compute pooled text representation (used by caption discriminator) ---
-        # Note: text_feats is detached so it acts as a fixed ground-truth target for the
-        # discriminator, preventing adversarial/GRL gradients from leaking into the text adapter.
-        if attention_mask is not None:
-            mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
-            sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
-            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
-            pooled_text = sum_embeddings / sum_mask  # [B, D]
-        else:
-            pooled_text = text_feats.detach().mean(dim=1)
-
         # === Adversarial disentanglement loss ===
-        z_grl = grad_reverse(posterior.latent, kwargs["adv_lambda"])
-        pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
+        if self.use_text_discriminator and self.caption_discriminator is not None:
+            # --- Compute pooled text representation (used by caption discriminator) ---
+            # Note: text_feats is detached so it acts as a fixed ground-truth target for the
+            # discriminator, preventing adversarial/GRL gradients from leaking into the text adapter.
+            if attention_mask is not None:
+                mask_expanded = attention_mask.unsqueeze(-1).to(text_feats.device).float()
+                sum_embeddings = torch.sum(text_feats.detach() * mask_expanded, dim=1)
+                sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
+                pooled_text = sum_embeddings / sum_mask  # [B, D]
+            else:
+                pooled_text = text_feats.detach().mean(dim=1)
 
-        # Normalize
-        pred_n = F.normalize(pred, dim=-1)
-        tgt_n = F.normalize(pooled_text, dim=-1)
+            z_grl = grad_reverse(posterior.latent, kwargs.get("adv_lambda", 1.0))
+            pred = self.caption_discriminator(z_grl.view(z_grl.shape[0], -1))
 
-        # Contrastive Loss on POOLED embeddings
-        logits = (pred_n @ tgt_n.T) / kwargs.get("temperature", 0.07)
-        labels = torch.arange(logits.shape[0], device=logits.device)
-        disc_loss = F.cross_entropy(logits, labels)
+            # Normalize
+            pred_n = F.normalize(pred, dim=-1)
+            tgt_n = F.normalize(pooled_text, dim=-1)
 
-        vae_loss = recon_loss + perceptual_loss + kwargs["kl_weight"] * kl_loss + kwargs["adv_weight"] * disc_loss
+            # Contrastive Loss on POOLED embeddings
+            logits = (pred_n @ tgt_n.T) / kwargs.get("temperature", 0.07)
+            labels = torch.arange(logits.shape[0], device=logits.device)
+            disc_loss = F.cross_entropy(logits, labels)
+            adv_loss = kwargs.get("adv_weight", 1.0) * disc_loss
+        else:
+            disc_loss = torch.tensor(0.0, device=original_x.device)
+            adv_loss = 0.0
+
+        vae_loss = recon_loss + perceptual_loss + kwargs.get("kl_weight", 1.0) * kl_loss + adv_loss
         
         return {
             "vae_loss": vae_loss,
@@ -235,7 +252,8 @@ class TextConditionedVAE(nn.Module):
         
     def optimize_generator(self, losses, accelerator, forward_output=None, **kwargs):
         self.vae_optim.zero_grad()
-        self.caption_disc_optim.zero_grad()
+        if self.caption_disc_optim is not None:
+            self.caption_disc_optim.zero_grad()
             
         total_loss = losses["vae_loss"]
 
@@ -247,7 +265,8 @@ class TextConditionedVAE(nn.Module):
             accelerator.clip_grad_norm_(params_to_clip, self.max_grad_norm)
             
         self.vae_optim.step()
-        self.caption_disc_optim.step()
+        if self.caption_disc_optim is not None:
+            self.caption_disc_optim.step()
 
     def optimize_discriminator(self, losses, accelerator):
         pass
@@ -482,10 +501,11 @@ class TextConditionedVAE(nn.Module):
         self.encoder.load_state_dict(params["encoder"], strict=False)
         self.bottleneck.load_state_dict(params["bottleneck"], strict=False)
         self.decoder.load_state_dict(params["decoder"], strict=False)
-        try:
-            self.caption_discriminator.load_state_dict(params["caption_discriminator"])
-        except RuntimeError as e:
-             print(f"[NOTE] Skipping caption_discriminator loading due to mismatch (acceptable for inference): {e}")
+        if self.caption_discriminator is not None and "caption_discriminator" in params:
+            try:
+                self.caption_discriminator.load_state_dict(params["caption_discriminator"])
+            except RuntimeError as e:
+                print(f"[NOTE] Skipping caption_discriminator loading due to mismatch (acceptable for inference): {e}")
         print("[INFO] loaded the Text Conditioned VAE model", path)
 
     def save(self, dump_dir, save_name):
@@ -494,8 +514,9 @@ class TextConditionedVAE(nn.Module):
                 "encoder": self.encoder.state_dict(),
                 "bottleneck" : self.bottleneck.state_dict(),
                 "decoder" : self.decoder.state_dict(),
-                "caption_discriminator" : self.caption_discriminator.state_dict()
                 }
+        if self.caption_discriminator is not None:
+            params["caption_discriminator"] = self.caption_discriminator.state_dict()
         save_dir = dump_dir
         os.makedirs(save_dir, exist_ok=True)
         checkpoint_path = save_dir + save_name + '.tar'

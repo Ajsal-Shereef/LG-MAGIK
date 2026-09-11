@@ -44,6 +44,11 @@ def train(args: DictConfig) -> None:
     """
     cfg = args.models
     # --- 1. Initialization and Setup ---
+    # Check if text discriminator ablation is enabled
+    use_text_discriminator = cfg.model.get("use_text_discriminator", args.get("use_text_discriminator", True))
+    if not use_text_discriminator:
+        cfg.model_name = f"{cfg.model_name}_no_text_disc"
+
     seed = getattr(args, "seed", None)
     if seed is None and hasattr(cfg, "training") and cfg.training is not None:
         seed = cfg.training.get("seed", None)
@@ -92,11 +97,18 @@ def train(args: DictConfig) -> None:
     torch.backends.cudnn.benchmark = True
     if torch.cuda.is_available():
         torch.set_float32_matmul_precision('high')
+
+    wandb_project = cfg.training.get("experiment_name", cfg.get("project_name", "LG_MAGIK_VAE_TRAINING"))
+    run_name = f"{cfg.model_name}_{args.env.name}_{seed_name}"
+
+    if not use_text_discriminator:
+        accelerator.print(f"[ABLATION] Training WITHOUT text discriminator! Model: {cfg.model_name}, Project: {wandb_project}, Run name: {run_name}")
     
     # Conditionally initialize trackers
     if accelerator.is_main_process and log_values_and_images:
-        tracker_config = {log_with : {"name":f"{cfg.model_name}_{args.env.name}"}}
-        accelerator.init_trackers(cfg.training.experiment_name, config=OmegaConf.to_container(args, resolve=True), init_kwargs=tracker_config)
+        tracker_config = {log_with: {"name": run_name}}
+        accelerator.print(f"[TRACKER] Initializing tracker -> Project: '{wandb_project}', Run name: '{run_name}'")
+        accelerator.init_trackers(wandb_project, config=OmegaConf.to_container(args, resolve=True), init_kwargs=tracker_config)
 
     # --- 2. Load Data ---
     accelerator.print("Loading dataset...")
@@ -127,7 +139,8 @@ def train(args: DictConfig) -> None:
     # --- Prepare Optimizers/Schedulers with Accelerator ---
     _vae = accelerator.unwrap_model(vae)
     _vae.vae_optim = accelerator.prepare(_vae.vae_optim)
-    _vae.caption_disc_optim = accelerator.prepare(_vae.caption_disc_optim)
+    if _vae.caption_disc_optim is not None:
+        _vae.caption_disc_optim = accelerator.prepare(_vae.caption_disc_optim)
     if _vae.scheduler is not None:
         _vae.scheduler = accelerator.prepare(_vae.scheduler)
     if _vae.caption_disc_scheduler is not None:
@@ -197,9 +210,6 @@ def train(args: DictConfig) -> None:
                         "kl_weight": current_kl_weight,
                     }
                     accelerator.log(log_payload, step=global_step)
-                else:
-                    for key, value in losses.items():
-                        epoch_losses[key] += value.detach()
 
                     # Log images at regular intervals based on config
                     if global_step > 0 and global_step % cfg.training.log_media_interval == 0:
@@ -239,6 +249,10 @@ def train(args: DictConfig) -> None:
 
                                 if args.models.model.observation_mode == "image":
                                     tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
+                else:
+                    for key, value in losses.items():
+                        epoch_losses[key] += value.detach()
+
                 global_step += 1
         if epoch % cfg.training.save_weight_freequency == 0:
             vae.save(f"{save_dir}/", save_name=f"{cfg.project_name}")       

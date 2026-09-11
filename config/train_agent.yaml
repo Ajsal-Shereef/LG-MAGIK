@@ -1,7 +1,7 @@
 defaults:
-  - env : MiniGridRelational
+  - env : MiniWorld
 seed: 42
-agent_name : DQN
+agent_name : PPO
 save_every : 500000
 use_wandb : false
 log_every : 100

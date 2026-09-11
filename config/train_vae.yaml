@@ -1,4 +1,4 @@
 defaults:
-  - env : MiniGridRelational
-  - models : text_conditioned_vae_cnn_MiniGridRelational
+  - env : MiniWorld
+  - models : text_conditioned_vae_cnn_${env}
 save_path : model_weights

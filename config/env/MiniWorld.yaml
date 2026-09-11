@@ -1,7 +1,7 @@
 name : MiniWorld 
-objects : [["duckie", "medkit"]]
-reward_objects : [["duckie"]]
-layout : ["wood/brick_wall"] #options:wood/brick_wall, grass/concrete
+objects : [["box", "ball"]]
+reward_objects : [["box"]]
+layout : ["grass/concrete"] #options:wood/brick_wall, grass/concrete
 max_steps : 100
 render_mode : "none"
 size : 10

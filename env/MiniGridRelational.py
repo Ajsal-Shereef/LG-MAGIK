@@ -8,13 +8,17 @@ from PIL import Image
 from omegaconf import DictConfig
 
 from minigrid.core.constants import COLORS
-from minigrid.core.grid import Grid
+from minigrid.core.grid import Grid, TILE_PIXELS
 from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import Ball, WorldObj
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.utils.rendering import (
     fill_coords,
     point_in_rect,
+    point_in_triangle,
+    rotate_fn,
+    highlight_img,
+    downsample,
 )
 from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper, ImgObsWrapper
 
@@ -53,12 +57,126 @@ class Floor(WorldObj):
         super().__init__("floor", color)
 
     def can_overlap(self):
-        return self.color != "green"
+        return True
 
     def render(self, img):
         # Give the floor a pale color
         color = COLORS[self.color] / 2
         fill_coords(img, point_in_rect(0.031, 1, 0.031, 1), color)
+
+class RelationalGrid(Grid):
+    """
+    Grid subclass that supports layered rendering: if an object (e.g. Ball)
+    sits on a floor tile (e.g. green Floor target), the floor tile background
+    is rendered first underneath the object.
+    """
+    def __init__(self, width: int, height: int):
+        super().__init__(width, height)
+        self.underlying_floors = {}
+
+    def render(
+        self,
+        tile_size: int,
+        agent_pos: tuple[int, int],
+        agent_dir: int | None = None,
+        highlight_mask: np.ndarray | None = None,
+    ) -> np.ndarray:
+        if highlight_mask is None:
+            highlight_mask = np.zeros(shape=(self.width, self.height), dtype=bool)
+
+        width_px = self.width * tile_size
+        height_px = self.height * tile_size
+
+        img = np.zeros(shape=(height_px, width_px, 3), dtype=np.uint8)
+
+        for j in range(0, self.height):
+            for i in range(0, self.width):
+                cell = self.get(i, j)
+                agent_here = np.array_equal(agent_pos, (i, j))
+                assert highlight_mask is not None
+
+                underlying = self.underlying_floors.get((i, j), None)
+
+                tile_img = self.render_tile_layered(
+                    cell=cell,
+                    underlying=underlying,
+                    agent_dir=agent_dir if agent_here else None,
+                    highlight=highlight_mask[i, j],
+                    tile_size=tile_size,
+                )
+
+                ymin = j * tile_size
+                ymax = (j + 1) * tile_size
+                xmin = i * tile_size
+                xmax = (i + 1) * tile_size
+                img[ymin:ymax, xmin:xmax, :] = tile_img
+
+        return img
+
+    @classmethod
+    def render_tile_layered(
+        cls,
+        cell: WorldObj | None,
+        underlying: WorldObj | None = None,
+        agent_dir: int | None = None,
+        highlight: bool = False,
+        tile_size: int = TILE_PIXELS,
+        subdivs: int = 3,
+    ) -> np.ndarray:
+        # If cell is already the underlying floor or there is no underlying floor:
+        if cell is underlying or underlying is None:
+            return Grid.render_tile(
+                cell,
+                agent_dir=agent_dir,
+                highlight=highlight,
+                tile_size=tile_size,
+                subdivs=subdivs,
+            )
+
+        key = (
+            underlying.encode() if underlying else None,
+            cell.encode() if cell else None,
+            agent_dir,
+            highlight,
+            tile_size,
+        )
+        if not hasattr(cls, "_layered_tile_cache"):
+            cls._layered_tile_cache = {}
+        if key in cls._layered_tile_cache:
+            return cls._layered_tile_cache[key]
+
+        img = np.zeros(
+            shape=(tile_size * subdivs, tile_size * subdivs, 3), dtype=np.uint8
+        )
+
+        # Draw grid lines (top and left edges)
+        fill_coords(img, point_in_rect(0, 0.031, 0, 1), (100, 100, 100))
+        fill_coords(img, point_in_rect(0, 1, 0, 0.031), (100, 100, 100))
+
+        # Render underlying floor first
+        underlying.render(img)
+
+        # Render cell object (e.g. Ball) on top
+        if cell is not None:
+            cell.render(img)
+
+        # Overlay agent if present
+        if agent_dir is not None:
+            tri_fn = point_in_triangle(
+                (0.12, 0.19),
+                (0.87, 0.50),
+                (0.12, 0.81),
+            )
+            tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
+            fill_coords(img, tri_fn, (255, 0, 0))
+
+        if highlight:
+            highlight_img(img)
+
+        img = downsample(img, subdivs)
+        cls._layered_tile_cache[key] = img
+        return img
+
 
 class RelationalPickPlaceEnv(MiniGridEnv):
     """
@@ -157,7 +275,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         return description
 
     def _gen_grid(self, width, height):
-        self.grid = Grid(width, height)
+        self.grid = RelationalGrid(width, height)
         self.grid.wall_rect(0, 0, width, height)
 
         if self.task_mode == "source":
@@ -168,6 +286,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             # Target Area (Floor tile allows the agent to intrinsically step over it, but breaks generic drops without override)
             self.target_area = Floor(color="green")
             self.target_pos = self.place_obj(self.target_area)
+            self.grid.underlying_floors[tuple(self.target_pos)] = self.target_area
             self.landmark = None
             self.landmark_pos = None
         elif self.task_mode == "target5":
@@ -182,6 +301,8 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             self.target_a_pos = self.place_obj(self.target_a)
             self.target_b = Floor(color="grey")
             self.target_b_pos = self.place_obj(self.target_b)
+            self.grid.underlying_floors[tuple(self.target_a_pos)] = self.target_a
+            self.grid.underlying_floors[tuple(self.target_b_pos)] = self.target_b
 
             # Per-episode bookkeeping for the two subgoals.
             self._target5_done = {"a": False, "b": False}
@@ -291,10 +412,12 @@ class RelationalPickPlaceEnv(MiniGridEnv):
                 parts.append(f"The {self.target_b.color} target is at ({self.target_b_pos[0]}, {self.target_b_pos[1]}).")
             return " ".join(parts)
 
-        if self.carrying == self.tool_block:
+        if self.carrying is self.tool_block or self.carrying == self.tool_block:
             parts.append(f"Agent is carrying the {self.tool_block.color} {self.tool_block.type}.")
         elif getattr(self.tool_block, 'cur_pos', None) is not None:
-            parts.append(f"The {self.tool_block.color} {self.tool_block.type} is at ({self.tool_block.cur_pos[0]}, {self.tool_block.cur_pos[1]}).")
+            pos = self.tool_block.cur_pos
+            if pos[0] >= 0 and pos[1] >= 0:
+                parts.append(f"The {self.tool_block.color} {self.tool_block.type} is at ({pos[0]}, {pos[1]}).")
 
         if self.task_mode == "source":
             if self.target_pos is not None:
@@ -318,6 +441,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             fwd_cell = self.grid.get(*fwd_pos)
             if fwd_cell is not None and isinstance(fwd_cell, Floor):
                 self.grid.set(*fwd_pos, self.carrying)
+                self.carrying.cur_pos = fwd_pos
                 self.carrying = None
 
         self.previous_state = self.obs
@@ -328,6 +452,11 @@ class RelationalPickPlaceEnv(MiniGridEnv):
 
         # add intermediate reward for picking up the correct tool ball
         if action == self.actions.pickup and carrying_before is None and self.carrying is not None:
+            # If an object was picked up from a cell that has an underlying floor, restore the floor in the grid:
+            fwd_pos = tuple(self.front_pos)
+            if hasattr(self.grid, "underlying_floors") and fwd_pos in self.grid.underlying_floors:
+                self.grid.set(fwd_pos[0], fwd_pos[1], self.grid.underlying_floors[fwd_pos])
+
             if self.task_mode == "target5":
                 # Either ball is fair game in either order — but only
                 # if its pair hasn't already been completed.
@@ -504,6 +633,8 @@ class RelationalPickPlaceEnv(MiniGridEnv):
                     # tempted to re-pick the placed ball.
                     self.grid.set(want_pos[0], want_pos[1], None)
                     carrying_before.cur_pos = None
+                    if hasattr(self.grid, "underlying_floors"):
+                        self.grid.underlying_floors.pop(tuple(want_pos), None)
                     if self.verbose:
                         print(
                             f"Success! Dropped the {carrying_before.color} ball "
