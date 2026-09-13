@@ -5,7 +5,7 @@ defaults:
 project_name: LG_MAGIK_VAE_TRAINING
 model_name : "VAE"
 use_text_discriminator: true
-seed: 42
+seed: null
 data:
   train_dir: data/${env.name}
   cache_dir: null
@@ -60,7 +60,6 @@ training:
   generate_interval: 8000
   num_images_to_generate : 10
   save_weight_freequency : 50
-  critic_updates: 1        # Number of discriminator updates per generator update
   recon_mix_weight: 0.5
   is_model_fine_tune : false
 optimizer:

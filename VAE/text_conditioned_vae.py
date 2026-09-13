@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from PIL import Image
 from typing import Dict
+from collections.abc import Sequence
 from itertools import chain
 import torch.optim as optim
 from architectures.mlp import MLP
@@ -439,9 +440,15 @@ class TextConditionedVAE(nn.Module):
         if not prompts:
             raise ValueError("The generate function requires at least one text prompt.")
 
-        # Handle if prompts are passed as a list/tuple inside the first argument
-        prompts = prompts[0] if isinstance(prompts[0], (list, tuple)) else prompts
+        # Handle if prompts are passed as a list/tuple/Sequence inside the first argument
+        if len(prompts) == 1 and isinstance(prompts[0], (list, tuple, Sequence)) and not isinstance(prompts[0], str):
+            prompts = list(prompts[0])
+        else:
+            prompts = list(prompts)
         num_prompts = len(prompts)
+
+        # Ensure num_samples does not exceed batch size
+        num_samples = min(num_samples, output["x"].shape[0])
 
         # --- 2. GATHER BASE IMAGES AND LATENTS ---
         # Get the latents, original images, and reconstructions from the first `num_samples` of the batch.
@@ -454,7 +461,14 @@ class TextConditionedVAE(nn.Module):
 
         # --- 3. GENERATE PROMPT-DRIVEN IMAGES ---
         z_expanded = latents.repeat_interleave(num_prompts, dim=0)
-        
+
+        # Ensure z_expanded matches decoder parameter dtype when not under autocast
+        dev_type = device.type if isinstance(device, torch.device) else ("cuda" if torch.cuda.is_available() else "cpu")
+        is_autocast_on = torch.is_autocast_enabled(dev_type)
+        decoder_param = next(self.decoder.parameters(), None)
+        if decoder_param is not None and not is_autocast_on:
+            z_expanded = z_expanded.to(dtype=decoder_param.dtype)
+
         if self.max_sequence_length is not None:
             length = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
         else:

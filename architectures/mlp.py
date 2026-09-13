@@ -434,20 +434,64 @@ class MLPTextConditionedDecoder(nn.Module):
             
         self.final = FinalTextConditionedOutput(decoder_hidden_dims[-1], output_dim, self.text_dim)
         
-    def forward(self,z,text_tockens, attention_mask):
-        self.text_feats=self.text_encoder(text_tockens, return_dict=False)[0] # (B,T,D)
-        self.text_feats = self.text_adapter(self.text_feats)
+    def _encode_text(self, text_input, attention_mask=None):
+        if not hasattr(self, "_clip_cache"):
+            self._clip_cache = {}
+            self._max_cache_size = 10000
+
+        unique_tokens, inverse_indices = torch.unique(text_input, dim=0, return_inverse=True)
+        num_unique = unique_tokens.shape[0]
+
+        unique_embeddings = [None] * num_unique
+        missing_indices = []
+        missing_tokens = []
+        missing_masks = []
+
+        for i in range(num_unique):
+            key = tuple(unique_tokens[i].tolist())
+            if key in self._clip_cache:
+                cached_feat = self._clip_cache[key]
+                if cached_feat.device != text_input.device:
+                    cached_feat = cached_feat.to(text_input.device)
+                unique_embeddings[i] = cached_feat
+            else:
+                missing_indices.append(i)
+                missing_tokens.append(unique_tokens[i])
+                if attention_mask is not None:
+                    sample_idx = (inverse_indices == i).nonzero(as_tuple=True)[0][0]
+                    missing_masks.append(attention_mask[sample_idx])
+
+        if missing_tokens:
+            missing_tokens_tensor = torch.stack(missing_tokens)
+            missing_masks_tensor = torch.stack(missing_masks) if attention_mask is not None else None
+            with torch.no_grad():
+                outputs = self.text_encoder(missing_tokens_tensor, attention_mask=missing_masks_tensor, return_dict=True)
+                feats = outputs.last_hidden_state if hasattr(outputs, 'last_hidden_state') else outputs[0]
+
+            for j, orig_idx in enumerate(missing_indices):
+                feat = feats[j]
+                unique_embeddings[orig_idx] = feat
+                if len(self._clip_cache) < self._max_cache_size:
+                    key = tuple(missing_tokens[j].tolist())
+                    self._clip_cache[key] = feat.detach()
+
+        unique_embeddings_tensor = torch.stack(unique_embeddings)
+        return unique_embeddings_tensor[inverse_indices]
+
+    def forward(self, z, text_tockens, attention_mask):
+        raw_text_feats = self._encode_text(text_tockens, attention_mask=attention_mask)
+        text_feats = self.text_adapter(raw_text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)
-        # text_global = self.text_feats.mean(dim=1)  # [B, D]
+        # text_global = text_feats.mean(dim=1)  # [B, D]
         # text_proj = self.text_to_latent(text_global)  # [B, F]
         # z = torch.cat([z, text_proj], dim=1)  # concat along channel
 
-        z = self.attention(z, self.text_feats, attention_mask)
+        z = self.attention(z, text_feats, attention_mask)
         x = self.mapping_linear(z)
         for blk,linear in zip(self.attention_film_blocks, self.linear_blocks):
-            x=blk(x,z,self.text_feats, attention_mask)
+            x=blk(x,z,text_feats, attention_mask)
             x=linear(x)
-        return self.final(x, self.text_feats, attention_mask)
+        return self.final(x, text_feats, attention_mask)
 
     def train(self, mode=True):
         """Override to keep frozen text encoder in eval mode."""

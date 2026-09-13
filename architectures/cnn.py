@@ -623,21 +623,60 @@ class CNNTextConditionedDecoder(nn.Module):
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
+    def _encode_text(self, text_input, attention_mask=None):
+        if not hasattr(self, "_clip_cache"):
+            self._clip_cache = {}
+            self._max_cache_size = 10000
+
+        # Find unique token sequences within the batch
+        unique_tokens, inverse_indices = torch.unique(text_input, dim=0, return_inverse=True)
+        num_unique = unique_tokens.shape[0]
+
+        unique_embeddings = [None] * num_unique
+        missing_indices = []
+        missing_tokens = []
+        missing_masks = []
+
+        for i in range(num_unique):
+            key = tuple(unique_tokens[i].tolist())
+            if key in self._clip_cache:
+                cached_feat = self._clip_cache[key]
+                if cached_feat.device != text_input.device:
+                    cached_feat = cached_feat.to(text_input.device)
+                unique_embeddings[i] = cached_feat
+            else:
+                missing_indices.append(i)
+                missing_tokens.append(unique_tokens[i])
+                if attention_mask is not None:
+                    sample_idx = (inverse_indices == i).nonzero(as_tuple=True)[0][0]
+                    missing_masks.append(attention_mask[sample_idx])
+
+        if missing_tokens:
+            missing_tokens_tensor = torch.stack(missing_tokens)
+            missing_masks_tensor = torch.stack(missing_masks) if attention_mask is not None else None
+            with torch.no_grad():
+                outputs = self.text_encoder(missing_tokens_tensor, attention_mask=missing_masks_tensor, return_dict=True)
+                feats = outputs.last_hidden_state if hasattr(outputs, 'last_hidden_state') else outputs[0]
+
+            for j, orig_idx in enumerate(missing_indices):
+                feat = feats[j]
+                unique_embeddings[orig_idx] = feat
+                if len(self._clip_cache) < self._max_cache_size:
+                    key = tuple(missing_tokens[j].tolist())
+                    self._clip_cache[key] = feat.detach()
+
+        unique_embeddings_tensor = torch.stack(unique_embeddings)
+        return unique_embeddings_tensor[inverse_indices]
+
     def forward(self, z, text_input, attention_mask=None, return_text_feats=False):
         # text_input is token IDs, attention_mask is the padding mask
-        with torch.no_grad():
-            outputs = self.text_encoder(text_input, attention_mask=attention_mask, return_dict=True)
-            if hasattr(outputs, 'last_hidden_state'):
-                self.text_feats = outputs.last_hidden_state
-            else:
-                self.text_feats = outputs[0]  # Tuple fallback
-            
-        self.text_feats = self.text_adapter(self.text_feats)
+        raw_text_feats = self._encode_text(text_input, attention_mask=attention_mask)
+        text_feats = self.text_adapter(raw_text_feats)
 
         # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
         B, C, H, W = z.shape
         z = z.view(B, C, H*W).permute(0,2,1)
-        z = self.attention(z, self.text_feats, attention_mask).permute(0,2,1).view(B, C, H, W)
+        z = self.attention(z, text_feats, attention_mask).permute(0,2,1).view(B, C, H, W)
         
         if self.use_coord_conv:
             x_range = torch.linspace(-1, 1, steps=W, device=z.device)
@@ -654,13 +693,13 @@ class CNNTextConditionedDecoder(nn.Module):
                 x = blk(x, z)
             else:
                 # Late blocks: FiLM + text cross-attention
-                x = blk(x, z, self.text_feats, attention_mask)
+                x = blk(x, z, text_feats, attention_mask)
             x = up(x)
             x = conv(x)
         
-        out = self.final(x, self.text_feats, attention_mask)
+        out = self.final(x, text_feats, attention_mask)
         if return_text_feats:
-            return out, self.text_feats
+            return out, text_feats
         return out
 
     def train(self, mode=True):

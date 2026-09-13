@@ -1,5 +1,6 @@
 import os
 import random
+import logging
 import hydra
 import torch
 import numpy as np
@@ -42,6 +43,11 @@ def train(args: DictConfig) -> None:
     Args:
         cfg (DictConfig): The Hydra configuration object.
     """
+    # Suppress HTTP request logs from httpx, httpcore, and urllib3
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     cfg = args.models
     # --- 1. Initialization and Setup ---
     # Check if text discriminator ablation is enabled
@@ -155,10 +161,11 @@ def train(args: DictConfig) -> None:
     global_step = 0
     total_steps = len(dataloader) * cfg.training.num_epochs
     
+    log_interval = cfg.training.get("log_interval", 50)
     for epoch in range(cfg.training.num_epochs):
         vae.train()
-        # Use a defaultdict to dynamically store running totals for any loss component
-        epoch_losses = defaultdict(float)
+        # Dynamically store running totals for any loss component without per-step CPU-GPU sync
+        epoch_losses = {}
         for step, batch in enumerate(dataloader):
             with accelerator.accumulate(vae):
             
@@ -185,77 +192,96 @@ def train(args: DictConfig) -> None:
                 # 1. Update Discriminator (Every Step)
                 vae.optimize_discriminator(losses, accelerator)
                 
-                # 2. Update Generator (Every critic_updates steps)
-                critic_updates = cfg.training.get("critic_updates", 5)
-                if global_step % critic_updates == 0:
-                    vae.optimize_generator(losses, accelerator, forward_output=output, **loss_kwargs)
+                # 2. Update Generator
+                vae.optimize_generator(losses, accelerator, forward_output=output, **loss_kwargs)
                 
                 # Step the scheduler (Moved to per-batch for OneCycleLR)
                 vae.step_schedulers()
 
-                if accelerator.is_main_process and log_values_and_images:
-                    # Reduce all loss components across processes only when logging to WandB
-                    reduced_losses = {
-                        key: accelerator.reduce(value.detach(), reduction="mean").item()
-                        for key, value in losses.items()
-                    }
-                    for key, value in reduced_losses.items():
-                        epoch_losses[key] += value
+                # Accumulate detached loss for epoch summary (kept asynchronously on GPU, zero CPU-GPU sync)
+                for key, value in losses.items():
+                    detached_val = value.detach()
+                    if key not in epoch_losses:
+                        epoch_losses[key] = detached_val
+                    else:
+                        epoch_losses[key] = epoch_losses[key] + detached_val
 
-                    log_payload = {
-                        **reduced_losses,
-                        **vae.get_lr(),
-                        "epoch": epoch,
-                        "step": global_step,
-                        "kl_weight": current_kl_weight,
-                    }
-                    accelerator.log(log_payload, step=global_step)
+                if accelerator.is_main_process and log_values_and_images:
+                    is_log_step = (global_step % log_interval == 0)
+
+                    if is_log_step:
+                        # Reduce all loss components across processes only at logging intervals
+                        reduced_losses = {
+                            key: accelerator.reduce(value.detach(), reduction="mean").item()
+                            for key, value in losses.items()
+                        }
+
+                        log_payload = {
+                            **reduced_losses,
+                            **vae.get_lr(),
+                            "epoch": epoch,
+                            "step": global_step,
+                            "kl_weight": current_kl_weight,
+                        }
+                        accelerator.log(log_payload, step=global_step)
 
                     # Log images at regular intervals based on config
-                    if global_step > 0 and global_step % cfg.training.log_media_interval == 0:
-                        num_images_to_log = min(batch["pixel_values"].shape[0], 8)
-                        
-                        img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
-                        recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                    should_log_media = (global_step > 0 and global_step % cfg.training.log_media_interval == 0)
+                    should_generate = (global_step > 0 and global_step % cfg.training.generate_interval == 0)
 
-                        # Create a single grid for comparison
-                        if not cfg.model.get("use_weighted_recon", False):
-                            comparison_tensor = torch.cat([img_to_log, recon_to_log])
-                        else:
-                            text_aligned_to_log = (output["text_aligned_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
-                            text_agnostic_to_log = (output["text_agnostic_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
-                            comparison_tensor = torch.cat([img_to_log, recon_to_log, text_aligned_to_log, text_agnostic_to_log])
-                            
-                        comparison_grid = make_grid(comparison_tensor, nrow=num_images_to_log)
-                        
+                    if should_log_media or should_generate:
+                        media_payload = {}
                         tracker = accelerator.get_tracker("wandb")
-                        tracker.log({
-                            "Original vs. Reconstructed": wandb.Image(comparison_grid)
-                        }, step=global_step)
-                        
+
+                        if should_log_media:
+                            num_images_to_log = min(batch["pixel_values"].shape[0], 8)
+                            
+                            img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                            recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+
+                            # Create a single grid for comparison
+                            if not cfg.model.get("use_weighted_recon", False):
+                                comparison_tensor = torch.cat([img_to_log, recon_to_log])
+                            else:
+                                text_aligned_to_log = (output["text_aligned_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                                text_agnostic_to_log = (output["text_agnostic_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                                comparison_tensor = torch.cat([img_to_log, recon_to_log, text_aligned_to_log, text_agnostic_to_log])
+                                
+                            comparison_grid = make_grid(comparison_tensor, nrow=num_images_to_log)
+                            media_payload["Original vs. Reconstructed"] = wandb.Image(comparison_grid)
+                            
                         # Generate sample images
-                        if global_step % cfg.training.generate_interval == 0:
-                            validation_prompts = cfg.training.get("validation_prompts", [])
+                        if should_generate:
+                            validation_prompts = list(cfg.training.get("validation_prompts", []))
                             if validation_prompts:
                                 was_training = vae.training
                                 vae.eval()
                                 
-                                with torch.no_grad():
-                                    gen_output = vae(batch)
-                                    generated_images = vae.generate(gen_output, cfg.training.num_images_to_generate, accelerator.device, *validation_prompts)
+                                unwrapped_vae = accelerator.unwrap_model(vae)
+                                with torch.no_grad(), accelerator.autocast():
+                                    gen_output = unwrapped_vae(batch)
+                                    num_gen = cfg.training.get("num_images_to_generate", 10)
+                                    generated_images = unwrapped_vae.generate(
+                                        gen_output, 
+                                        num_gen, 
+                                        accelerator.device, 
+                                        *validation_prompts
+                                    )
                                 
                                 if was_training:
                                     vae.train()
 
-                                if args.models.model.observation_mode == "image":
-                                    tracker.log({"Generated": wandb.Image(generated_images)}, step=global_step)
-                else:
-                    for key, value in losses.items():
-                        epoch_losses[key] += value.detach()
+                                if generated_images is not None:
+                                    media_payload["Generated"] = wandb.Image(generated_images)
+
+                        if media_payload and tracker is not None:
+                            tracker.log(media_payload, step=global_step)
 
                 global_step += 1
         if epoch % cfg.training.save_weight_freequency == 0:
-            vae.save(f"{save_dir}/", save_name=f"{cfg.project_name}")       
+            if accelerator.is_main_process:
+                unwrapped_vae = accelerator.unwrap_model(vae)
+                unwrapped_vae.save(f"{save_dir}/", save_name=f"{cfg.project_name}")       
 
         # Print epoch summary
         avg_epoch_losses = {
@@ -283,6 +309,11 @@ def train(args: DictConfig) -> None:
 
 @hydra.main(version_base=None, config_path="config", config_name="train_vae")
 def main(cfg: DictConfig) -> None:
+    # Suppress HTTP request logs from httpx, httpcore, and urllib3
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     print(OmegaConf.to_yaml(cfg))
     train(cfg)
 

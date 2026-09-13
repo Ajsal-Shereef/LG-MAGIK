@@ -1,0 +1,23 @@
+name : MiniWorldNoisy
+objects : [["box", "ball"]]
+reward_objects : [["box"]]
+layout : ["grass/concrete"] #options:wood/brick_wall, grass/concrete
+max_steps : 100
+render_mode : "none"
+size : 10
+obs_width : 80
+obs_height : 80
+n_downsample : 3
+total_timestep : 200000
+fps : 2.5
+verbose : True
+observation_mode : image
+mission : ???
+validation_prompts :
+  - A green grass floor extends toward a grey wall, with a blue sky visible above.
+  - A blue box sits midway across the room to the right, while a green ball is positioned nearby in the foreground towards the right. The scene features grey walls and a green grass floor under a blue sky.
+  - A gray wall stands in the distance, meeting a green floor under a clear blue sky.
+  - A green ball sits on a green grass floor at a moderate distance to the left. The area is enclosed by a gray wall, with a blue sky visible above.
+  - A blue box sits nearby to the right on a green grassy field, while a green ball is positioned further ahead to the left. A grey wall stands in the background beneath a clear blue sky.
+  - A blue box and a green ball sit on a grassy floor in front of a grey wall. The blue box is positioned slightly to the left, while the green ball is situated slightly to the right. A blue sky is visible above the wall.
+  
