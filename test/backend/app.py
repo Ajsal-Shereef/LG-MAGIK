@@ -35,13 +35,37 @@ vision_model = None
 async def startup_event():
     global vision_model
     try:
+        from hydra.core.global_hydra import GlobalHydra
+        if GlobalHydra.instance().is_initialized():
+            GlobalHydra.instance().clear()
+
         # Initialize hydra with config path relative to this file
         with initialize(version_base=None, config_path="../../config"):
             args = compose(config_name="test_imagination")
             
-        print(f"[INFO] Loading model from: {args.models.test.model_dir}")
+        # Determine vision model path: check env var, vae_model_dir, models.test.model_dir, or model_dir
+        vision_model_path = os.environ.get("VAE_MODEL_DIR")
+        if not vision_model_path:
+            vision_model_path = args.get("vae_model_dir")
+        if not vision_model_path and hasattr(args, "models") and hasattr(args.models, "test"):
+            vision_model_path = getattr(args.models.test, "model_dir", None)
+        if not vision_model_path and hasattr(args, "model_dir"):
+            vision_model_path = args.model_dir
+
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+        if vision_model_path and not os.path.isabs(vision_model_path):
+            vision_model_path = os.path.join(project_root, vision_model_path)
+
+        if not vision_model_path or not os.path.exists(vision_model_path):
+            fallback_path = os.path.join(project_root, "model_weights/MiniWorld/VAE/seed_123/VAE.tar")
+            if os.path.exists(fallback_path):
+                print(f"[WARN] Configured model path '{vision_model_path}' not found, falling back to {fallback_path}")
+                vision_model_path = fallback_path
+            else:
+                raise FileNotFoundError(f"Model file not found at: {vision_model_path}")
+
+        print(f"[INFO] Loading model from: {vision_model_path}")
         
-        vision_model_path = args.models.test.model_dir
         model_dir = os.path.dirname(vision_model_path)
         model_config_path = os.path.join(model_dir, "config.yaml")
         
@@ -50,7 +74,7 @@ async def startup_event():
              vision_model_args = OmegaConf.load(model_config_path)
              cfg = vision_model_args.models
         else:
-             print("[INFO] Using default config")
+             print("[INFO] Using default config from test_imagination")
              cfg = args.models
              
         vision_model = instantiate(cfg.model)
@@ -158,59 +182,57 @@ async def imagine(
                 sampler = vision_model.bottleneck(hidden)
                 mean = sampler.mean # [1, latent_channels, H, W]
                 
-                # Check if we have scaling factors (manipulation mode)
+                num_latent_channels = mean.shape[1]
+                response_data["latent_channels"] = num_latent_channels
+                
+                # Always generate the original latent grid
+                grid_img = create_latent_grid(mean)
+                response_data["original_latent"] = encode_image_base64(grid_img)
+                
+                # Check if scaling factors provided, or default to all 1.0 for initial reconstruction
                 if channel_scales:
                     import json
                     scales = json.loads(channel_scales)
-                    
-                    # with open("server_log.txt", "a") as logf:
-                    #     logf.write(f"Received scales: {scales}\n")
-                    #     logf.write(f"Mean stats before: Min={mean.min().item()}, Max={mean.max().item()}, Avg={mean.mean().item()}\n")
-                    
-                    # scales should be list of length latent_channels
-                    if len(scales) == mean.shape[1]:
-                        # Apply scaling per channel
-                        modified_mean = mean.clone()
-                        for i, s in enumerate(scales):
-                            modified_mean[:, i, :, :] *= float(s)
-                            
-                        with open("server_log.txt", "a") as logf:
-                            logf.write(f"Mean stats after scaling: Min={modified_mean.min().item()}, Max={modified_mean.max().item()}, Avg={modified_mean.mean().item()}\n")
-                            
-                        # Decode to get reconstruction
-                        if hasattr(vision_model, "decoder") and hasattr(vision_model.decoder, "tokenizer"):
-                             tokeniser = vision_model.decoder.tokenizer
-                             # Import tokenize_captions function
-                             from architectures.common_utils import tokenize_captions
-                             # Use the utility function directly
-                             captions_tokenised, attention_mask = tokenize_captions(tokeniser, [caption if caption else ""], max_length=vision_model.max_sequence_length)
-                             captions_tokenised = captions_tokenised.to(device)
-                             attention_mask = attention_mask.to(device)
-                             
-                             reconstructed_x, _ = vision_model.decoder(modified_mean, captions_tokenised, attention_mask, return_text_feats=True)
-                             
+                    if len(scales) != num_latent_channels:
+                        # Gracefully pad or truncate scales to match actual latent channels
+                        if len(scales) < num_latent_channels:
+                            scales = list(scales) + [1.0] * (num_latent_channels - len(scales))
                         else:
-                             reconstructed_x = vision_model.decode(modified_mean).sample
-                             
-                        # Post-process reconstruction
-                        imagined_numpy = ((reconstructed_x.squeeze().detach().cpu().numpy() * 0.5 + 0.5).transpose(1, 2, 0) * 255).clip(0, 255).astype(np.uint8)
-                        res_image = Image.fromarray(imagined_numpy)
-                        response_data["reconstruction"] = encode_image_base64(res_image)
-                        
-                        # Generate "Modified Latent" Grid
-                        # We use the modified_mean DIRECTLY to show exactly what was fed to the decoder.
-                        # This ensures that if only Ch-i was changed, only Ch-i changes in the vis.
-                        mod_grid = create_latent_grid(modified_mean, ref_tensor=mean)
-                        response_data["modified_latent"] = encode_image_base64(mod_grid)
-                        
-                    else:
-                        raise ValueError(f"Scales length {len(scales)} does not match latent channels {mean.shape[1]}")
-                        
+                            scales = list(scales)[:num_latent_channels]
                 else:
-                    # Default: Initial Latent Viz (No scales provided)
-                    # We return the "Original Latent" grid
-                    grid_img = create_latent_grid(mean)
-                    response_data["original_latent"] = encode_image_base64(grid_img)
+                    scales = [1.0] * num_latent_channels
+                    
+                # Apply scaling per channel
+                modified_mean = mean.clone()
+                for i, s in enumerate(scales):
+                    modified_mean[:, i, :, :] *= float(s)
+                    
+                try:
+                    with open("server_log.txt", "a") as logf:
+                        logf.write(f"Mean stats after scaling: Min={modified_mean.min().item()}, Max={modified_mean.max().item()}, Avg={modified_mean.mean().item()}\n")
+                except Exception:
+                    pass
+                    
+                # Decode to get reconstruction
+                if hasattr(vision_model, "decoder") and hasattr(vision_model.decoder, "tokenizer"):
+                     tokeniser = vision_model.decoder.tokenizer
+                     from architectures.common_utils import tokenize_captions
+                     captions_tokenised, attention_mask = tokenize_captions(tokeniser, [caption if caption else ""], max_length=vision_model.max_sequence_length)
+                     captions_tokenised = captions_tokenised.to(device)
+                     attention_mask = attention_mask.to(device)
+                     
+                     reconstructed_x, _ = vision_model.decoder(modified_mean, captions_tokenised, attention_mask, return_text_feats=True)
+                else:
+                     reconstructed_x = vision_model.decode(modified_mean).sample
+                     
+                # Post-process reconstruction
+                imagined_numpy = ((reconstructed_x.squeeze(0).detach().cpu().numpy() * 0.5 + 0.5).transpose(1, 2, 0) * 255).clip(0, 255).astype(np.uint8)
+                res_image = Image.fromarray(imagined_numpy)
+                response_data["reconstruction"] = encode_image_base64(res_image)
+                
+                # Generate "Modified Latent" Grid
+                mod_grid = create_latent_grid(modified_mean, ref_tensor=mean)
+                response_data["modified_latent"] = encode_image_base64(mod_grid)
             
         else:
             # --- Standard Imagination Logic ---
@@ -226,10 +248,9 @@ async def imagine(
                 hidden = vision_model.encoder(state_tensor)
                 sampler = vision_model.bottleneck(hidden)
                 mean_original = sampler.mean
+                response_data["latent_channels"] = mean_original.shape[1]
                 
                 # 2. Reconstructed Image Latent
-                # We need to process the imagined_numpy back to tensor to get its latent
-                # imagined_numpy is uint8 [H, W, 3]
                 imagined_pil = Image.fromarray(imagined_numpy).convert("RGB")
                 imagined_tensor = transform(imagined_pil).unsqueeze(0).to(device)
                 hidden_recon = vision_model.encoder(imagined_tensor)
@@ -237,7 +258,6 @@ async def imagine(
                 mean_recon = sampler_recon.mean
                 
                 # 3. Generate Grids
-                # Use mean_original as the reference for normalization for both to allow comparison
                 grid_original = create_latent_grid(mean_original)
                 grid_recon = create_latent_grid(mean_recon, ref_tensor=mean_original)
                 
@@ -252,9 +272,25 @@ async def imagine(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/health")
+async def health_check():
+    latent_channels = 8
+    if vision_model and hasattr(vision_model, "bottleneck"):
+        latent_channels = getattr(vision_model.bottleneck, "out_channels", getattr(vision_model.bottleneck, "latent_dim", 8))
+    return {
+        "status": "ready" if vision_model is not None else "not_loaded",
+        "device": str(device),
+        "latent_channels": latent_channels,
+    }
+
+@app.head("/")
+async def head_index():
+    return Response(status_code=200)
+
 @app.get("/")
 async def read_index():
-    with open(os.path.join(os.path.dirname(__file__), "../frontend/index.html"), "r") as f:
+    index_file = os.path.join(os.path.dirname(__file__), "../frontend/index.html")
+    with open(index_file, "r") as f:
         html_content = f.read()
     return Response(content=html_content, media_type="text/html")
 

@@ -702,7 +702,7 @@ if __name__ == "__main__":
         description="Visual rollout of RelationalPickPlaceEnv for inspection.",
     )
     parser.add_argument(
-        "--mode", default="target5",
+        "--mode", default="target1",
         choices=["source", "target1", "target2", "target3", "target4", "target5"],
         help="task_mode to run (default: target5).",
     )

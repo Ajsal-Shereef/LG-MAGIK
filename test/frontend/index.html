@@ -279,6 +279,7 @@
 </head>
 
 <body>
+    <div id="status-badge" style="position: fixed; top: 12px; left: 20px; font-size: 0.85rem; font-weight: 500; color: #888; z-index: 1000; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border-color); pointer-events: none;">Connecting to backend...</div>
 
     <!-- ============================================ -->
     <!-- VIEW 1: LATENT VISUALIZATION (Default)       -->
@@ -291,7 +292,7 @@
             <div class="panel left-panel">
                 <!-- 1. Input Image Section -->
                 <div class="section-header">Input Image</div>
-                <div class="image-container upload-container"
+                <div class="image-container upload-container" id="latent-dropzone"
                     onclick="document.getElementById('latent-upload').click()">
                     <div class="zoom-ctrl">
                         <button class="zoom-btn" onclick="zoom('latent-input', -1, event)">-</button>
@@ -300,7 +301,7 @@
                     <!-- Placeholder -->
                     <div id="latent-placeholder" class="upload-placeholder">
                         <span style="font-size: 2rem;">+</span>
-                        <span>Click to Upload</span>
+                        <span>Click or Drag Image Here</span>
                     </div>
                     <!-- Image Preview (Replaces placeholder) -->
                     <img id="latent-input-preview" src="" style="display: none;">
@@ -346,8 +347,7 @@
                     </div>
 
                     <div class="sliders-box">
-                        <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Latent Channels ([-10,
-                            10])</label>
+                        <label id="sliders-label" style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Latent Channels ([-10, 10])</label>
                         <div id="sliders-container" class="sliders-scroll"></div>
                     </div>
 
@@ -371,7 +371,7 @@
             <!-- Left Panel -->
             <div class="panel left-panel">
                 <div class="section-header">Input Image</div>
-                <div class="image-container upload-container" style="flex: 1; max-height: none;"
+                <div class="image-container upload-container" id="imagine-dropzone" style="flex: 1; max-height: none;"
                     onclick="document.getElementById('imagine-upload').click()">
                     <div class="zoom-ctrl">
                         <button class="zoom-btn" onclick="zoom('imagine-input', -1, event)">-</button>
@@ -380,7 +380,7 @@
 
                     <div id="imagine-placeholder" class="upload-placeholder">
                         <span style="font-size: 2rem;">+</span>
-                        <span>Click to Upload</span>
+                        <span>Click or Drag Image Here</span>
                     </div>
                     <img id="imagine-input-preview" src="" style="display: none;">
 
@@ -436,6 +436,7 @@
     <script>
         // State
         let scales = Array(8).fill(1.0);
+        let currentFile = null;
         let zoomLevels = {
             'imagine-input': 1.0,
             'imagine-output': 1.0,
@@ -443,13 +444,40 @@
             'latent-recon': 1.0
         };
 
+        // --- Health Check ---
+        async function checkHealth() {
+            const badge = document.getElementById('status-badge');
+            try {
+                const res = await fetch('/health');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.latent_channels && data.latent_channels !== scales.length) {
+                        initSliders(data.latent_channels);
+                    }
+                    if (badge) {
+                        if (data.status === 'ready') {
+                            badge.innerHTML = `<span style="color: var(--secondary-color);">●</span> Model Ready (${data.device})`;
+                        } else {
+                            badge.innerHTML = `<span style="color: #ffaa00;">●</span> Model Initializing...`;
+                        }
+                    }
+                } else {
+                    if (badge) badge.innerHTML = `<span style="color: #ff5555;">●</span> Server Error (${res.status})`;
+                }
+            } catch (e) {
+                if (badge) badge.innerHTML = `<span style="color: #ff5555;">●</span> Server Disconnected`;
+            }
+        }
+        checkHealth();
+        setInterval(checkHealth, 10000);
+
         // --- View Switching ---
         function switchView(mode) {
             document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
             document.getElementById(`view-${mode}`).classList.add('active');
         }
 
-        // --- Zooom ---
+        // --- Zoom ---
         function zoom(target, dir, event) {
             if (event) event.stopPropagation();
             zoomLevels[target] += dir * 0.2;
@@ -467,7 +495,6 @@
 
         // --- Logic: Latent View ---
 
-        // Utility: Debounce
         function debounce(func, wait) {
             let timeout;
             return function executedFunction(...args) {
@@ -482,20 +509,27 @@
 
         const debouncedGenerateLatent = debounce(() => generateLatent(true), 150);
 
-        // Init Sliders
-        const slidersDiv = document.getElementById('sliders-container');
-        for (let i = 0; i < 8; i++) {
-            const row = document.createElement('div');
-            row.className = 'slider-row';
-            row.innerHTML = `
-                <span style="width: 30px; text-align: right;">Ch${i}</span>
-                <input type="range" min="-10" max="10" step="0.1" value="1.0" 
-                    oninput="updateScale(${i}, this.value); debouncedGenerateLatent()"
-                    >
-                <span id="val-${i}" style="width: 40px; text-align: right;">1.0</span>
-            `;
-            slidersDiv.appendChild(row);
+        // Dynamic Slider Initialization
+        function initSliders(numChannels = 8) {
+            scales = Array(numChannels).fill(1.0);
+            const slidersDiv = document.getElementById('sliders-container');
+            const label = document.getElementById('sliders-label');
+            if (label) label.innerText = `Latent Channels (${numChannels} Channels, [-10, 10])`;
+            slidersDiv.innerHTML = '';
+            for (let i = 0; i < numChannels; i++) {
+                const row = document.createElement('div');
+                row.className = 'slider-row';
+                row.innerHTML = `
+                    <span style="width: 30px; text-align: right;">Ch${i}</span>
+                    <input type="range" min="-10" max="10" step="0.1" value="1.0" 
+                        oninput="updateScale(${i}, this.value); debouncedGenerateLatent()"
+                        >
+                    <span id="val-${i}" style="width: 40px; text-align: right;">1.0</span>
+                `;
+                slidersDiv.appendChild(row);
+            }
         }
+        initSliders(8);
 
         function updateScale(idx, val) {
             scales[idx] = parseFloat(val);
@@ -507,16 +541,16 @@
             document.querySelectorAll('#sliders-container input').forEach(inp => inp.value = 1.0);
             document.querySelectorAll('#sliders-container span[id^="val-"]').forEach(sp => sp.innerText = '1.0');
             const fileInput = document.getElementById('latent-upload');
-            if (fileInput.files[0]) generateLatent(true);
+            if (fileInput.files[0] || currentFile) generateLatent(true);
         }
 
         // Handle Upload & Preview
         function handleLatentUpload(input) {
-            const file = input.files[0];
+            const file = input.files ? input.files[0] : input;
             if (file) {
+                currentFile = file;
                 const reader = new FileReader();
                 reader.onload = (ev) => {
-                    // Hide placeholder, show image
                     document.getElementById('latent-placeholder').style.display = 'none';
                     const img = document.getElementById('latent-input-preview');
                     img.src = ev.target.result;
@@ -531,9 +565,9 @@
 
         async function generateLatent(isModification = false) {
             const fileInput = document.getElementById('latent-upload');
-            if (!fileInput.files[0]) return;
+            const file = fileInput.files[0] || currentFile;
+            if (!file) return;
 
-            const file = fileInput.files[0];
             const caption = document.getElementById('latent-caption').value;
             const btn = document.getElementById('latent-generate-btn');
             const loader = document.getElementById('latent-loader');
@@ -553,18 +587,21 @@
 
             try {
                 const res = await fetch('/imagine', { method: 'POST', body: formData });
-                if (!res.ok) throw new Error((await res.json()).detail);
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({ detail: res.statusText }));
+                    throw new Error(errData.detail || `Server returned ${res.status}`);
+                }
 
                 const data = await res.json();
+
+                if (data.latent_channels && data.latent_channels !== scales.length) {
+                    initSliders(data.latent_channels);
+                }
 
                 if (data.original_latent) {
                     const img = document.getElementById('latent-orig-img');
                     img.src = data.original_latent;
                     img.style.display = 'block';
-                    if (!isModification) {
-                        // On first load, also show default reconstruction
-                        generateLatent(true);
-                    }
                 }
 
                 if (data.reconstruction) {
@@ -593,7 +630,7 @@
         // --- Logic: Imagination View ---
 
         function handleImagineUpload(input) {
-            const file = input.files[0];
+            const file = input.files ? input.files[0] : input;
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (ev) => {
@@ -630,7 +667,10 @@
 
             try {
                 const res = await fetch('/imagine', { method: 'POST', body: formData });
-                if (!res.ok) throw new Error((await res.json()).detail);
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({ detail: res.statusText }));
+                    throw new Error(errData.detail || `Server returned ${res.status}`);
+                }
 
                 const data = await res.json();
 
@@ -665,6 +705,36 @@
                 loader.style.display = 'none';
             }
         }
+
+        // --- Drag and drop support ---
+        function setupDragAndDrop(dropzoneId, fileInputId, handler) {
+            const el = document.getElementById(dropzoneId);
+            if (!el) return;
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                el.addEventListener(eventName, preventDefaults, false);
+            });
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            ['dragenter', 'dragover'].forEach(eventName => {
+                el.addEventListener(eventName, () => el.style.borderColor = 'var(--secondary-color)', false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                el.addEventListener(eventName, () => el.style.borderColor = 'var(--border-color)', false);
+            });
+            el.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    const fileInput = document.getElementById(fileInputId);
+                    fileInput.files = files;
+                    handler(files[0]);
+                }
+            }, false);
+        }
+        setupDragAndDrop('latent-dropzone', 'latent-upload', handleLatentUpload);
+        setupDragAndDrop('imagine-dropzone', 'imagine-upload', handleImagineUpload);
     </script>
 </body>
 
