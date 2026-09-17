@@ -549,13 +549,70 @@ class CrossAttentionFiLMSpatial(nn.Module):
 
         return self.act(out)
 
+class FiLMVectorOnly(nn.Module):
+    """
+    1D Global FiLM modulation (channel-wise scale and shift), with NO spatial coordinate bias.
+    """
+    def __init__(self, channels, latent_dim, norm="ln"):
+        super().__init__()
+        self.film = nn.Linear(latent_dim, 2 * channels)
+        self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
+        self.norm = get_normalisation_2d(norm, channels, affine=False)
+        self.act = nn.GELU()
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        nn.init.xavier_uniform_(self.film.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.conv.weight, gain=1 / math.sqrt(2))
+        nn.init.constant_(self.film.bias, 0)
+        nn.init.constant_(self.conv.bias, 0)
+
+    def forward(self, x, z_vec):
+        gamma, beta = self.film(z_vec).unsqueeze(-1).unsqueeze(-1).chunk(2, dim=1)
+        out = self.conv(x)
+        out = self.norm(out)
+        out = out * (1 + gamma) + beta
+        return self.act(out)
+
+
+class CrossAttentionFiLMVector(nn.Module):
+    """
+    1D Global FiLM (channel-wise scale and shift) + Residual Cross-Attention with text tokens.
+    """
+    def __init__(self, channels, latent_dim, text_dim, norm="ln"):
+        super().__init__()
+        self.film = nn.Linear(latent_dim, 2 * channels)
+        self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
+        self.norm = get_normalisation_2d(norm, channels, affine=False)
+        self.cross = CrossAttention(channels, text_dim)
+        self.cross_norm = get_normalisation_2d(norm, channels)
+        self.act = nn.GELU()
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        nn.init.xavier_uniform_(self.film.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.conv.weight, gain=1 / math.sqrt(2))
+        nn.init.constant_(self.film.bias, 0)
+        nn.init.constant_(self.conv.bias, 0)
+
+    def forward(self, x, z_vec, text_feat, attention):
+        gamma, beta = self.film(z_vec).unsqueeze(-1).unsqueeze(-1).chunk(2, dim=1)
+        out = self.conv(x)
+        out = self.norm(out)
+        out = out * (1 + gamma) + beta
+
+        B, C, H, W = out.shape
+        cross_att_in = out.view(B, C, H * W).permute(0, 2, 1)
+        attn_out = self.cross(cross_att_in, text_feat, attention).permute(0, 2, 1).view(B, C, H, W)
+        out = out + self.cross_norm(attn_out)
+        return self.act(out)
+
+
 class FinalTextConditionedOutput(nn.Module):
     def __init__(self, in_channels, out_channels, text_dim, n_heads=8):
         super().__init__()
         self.cross_attention = CrossAttention(in_channels, text_dim, n_heads)
 
-        # stronger head: residual conv stack
-        # self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, in_channels//2, 3, 1, 1),
             nn.GELU(),
@@ -569,28 +626,24 @@ class FinalTextConditionedOutput(nn.Module):
         x: [B, C, H, W] - Image feature map
         text_feat: [B, T, D] - Text feature (from the text encoder)
         """
-        # cross-attn
-        B,C,H,W = x.shape
-        x = x.view(B, C, H*W).permute(0, 2 ,1)
-        refined = self.cross_attention(x, text_feat, attention_mask).permute(0,2,1).view(B,C,H,W)
-
-        # Pass the refined features through the final convolution
+        B, C, H, W = x.shape
+        x = x.view(B, C, H * W).permute(0, 2, 1)
+        refined = self.cross_attention(x, text_feat, attention_mask).permute(0, 2, 1).view(B, C, H, W)
         return torch.tanh(self.conv(refined))
-    
+
+
 class CNNTextConditionedDecoder(nn.Module):
-    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True, n_text_attn_layers=2):
+    def __init__(self, n_upsample, dim, output_dim, clip_model, latent_channel, nhead=8, use_coord_conv=True, n_text_attn_layers=2, latent_type="spatial", latent_dim=None, encoder_final_dim=[5, 5]):
         super(CNNTextConditionedDecoder, self).__init__()
         self.dim = dim
         self.use_coord_conv = use_coord_conv
         self.n_text_attn_layers = n_text_attn_layers
         self.n_upsample = n_upsample
+        self.latent_type = latent_type
+        self.latent_dim = latent_dim
+        self.encoder_final_dim = list(encoder_final_dim) if encoder_final_dim is not None else [5, 5]
         # Number of early blocks that use z-only FiLM (no text cross-attention)
         self.n_spatial_only = n_upsample - n_text_attn_layers
-        
-        # Mapping conv: Input channels = latent_channel (+2 if coord_conv)
-        in_channels = latent_channel + 2 if use_coord_conv else latent_channel
-        self.mapping_conv = nn.Conv2d(in_channels, dim, 1)
-        init.xavier_uniform_(self.mapping_conv.weight)
         
         self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
         self.text_encoder = CLIPTextModel.from_pretrained(clip_model, trust_remote_code=True)
@@ -601,25 +654,49 @@ class CNNTextConditionedDecoder(nn.Module):
             
         self.text_encoder.eval()
         self.text_dim = self.text_encoder.config.hidden_size
-        # self.text_dim = 256
         self.text_adapter = MLP(self.text_dim, self.text_dim, [128, 256], hidden_activation='gelu', norm='ln')
         
-        self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=nhead)
-        
-        self.blocks=nn.ModuleList()
-        self.ups=nn.ModuleList()
+        self.blocks = nn.ModuleList()
+        self.ups = nn.ModuleList()
         self.conv = nn.ModuleList()
-        latent_dim_for_blocks = latent_channel + 2 if use_coord_conv else latent_channel
-        for i in range(n_upsample):
-            if i < self.n_spatial_only:
-                # Early blocks: z-only FiLM, no text cross-attention
-                self.blocks.append(FiLMSpatialOnly(dim, latent_dim_for_blocks, i))
-            else:
-                # Late blocks: full FiLM + text cross-attention
-                self.blocks.append(CrossAttentionFiLMSpatial(dim, latent_dim_for_blocks, self.text_dim, i))
-            self.ups.append(nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False))
-            self.conv.append(nn.Conv2d(dim, dim//2, 3, 1, 1))
-            dim //= 2
+
+        if self.latent_type == "vector":
+            # 1D Global Vector mode: Project z -> initial spatial feature map
+            init_spatial_elements = dim * self.encoder_final_dim[0] * self.encoder_final_dim[1]
+            self.latent_proj = nn.Sequential(
+                nn.Linear(latent_dim, init_spatial_elements),
+                nn.GELU()
+            )
+            self.initial_attention = CrossAttention(dim, self.text_dim, n_heads=nhead)
+
+            current_dim = dim
+            for i in range(n_upsample):
+                if i < self.n_spatial_only:
+                    self.blocks.append(FiLMVectorOnly(current_dim, latent_dim))
+                else:
+                    self.blocks.append(CrossAttentionFiLMVector(current_dim, latent_dim, self.text_dim))
+                self.ups.append(nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False))
+                self.conv.append(nn.Conv2d(current_dim, current_dim // 2, 3, 1, 1))
+                current_dim //= 2
+            dim = current_dim
+        else:
+            # 2D Spatial Latent mode (original legacy)
+            in_channels = latent_channel + 2 if use_coord_conv else latent_channel
+            self.mapping_conv = nn.Conv2d(in_channels, dim, 1)
+            init.xavier_uniform_(self.mapping_conv.weight)
+            
+            self.attention = CrossAttention(latent_channel, self.text_dim, n_heads=nhead)
+            latent_dim_for_blocks = latent_channel + 2 if use_coord_conv else latent_channel
+            current_dim = dim
+            for i in range(n_upsample):
+                if i < self.n_spatial_only:
+                    self.blocks.append(FiLMSpatialOnly(current_dim, latent_dim_for_blocks, i))
+                else:
+                    self.blocks.append(CrossAttentionFiLMSpatial(current_dim, latent_dim_for_blocks, self.text_dim, i))
+                self.ups.append(nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False))
+                self.conv.append(nn.Conv2d(current_dim, current_dim // 2, 3, 1, 1))
+                current_dim //= 2
+            dim = current_dim
             
         self.final = FinalTextConditionedOutput(dim, output_dim, self.text_dim)
         
@@ -669,11 +746,33 @@ class CNNTextConditionedDecoder(nn.Module):
         return unique_embeddings_tensor[inverse_indices]
 
     def forward(self, z, text_input, attention_mask=None, return_text_feats=False):
-        # text_input is token IDs, attention_mask is the padding mask
         raw_text_feats = self._encode_text(text_input, attention_mask=attention_mask)
         text_feats = self.text_adapter(raw_text_feats)
 
-        # Flatten the image feature map for cross-attention (B, C, H, W) -> (B, H*W, C)
+        if self.latent_type == "vector":
+            # z is (B, latent_dim)
+            B = z.shape[0]
+            H0, W0 = self.encoder_final_dim[0], self.encoder_final_dim[1]
+            x = self.latent_proj(z).view(B, self.dim, H0, W0)
+            
+            # Attend to text on initial base map
+            x_flat = x.view(B, self.dim, H0 * W0).permute(0, 2, 1)
+            x = self.initial_attention(x_flat, text_feats, attention_mask).permute(0, 2, 1).view(B, self.dim, H0, W0)
+
+            for i, (blk, up, conv) in enumerate(zip(self.blocks, self.ups, self.conv)):
+                if i < self.n_spatial_only:
+                    x = blk(x, z)
+                else:
+                    x = blk(x, z, text_feats, attention_mask)
+                x = up(x)
+                x = conv(x)
+
+            out = self.final(x, text_feats, attention_mask)
+            if return_text_feats:
+                return out, text_feats
+            return out
+
+        # 2D spatial latent branch (original legacy)
         B, C, H, W = z.shape
         z = z.view(B, C, H*W).permute(0,2,1)
         z = self.attention(z, text_feats, attention_mask).permute(0,2,1).view(B, C, H, W)
@@ -689,10 +788,8 @@ class CNNTextConditionedDecoder(nn.Module):
         x = self.mapping_conv(z)
         for i, (blk, up, conv) in enumerate(zip(self.blocks, self.ups, self.conv)):
             if i < self.n_spatial_only:
-                # Early blocks: z-only FiLM
                 x = blk(x, z)
             else:
-                # Late blocks: FiLM + text cross-attention
                 x = blk(x, z, text_feats, attention_mask)
             x = up(x)
             x = conv(x)

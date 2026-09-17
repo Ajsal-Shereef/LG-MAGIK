@@ -13,6 +13,9 @@ fps : 2.5
 verbose : True
 observation_mode : image
 mission : ???
+# "precise"    -> exact numeric measurements (e.g. "3.9 units, 18.9 deg")
+# "qualitative" -> structured distance/angle buckets (nearby/moderate/far + straight ahead/left/right)
+caption_mode : precise
 validation_prompts :
   - The agent is in a room with grass floor and concrete walls. A blue box is found in front at angle 4.7 at a distance of 3.4 units.
   - The agent is in a room with grass floor and concrete walls. A blue box is found to the right at angle 15.9 at a distance of 4.7 units. A green ball is found in front at angle 1.73 at a distance of 5.7 units.

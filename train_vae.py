@@ -50,6 +50,11 @@ def train(args: DictConfig) -> None:
 
     cfg = args.models
     # --- 1. Initialization and Setup ---
+    # Check if latent is 1D vector mode
+    latent_type = cfg.model.get("latent_type", "spatial")
+    if latent_type == "vector":
+        cfg.model_name = f"{cfg.model_name}_1D"
+
     # Check if text discriminator ablation is enabled
     use_text_discriminator = cfg.model.get("use_text_discriminator", args.get("use_text_discriminator", True))
     if not use_text_discriminator:

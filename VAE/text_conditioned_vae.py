@@ -48,10 +48,25 @@ class TextConditionedVAE(nn.Module):
             n_text_attn_layers = kwargs.get("n_text_attn_layers", 2)
             self.is_perceptual_loss = kwargs["is_perceptual_loss"]
             self.max_sequence_length = kwargs.get("max_sequence_length", None)
+            self.latent_type = kwargs.get("latent_type", "spatial")
+            self.latent_dim = kwargs.get("latent_dim", 16)
             
             self.encoder = CNNEncoder(n_downsample, encoder_n_res, input_dim, dim, norm, activ, pad_type=pad_type)
-            self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
-            self.decoder = CNNTextConditionedDecoder(n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel, use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers)
+            if self.latent_type == "vector":
+                in_feat = self.encoder.output_dim * np.prod(encoder_final_dim)
+                self.bottleneck = GaussianSample(in_feat, self.latent_dim)
+                self.decoder = CNNTextConditionedDecoder(
+                    n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel,
+                    use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers,
+                    latent_type=self.latent_type, latent_dim=self.latent_dim, encoder_final_dim=encoder_final_dim
+                )
+            else:
+                self.bottleneck = GaussianSampleSpatial(self.encoder.output_dim, latent_channel)
+                self.decoder = CNNTextConditionedDecoder(
+                    n_downsample, self.encoder.output_dim, input_dim, clip_model, latent_channel,
+                    use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers,
+                    latent_type="spatial", latent_dim=None, encoder_final_dim=encoder_final_dim
+                )
             
             # Use max_sequence_length if provided, else fall back to tokenizer default
             # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
@@ -61,7 +76,8 @@ class TextConditionedVAE(nn.Module):
                 self.max_sequence_length = self.decoder.tokenizer.model_max_length
             
             if self.use_text_discriminator:
-                self.caption_discriminator = MLP(latent_channel * np.prod(encoder_final_dim),
+                disc_in_dim = self.latent_dim if self.latent_type == "vector" else (latent_channel * np.prod(encoder_final_dim))
+                self.caption_discriminator = MLP(disc_in_dim,
                                                  self.decoder.text_dim,
                                                  discriminator_fc_hidden)
             else:
@@ -173,7 +189,10 @@ class TextConditionedVAE(nn.Module):
         images = x["pixel_values"]
         
         hidden = self.encoder(images)
-        sampler = self.bottleneck(hidden)
+        if getattr(self, "latent_type", "spatial") == "vector":
+            sampler = self.bottleneck(hidden.flatten(1))
+        else:
+            sampler = self.bottleneck(hidden)
         latent = sampler.latent
 
         text_tokens = x["input_ids"]
@@ -201,7 +220,10 @@ class TextConditionedVAE(nn.Module):
 
         if self.observation_model == "image":
             recon_loss = recon_loss.sum(dim=[1,2,3]).mean()
-            kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=[1,2,3]).mean()
+            if getattr(self, "latent_type", "spatial") == "vector":
+                kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
+            else:
+                kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=[1,2,3]).mean()
         else:
             recon_loss = recon_loss.sum(dim=-1).mean()
             kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
@@ -288,7 +310,10 @@ class TextConditionedVAE(nn.Module):
         
         with torch.no_grad():
             hidden = self.encoder(state_tensor.to(device))
-            sampler = self.bottleneck(hidden)
+            if getattr(self, "latent_type", "spatial") == "vector":
+                sampler = self.bottleneck(hidden.flatten(1))
+            else:
+                sampler = self.bottleneck(hidden)
             mean = sampler.mean
             
             tokeniser = self.decoder.tokenizer
@@ -344,7 +369,10 @@ class TextConditionedVAE(nn.Module):
 
         with torch.no_grad():
             hidden = self.encoder(torch.stack(states_tensors).to(device))
-            sampler = self.bottleneck(hidden)
+            if getattr(self, "latent_type", "spatial") == "vector":
+                sampler = self.bottleneck(hidden.flatten(1))
+            else:
+                sampler = self.bottleneck(hidden)
             latents = sampler.mean
 
             for i in range(len(states_tensors)):
@@ -362,7 +390,10 @@ class TextConditionedVAE(nn.Module):
                 # 3. ADD GENERATED IMAGES
                 changed_tokens = changed_captions_tokenised[i]
                 changed_captions_mask = changed_caption_attention_mask[i]
-                latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
+                if getattr(self, "latent_type", "spatial") == "vector":
+                    latent_z_expanded = latent_z.repeat(len(changed_tokens), 1)
+                else:
+                    latent_z_expanded = latent_z.repeat(len(changed_tokens), 1, 1, 1)
                 recons_changed, _ = self.decoder(latent_z_expanded, changed_tokens, changed_captions_mask, return_text_feats=True)
                 grid_images.extend(list(recons_changed.cpu()))
 

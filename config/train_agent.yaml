@@ -1,5 +1,5 @@
 defaults:
-  - env : MiniWorld
+  - env : MiniWorldQuantized
 seed: 42
 agent_name : PPO
 save_every : 500000

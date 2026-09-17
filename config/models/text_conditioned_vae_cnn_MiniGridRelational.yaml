@@ -27,6 +27,8 @@ model:
   encoder_final_dim:
   - 4
   - 4
+  latent_type: "vector"
+  latent_dim: 8
   latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:

@@ -27,6 +27,8 @@ model:
   encoder_final_dim:
   - 5
   - 5
+  latent_type: "vector"
+  latent_dim: 16
   latent_channel: 8
   text_encoder: ${models.data.text_encoder_path}
   discriminator_fc_hidden:
@@ -42,7 +44,7 @@ model:
 training:
   num_epochs: 350
   seed: ${models.seed}
-  kl_weight: 1.0
+  kl_weight: 4.0
   kl_annealing:
     enable: true
     start: 0.0
@@ -50,7 +52,7 @@ training:
     n_cycles: 1
     ratio: 0.5
   adv_lambda: 1.0
-  adv_weight: 1.0
+  adv_weight: 2.0
   logs: logs
   output_dir: model_weights/vae
   experiment_name: ${models.project_name}

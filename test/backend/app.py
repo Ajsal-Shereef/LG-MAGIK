@@ -97,8 +97,8 @@ def encode_image_base64(image: Image.Image) -> str:
 
 def create_latent_grid(mean_tensor, ref_tensor=None):
     # Normalize each channel for visualization
-    # mean_tensor: [1, latent_channels, H, W]
-    mean = mean_tensor.squeeze(0) # [latent_channels, H, W]
+    # mean_tensor: [1, latent_channels, H, W] or [1, latent_dim]
+    mean = mean_tensor.squeeze(0)
     
     if ref_tensor is not None:
         ref = ref_tensor.squeeze(0)
@@ -106,46 +106,54 @@ def create_latent_grid(mean_tensor, ref_tensor=None):
         ref = mean
         
     num_channels = mean.shape[0]
-    
-    # Create a grid with padding
     cols = 4
     rows = (num_channels + cols - 1) // cols
     
     channels_np = mean.cpu().numpy()
     ref_np = ref.cpu().numpy()
-    
-    h, w = channels_np.shape[1], channels_np.shape[2]
     padding = 1
-    
-    grid_w = cols * w + (cols + 1) * padding
-    grid_h = rows * h + (rows + 1) * padding
-    
-    grid_img = Image.new('L', (grid_w, grid_h), color=255)
-    
-    for i in range(num_channels):
-        ch_data = channels_np[i]
+
+    if mean.dim() == 1:
+        # 1D vector representation: Each dimension visualized as a square tile
+        h, w = 16, 16
+        grid_w = cols * w + (cols + 1) * padding
+        grid_h = rows * h + (rows + 1) * padding
+        grid_img = Image.new('L', (grid_w, grid_h), color=255)
         
-        # Use REFERENCE min/max for normalization to preserve relative changes
-        ch_min = ref_np[i].min()
-        ch_max = ref_np[i].max()
+        ref_min = float(ref_np.min())
+        ref_max = float(ref_np.max())
+        diff = max(ref_max - ref_min, 1e-5)
+        for i in range(num_channels):
+            val = int(np.clip((channels_np[i] - ref_min) / diff * 255, 0, 255))
+            ch_img = Image.fromarray(np.full((h, w), val, dtype=np.uint8))
+            r = i // cols
+            c = i % cols
+            x_pos = padding + c * (w + padding)
+            y_pos = padding + r * (h + padding)
+            grid_img.paste(ch_img, (x_pos, y_pos))
+    else:
+        # 2D spatial feature map representation
+        h, w = channels_np.shape[1], channels_np.shape[2]
+        grid_w = cols * w + (cols + 1) * padding
+        grid_h = rows * h + (rows + 1) * padding
+        grid_img = Image.new('L', (grid_w, grid_h), color=255)
         
-        # Avoid division by zero
-        if ch_max - ch_min > 1e-5:
-            # We must clip because modified vals might exceed orig range
-            ch_norm = (ch_data - ch_min) / (ch_max - ch_min) * 255
-            ch_norm = np.clip(ch_norm, 0, 255)
-        else:
-            ch_norm = np.zeros_like(ch_data)
-        
-        ch_img = Image.fromarray(ch_norm.astype(np.uint8))
-        
-        r = i // cols
-        c = i % cols
-        
-        x_pos = padding + c * (w + padding)
-        y_pos = padding + r * (h + padding)
-        
-        grid_img.paste(ch_img, (x_pos, y_pos))
+        for i in range(num_channels):
+            ch_data = channels_np[i]
+            ch_min = ref_np[i].min()
+            ch_max = ref_np[i].max()
+            if ch_max - ch_min > 1e-5:
+                ch_norm = (ch_data - ch_min) / (ch_max - ch_min) * 255
+                ch_norm = np.clip(ch_norm, 0, 255)
+            else:
+                ch_norm = np.zeros_like(ch_data)
+            
+            ch_img = Image.fromarray(ch_norm.astype(np.uint8))
+            r = i // cols
+            c = i % cols
+            x_pos = padding + c * (w + padding)
+            y_pos = padding + r * (h + padding)
+            grid_img.paste(ch_img, (x_pos, y_pos))
         
     if grid_img.width < 512:
         scale = 512 / grid_img.width
@@ -179,8 +187,11 @@ async def imagine(
             with torch.no_grad():
                 # Encode
                 hidden = vision_model.encoder(state_tensor)
-                sampler = vision_model.bottleneck(hidden)
-                mean = sampler.mean # [1, latent_channels, H, W]
+                if getattr(vision_model, "latent_type", "spatial") == "vector":
+                    sampler = vision_model.bottleneck(hidden.flatten(1))
+                else:
+                    sampler = vision_model.bottleneck(hidden)
+                mean = sampler.mean # [1, latent_dim] or [1, latent_channels, H, W]
                 
                 num_latent_channels = mean.shape[1]
                 response_data["latent_channels"] = num_latent_channels
@@ -205,7 +216,10 @@ async def imagine(
                 # Apply scaling per channel
                 modified_mean = mean.clone()
                 for i, s in enumerate(scales):
-                    modified_mean[:, i, :, :] *= float(s)
+                    if modified_mean.dim() == 4:
+                        modified_mean[:, i, :, :] *= float(s)
+                    else:
+                        modified_mean[:, i] *= float(s)
                     
                 try:
                     with open("server_log.txt", "a") as logf:
@@ -246,7 +260,10 @@ async def imagine(
                 transform = vision_model.train_transform
                 state_tensor = transform(image_np if isinstance(image_np, np.ndarray) else np.array(image)).unsqueeze(0).to(device)
                 hidden = vision_model.encoder(state_tensor)
-                sampler = vision_model.bottleneck(hidden)
+                if getattr(vision_model, "latent_type", "spatial") == "vector":
+                    sampler = vision_model.bottleneck(hidden.flatten(1))
+                else:
+                    sampler = vision_model.bottleneck(hidden)
                 mean_original = sampler.mean
                 response_data["latent_channels"] = mean_original.shape[1]
                 
@@ -254,7 +271,10 @@ async def imagine(
                 imagined_pil = Image.fromarray(imagined_numpy).convert("RGB")
                 imagined_tensor = transform(imagined_pil).unsqueeze(0).to(device)
                 hidden_recon = vision_model.encoder(imagined_tensor)
-                sampler_recon = vision_model.bottleneck(hidden_recon)
+                if getattr(vision_model, "latent_type", "spatial") == "vector":
+                    sampler_recon = vision_model.bottleneck(hidden_recon.flatten(1))
+                else:
+                    sampler_recon = vision_model.bottleneck(hidden_recon)
                 mean_recon = sampler_recon.mean
                 
                 # 3. Generate Grids
@@ -276,7 +296,7 @@ async def imagine(
 async def health_check():
     latent_channels = 8
     if vision_model and hasattr(vision_model, "bottleneck"):
-        latent_channels = getattr(vision_model.bottleneck, "out_channels", getattr(vision_model.bottleneck, "latent_dim", 8))
+        latent_channels = getattr(vision_model.bottleneck, "out_features", getattr(vision_model.bottleneck, "out_channels", getattr(vision_model.bottleneck, "latent_dim", 8)))
     return {
         "status": "ready" if vision_model is not None else "not_loaded",
         "device": str(device),

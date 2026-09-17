@@ -1,0 +1,26 @@
+name : MiniWorldQuantized
+objects : [["box", "ball"]]
+reward_objects : [["box"]]
+layout : ["grass/concrete"] #options:wood/brick_wall, grass/concrete
+max_steps : 100
+render_mode : "none"
+size : 10
+obs_width : 80
+obs_height : 80
+n_downsample : 3
+total_timestep : 200000
+fps : 2.5
+verbose : True
+observation_mode : image
+mission : ???
+# Generates structured qualitative descriptions without precise numbers.
+# Distance buckets : nearby (<2.0 units) | at a moderate distance (2.0–3.8) | far away (>3.8)
+# Angle buckets    : straight ahead (<10°) | to the left/right (10–45°) | far to the left/right (>45°)
+caption_mode : qualitative
+validation_prompts :
+  - The agent is in a room with grass floor and concrete walls. A blue box is nearby straight ahead.
+  - The agent is in a room with grass floor and concrete walls. A blue box is at a moderate distance to the right. A green ball is nearby to the right.
+  - The agent is in a room with grass floor and concrete walls. A blue box is at a moderate distance to the left.
+  - The agent is in a room with grass floor and concrete walls. No objects are visible in the current view.
+  - The agent is in a room with grass floor and concrete walls. A blue ball is nearby to the right.
+  - The agent is in a room with grass floor and concrete walls. A green box is nearby to the left.

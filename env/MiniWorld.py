@@ -225,6 +225,9 @@ class PickObjectEnv(MiniWorldEnv):
         self.objects = list(config.objects)
         self.reward_objects = list(config.reward_objects)
         self.layout = config.layout
+        # caption_mode: "precise" (default) keeps exact numbers;
+        # "qualitative" replaces them with structured distance/angle buckets.
+        self.caption_mode = config.get("caption_mode", "precise")
         
         super().__init__(max_episode_steps=self.max_steps, **kwargs)
         self.action_space = spaces.Discrete(self.actions.pickup + 1)
@@ -566,6 +569,26 @@ class PickObjectEnv(MiniWorldEnv):
             dir_str = "to the left"
         return dir_str
 
+    def _get_qualitative_distance(self, dist: float) -> str:
+        """Quantize a metric distance into a human-readable proximity label."""
+        if dist < 2.0:
+            return "nearby"
+        elif dist <= 3.8:
+            return "at a moderate distance"
+        else:
+            return "far away"
+
+    def _get_qualitative_angle(self, angle_deg: float) -> str:
+        """Quantize an absolute angle into a directional label."""
+        abs_angle = abs(angle_deg)
+        side = "right" if angle_deg > 0 else "left"
+        if abs_angle < 10.0:
+            return "straight ahead"
+        elif abs_angle <= 45.0:
+            return f"to the {side}"
+        else:
+            return f"far to the {side}"
+
     def get_frame_description(self, obs=None):
         if obs is None:
             obs = self.obs
@@ -590,13 +613,18 @@ class PickObjectEnv(MiniWorldEnv):
                     ent = e
                     break
             if ent is None:
-                continue 
+                continue
 
             dist, angle_deg = self._get_relative_position(ent)
-
-            dir_str = self._get_direction_string(angle_deg)
             object_name = COLOR_TO_OBJECT[color]
-            description += f" A {color} {object_name} is found {dir_str} at angle {abs(angle_deg):.3g} at a distance of {dist:.1f} units."
+
+            if self.caption_mode == "qualitative":
+                dist_label = self._get_qualitative_distance(dist)
+                dir_label = self._get_qualitative_angle(angle_deg)
+                description += f" A {color} {object_name} is {dist_label} {dir_label}."
+            else:
+                dir_str = self._get_direction_string(angle_deg)
+                description += f" A {color} {object_name} is found {dir_str} at angle {abs(angle_deg):.3g} at a distance of {dist:.1f} units."
 
         return description
 
