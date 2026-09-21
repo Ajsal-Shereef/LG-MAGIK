@@ -103,17 +103,48 @@ class FakeWall(WorldObj):
         fill_coords(img, point_in_rect(0, 1, 0, 1), COLORS[self.color])
 
 
+TASK_MODES = {
+    "source": {
+        "objects": [["red ball", "green ball"]],
+        "reward_objects": [["red ball"]],
+        "wall_color": ["grey"],
+    },
+    "target1": {
+        "objects": [["purple box", "green ball"]],
+        "reward_objects": [["purple box"]],
+        "wall_color": ["grey"],
+    },
+    "target2": {
+        "objects": [["purple box", "green ball"]],
+        "reward_objects": [["purple box"]],
+        "wall_color": ["blue"],
+    },
+    "target3": {
+        "objects": [["purple box", "red ball"]],
+        "reward_objects": [["purple box"]],
+        "wall_color": ["grey"],
+    },
+}
+
 class SimplePickup(MiniGridEnv):
     def __init__(self, config):
-        size=config["size"]
-        max_steps=config["max_steps"]
-        render_mode=config["render_mode"]
+        size = config["size"]
+        max_steps = config["max_steps"]
+        render_mode = config["render_mode"]
         # Register fakewall if not already registered
         if "fakewall" not in OBJECT_TO_IDX:
             OBJECT_TO_IDX["fakewall"] = max(OBJECT_TO_IDX.values()) + 1
-        self.objects = list(config.objects)
-        self.reward_objects = list(config.reward_objects)
-        self.wall_colors = list(config.wall_color)
+
+        if "task_mode" not in config or config.get("task_mode") is None:
+            raise ValueError("`task_mode` must be defined in the config.")
+        self.task_mode = config["task_mode"]
+        if self.task_mode not in TASK_MODES:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES.keys())}")
+        mode_cfg = TASK_MODES[self.task_mode]
+        self.objects = list(mode_cfg["objects"])
+        self.reward_objects = list(mode_cfg["reward_objects"])
+        self.wall_colors = list(mode_cfg["wall_color"])
+
         if max_steps is None:
             self.max_steps = 4 * size * size
         else:

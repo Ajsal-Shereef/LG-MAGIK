@@ -1,0 +1,74 @@
+[
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target1",
+    "seed": 42,
+    "agent_name": "DQN",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 10
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 1.0
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-09-21 16:58:23"
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target1",
+    "seed": 123,
+    "agent_name": "DQN",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 10
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 1.0
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-09-21 17:40:40"
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target1",
+    "seed": 456,
+    "agent_name": "DQN",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 10
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 1.0
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-09-21 18:25:05"
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "DQN",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 8
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 0.8
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-09-21 19:52:49"
+  }
+]

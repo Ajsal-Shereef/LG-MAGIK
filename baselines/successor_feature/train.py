@@ -45,22 +45,20 @@ class Trainer():
         #Load environment
         if self.env_name == "PickEnv":
             from env.PickEnv import PickEnv
-            env = PickEnv(cfg.env, mode=cfg.env.mode, render_mode="rgb_array")
-        elif self.env_name == "MiniWorld":
+            env = PickEnv(cfg.env, render_mode="rgb_array")
+        elif self.env_name.startswith("MiniWorld"):
             from env.MiniWorld import PickObjectEnv
             from architectures.common_utils import SwitchChannel
+            cfg.env.task_mode = "source"
             env_0 = SwitchChannel(PickObjectEnv(cfg.env))
             self.envs.append(env_0)
-            cfg.env.objects = [["duckie", "ball"]]
-            cfg.env.reward_objects = [["duckie"]]
+            cfg.env.task_mode = "target1"
             env_1 = SwitchChannel(PickObjectEnv(cfg.env))
             self.envs.append(env_1)
-            cfg.env.layout = ["wood/brick_wall"]
+            cfg.env.task_mode = "target2"
             env_2 = SwitchChannel(PickObjectEnv(cfg.env))
             self.envs.append(env_2)
-            cfg.env.objects = [["duckie", "box"]]
-            cfg.env.reward_objects = [["duckie"]]
-            cfg.env.layout = ["grass/concrete"]
+            cfg.env.task_mode = "target3"
             env_3 = SwitchChannel(PickObjectEnv(cfg.env))
             self.envs.append(env_3)
         elif self.env_name ==  "SimplePickup":
@@ -68,26 +66,22 @@ class Trainer():
             from minigrid.wrappers import RGBImgPartialObsWrapper
             from minigrid.wrappers import ImgObsWrapper
             from architectures.common_utils import SwitchChannel
+            cfg.env.task_mode = "source"
             env0 = SimplePickup(cfg.env)
             env0 = RGBImgPartialObsWrapper(env0, tile_size=cfg.env.tile_size)
             env0 = SwitchChannel(ImgObsWrapper(env0))
             self.envs.append(env0)
-            cfg.env.objects = [["purple box", "green ball"]]
-            cfg.env.reward_objects = [["purple box"]]
+            cfg.env.task_mode = "target1"
             env1 = SimplePickup(cfg.env)
             env1 = RGBImgPartialObsWrapper(env1, tile_size=cfg.env.tile_size)
             env1 = SwitchChannel(ImgObsWrapper(env1))
             self.envs.append(env1)
-            cfg.env.wall_color = ["blue"]
-            cfg.env.objects = [["purple box", "green ball"]]
-            cfg.env.reward_objects = [["purple box"]]
+            cfg.env.task_mode = "target2"
             env2 = SimplePickup(cfg.env)
             env2 = RGBImgPartialObsWrapper(env2, tile_size=cfg.env.tile_size)
             env2 = SwitchChannel(ImgObsWrapper(env2))
             self.envs.append(env2)
-            cfg.env.wall_color = ["grey"]
-            cfg.env.objects = [["purple box", "red ball"]]
-            cfg.env.reward_objects = [["purple box"]]
+            cfg.env.task_mode = "target3"
             env3 = SimplePickup(cfg.env)
             env3 = RGBImgPartialObsWrapper(env3, tile_size=cfg.env.tile_size)
             env3 = SwitchChannel(ImgObsWrapper(env3))
@@ -259,21 +253,18 @@ def main(cfg):
     env_name = cfg.env.name
     if env_name == "PickEnv":
         from env.PickEnv import PickEnv
-        env = PickEnv(cfg.env, mode=cfg.env.mode, render_mode="rgb_array")
+        env = PickEnv(cfg.env, render_mode="rgb_array")
         train_transform = get_train_transform_mlp
-    elif env_name == "MiniWorld":
+    elif env_name.startswith("MiniWorld"):
         from env.MiniWorld import PickObjectEnv
         from architectures.common_utils import SwitchChannel
-        cfg.env.objects = [["duckie", "ball"]]
-        cfg.env.reward_objects = [["duckie"]]
+        cfg.env.task_mode = "target1"
         env_1 = SwitchChannel(PickObjectEnv(cfg.env))
         transfer_env.append(env_1)
-        cfg.env.layout = ["wood/brick_wall"]
+        cfg.env.task_mode = "target2"
         env_2 = SwitchChannel(PickObjectEnv(cfg.env))
         transfer_env.append(env_2)
-        cfg.env.objects = [["duckie", "box"]]
-        cfg.env.reward_objects = [["duckie"]]
-        cfg.env.layout = ["grass/concrete"]
+        cfg.env.task_mode = "target3"
         env_3 = SwitchChannel(PickObjectEnv(cfg.env))
         transfer_env.append(env_3)
     elif env_name ==  "SimplePickup":
@@ -281,27 +272,21 @@ def main(cfg):
         from minigrid.wrappers import RGBImgPartialObsWrapper
         from minigrid.wrappers import ImgObsWrapper
         from architectures.common_utils import SwitchChannel
-        cfg.env.objects = [["purple box", "green ball"]]
-        cfg.env.reward_objects = [["purple box"]]
+        cfg.env.task_mode = "target1"
         env1 = SimplePickup(cfg.env)
         env1 = RGBImgPartialObsWrapper(env1, tile_size=cfg.env.tile_size)
         env1 = SwitchChannel(ImgObsWrapper(env1))
         transfer_env.append(env1)
-        cfg.env.wall_color = ["blue"]
+        cfg.env.task_mode = "target2"
         env2 = SimplePickup(cfg.env)
         env2 = RGBImgPartialObsWrapper(env2, tile_size=cfg.env.tile_size)
         env2 = SwitchChannel(ImgObsWrapper(env2))
-        cfg.env.objects = [["purple box", "red ball"]]
-        cfg.env.reward_objects = [["purple box"]]
+        transfer_env.append(env2)
+        cfg.env.task_mode = "target3"
         env3 = SimplePickup(cfg.env)
         env3 = RGBImgPartialObsWrapper(env3, tile_size=cfg.env.tile_size)
         env3 = SwitchChannel(ImgObsWrapper(env3))
         transfer_env.append(env3)
-        # cfg.env.wall_color = ["blue"]
-        # env3 = SimplePickup(cfg.env)
-        # env3 = RGBImgPartialObsWrapper(env3, tile_size=cfg.env.tile_size)
-        # env3 = SwitchChannel(ImgObsWrapper(env3))
-        # transfer_env.append(env3)
     
     transfer = TransferEvaluation(agent, agent.device, env_name)
     for env in transfer_env:

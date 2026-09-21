@@ -1,10 +1,10 @@
 defaults:
-  - models: text_conditioned_vae_cnn_MiniWorldQuantized
-  - env: MiniWorld
+  - models: text_conditioned_vae_cnn_MiniWorldNoisy
+  - env: MiniWorldNoisy
 
 agent_name : DQN
 dqn_model_dir : model_weights/MiniWorld/PPO/seed_123/{agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
-vae_model_dir: model_weights/MiniWorldQuantized/VAE_1D/seed_42/VAE_1D.tar
+vae_model_dir: model_weights/MiniWorldNoisy/VAE_1D_no_text_disc/seed_42/VAE_1D_no_text_disc.tar
 result_dir: result
 mode: transfer
 querry_mode: huggingface # Querry mode for LLM. options openrouter/huggingface
@@ -14,6 +14,8 @@ vllm_model: "x-ai/grok-4.1-fast"
 alternative_vllm : "google/gemini-2.5-flash"
 llm_caption: false
 seed: 0
+num_episode: 10
+performance_md_file: "Results/agent_performance.md"
 
 caption_system_prompt: >
     You are a high-precision computer vision annotator for the MiniWorld 3D environment for RL research. 

@@ -16,7 +16,7 @@ from architectures.common_utils import save_dataset_for_features, collect_data, 
 class PickEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, cfg: DictConfig, mode="train", render_mode="rgb_array"):
+    def __init__(self, cfg: DictConfig, render_mode="rgb_array"):
         super().__init__()
 
         # Config (strict: accept only cfg)
@@ -37,8 +37,12 @@ class PickEnv(gym.Env):
         self.render_scale = cfg.render_scale
         self.agent_shape = cfg.agent_shape
 
-        # Mode: "data_collection" or "train"
-        self.mode = mode
+        if "task_mode" not in cfg or cfg.get("task_mode") is None:
+            raise ValueError("`task_mode` must be defined in the config.")
+        self.task_mode = cfg["task_mode"]
+        if self.task_mode not in ("source", "target"):
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected 'source' or 'target'.")
+        self.mode = cfg.get("mode", "train")
 
         # max per-step angle deviation at dist=1 (add to Hydra config)
         self.max_turn_rads = getattr(cfg, "max_turn_rads", 0.5)  # radians at dist=1
@@ -87,12 +91,12 @@ class PickEnv(gym.Env):
         return description
     
     def _get_mission(self):
-        if self.mode == "train":
+        if self.task_mode == "source":
             self.mission = f"Pick the light circle or heavy square without breaking it by applying required force."
-        elif self.mode == "test":
+        elif self.task_mode == "target":
             self.mission = f"Pick the heavy circle or light square without breaking it by applying required force."
         else:
-            self.mission = "No mission specified" 
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected 'source' or 'target'.")
         return self.mission   
     
     # ---------------------------
@@ -116,25 +120,27 @@ class PickEnv(gym.Env):
         self.agent_angle = float(self.np_random.uniform(-np.pi, np.pi))
         self.agent_radius = self.width / 20.0  # scales with resolution
     
-        # Object initialization based on mode
-        if self.mode == "train":
-            # Train mode: only light ball (circle) and heavy square
+        # Object initialization based on mode and task_mode
+        if self.mode == "collect_data":
+            # data_collection mode: random type and weight
+            obj_type = self.np_random.choice(["circle", "square"])
+            obj_weight = self.np_random.choice(["light", "heavy"])
+        elif self.task_mode == "source":
+            # Source mode: only light ball (circle) and heavy square
             obj_type = self.np_random.choice(["circle", "square"])
             if obj_type == "circle":
                 obj_weight = "light"  # light ball
             else:
                 obj_weight = "heavy"  # heavy square
-        elif self.mode == "collect_data":
-            # data_collection mode: random type and weight
-            obj_type = self.np_random.choice(["circle", "square"])
-            obj_weight = self.np_random.choice(["light", "heavy"])
-        else:
-            # Test mode: only heavy ball (circle) and light square
+        elif self.task_mode == "target":
+            # Target mode: only heavy ball (circle) and light square
             obj_type = self.np_random.choice(["circle", "square"])
             if obj_type == "circle":
-                obj_weight = "heavy"  # light ball
+                obj_weight = "heavy"  # heavy ball
             else:
-                obj_weight = "light"  # heavy square
+                obj_weight = "light"  # light square
+        else:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected 'source' or 'target'.")
     
         # Dynamic margin for objects (20% of dimension, with minimum of 15 pixels)
         obj_margin_x = max(15, int(self.width * 0.20))
@@ -611,12 +617,12 @@ def main(cfg: DictConfig) -> None:
     is_collect_data = True
     cfg.observation_mode = "feature"
     if is_collect_data:
-        mode="collect_data"
+        cfg.mode = "collect_data"
     else:
-        mode="train"
+        cfg.mode = "train"
     cfg.verbose = True
     cfg.max_steps = 50
-    env = PickEnv(cfg, mode)
+    env = PickEnv(cfg)
     paired_data = []
     # Total number of timesteps to collect
     total_training_data = 150000

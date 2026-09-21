@@ -30,6 +30,7 @@ class TextConditionedVAE(nn.Module):
         self.observation_model = kwargs["observation_mode"]
         self.max_grad_norm = kwargs.get("max_grad_norm", None)
         self.use_text_discriminator = kwargs.get("use_text_discriminator", True)
+        self.max_sequence_length = kwargs.get("max_sequence_length", None)
 
         # ---- Encoder/Decoder ----
         if self.observation_model == "image":
@@ -47,7 +48,6 @@ class TextConditionedVAE(nn.Module):
             use_coord_conv = kwargs.get("use_coord_conv", True)
             n_text_attn_layers = kwargs.get("n_text_attn_layers", 2)
             self.is_perceptual_loss = kwargs["is_perceptual_loss"]
-            self.max_sequence_length = kwargs.get("max_sequence_length", None)
             self.latent_type = kwargs.get("latent_type", "spatial")
             self.latent_dim = kwargs.get("latent_dim", 16)
             
@@ -67,13 +67,6 @@ class TextConditionedVAE(nn.Module):
                     use_coord_conv=use_coord_conv, n_text_attn_layers=n_text_attn_layers,
                     latent_type="spatial", latent_dim=None, encoder_final_dim=encoder_final_dim
                 )
-            
-            # Use max_sequence_length if provided, else fall back to tokenizer default
-            # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
-            if self.max_sequence_length is not None:
-                self.max_sequence_length = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
-            else:
-                self.max_sequence_length = self.decoder.tokenizer.model_max_length
             
             if self.use_text_discriminator:
                 disc_in_dim = self.latent_dim if self.latent_type == "vector" else (latent_channel * np.prod(encoder_final_dim))
@@ -101,6 +94,8 @@ class TextConditionedVAE(nn.Module):
             latent_dim = kwargs["latent_dim"]
             discriminator_fc_hidden  = kwargs["discriminator_fc_hidden"]
             decoder_hidden_dims = kwargs["decoder_hidden_dims"]
+            self.latent_type = kwargs.get("latent_type", "vector")
+            self.latent_dim = latent_dim
 
             self.encoder = MLPEncoder(input_dim, hidden_dims, encoder_out_dim, num_resblocks, norm, activ, dropout)
             self.bottleneck = GaussianSample(encoder_out_dim, latent_dim)
@@ -112,6 +107,13 @@ class TextConditionedVAE(nn.Module):
             else:
                 self.caption_discriminator = None
             self.train_transform = get_train_transform_mlp()
+
+        # Use max_sequence_length if provided, else fall back to tokenizer default
+        # IMPORTANT: Clamp to model_max_length to avoid errors with models like CLIP (max 77)
+        if self.max_sequence_length is not None:
+            self.max_sequence_length = min(self.max_sequence_length, self.decoder.tokenizer.model_max_length)
+        else:
+            self.max_sequence_length = self.decoder.tokenizer.model_max_length
             
     def set_optimizers(self, parms):
         # VAE parameters (Encoder, Bottleneck, Decoder — no discriminators)
@@ -468,6 +470,9 @@ class TextConditionedVAE(nn.Module):
             torch.Tensor: A single image grid of size (num_samples, 2 + num_prompts).
         """
         # --- 1. SETUP ---
+        if self.observation_model != "image":
+            return None
+
         if not prompts:
             raise ValueError("The generate function requires at least one text prompt.")
 

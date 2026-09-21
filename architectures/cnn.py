@@ -5,10 +5,9 @@ import math
 import numpy as np
 import torch.nn.init as init
 # from architectures.m2_vae.vae import FiLM
-from architectures.common_utils import identity, get_activation, get_normalisation_2d
+from architectures.common_utils import identity, get_activation, get_normalisation_2d, load_text_encoder_and_tokenizer
 from architectures.mlp import MLP, GaussianDist, CategoricalDistParams, TanhGaussianDistParams
 import torch.nn.functional as F
-from transformers import CLIPTokenizer, CLIPTextModel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -645,8 +644,7 @@ class CNNTextConditionedDecoder(nn.Module):
         # Number of early blocks that use z-only FiLM (no text cross-attention)
         self.n_spatial_only = n_upsample - n_text_attn_layers
         
-        self.tokenizer = CLIPTokenizer.from_pretrained(clip_model, trust_remote_code=True)
-        self.text_encoder = CLIPTextModel.from_pretrained(clip_model, trust_remote_code=True)
+        self.tokenizer, self.text_encoder = load_text_encoder_and_tokenizer(clip_model, trust_remote_code=True)
         
         # Freeze the CLIP model parameters
         for params in self.text_encoder.parameters():

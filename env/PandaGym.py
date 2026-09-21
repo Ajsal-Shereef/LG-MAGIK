@@ -76,11 +76,12 @@ MIN_SEPARATION = 2 * DEFAULT_CUBE_HALF + 0.06   # ~0.10 m
 # Target task: "beside" landmark (a fixed position in space)
 # near_threshold * 2 is the outer ring; landmark radius sets the inner ring
 LANDMARK_RADIUS = 0.04   # inner exclusion radius (metres)
+TASK_MODES = ("source", "target1", "target2", "target3")
 
 
 class PandaGymPickPlaceEnv(gym.Env):
     """
-    Lightweight ASPECT-compatible wrapper for panda-gym pick-and-place.
+    LG-MAGIK compatible wrapper for panda-gym pick and place tasks.
 
     Uses the built-in PandaPickAndPlaceDense-v3 environment (all default
     dimensions / physics) and adds:
@@ -100,7 +101,12 @@ class PandaGymPickPlaceEnv(gym.Env):
     def __init__(self, config: DictConfig, **kwargs):
         super().__init__()
 
-        self.task_mode      = config.get("task_mode", "source")
+        if "task_mode" not in config or config.get("task_mode") is None:
+            raise ValueError("`task_mode` must be defined in the config.")
+        self.task_mode = config["task_mode"]
+        if self.task_mode not in TASK_MODES:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
+
         self.verbose        = config.get("verbose", False)
         self.max_steps      = config.get("max_steps", 100)
         self.reward_type    = config.get("reward_type", "dense")
@@ -165,8 +171,10 @@ class PandaGymPickPlaceEnv(gym.Env):
             return "PandaSimplePickPlaceBesideTarget1"
         elif self.task_mode == "target2":
             return "PandaSimplePickPlaceBesideTarget2"
-        else:
+        elif self.task_mode == "target3":
             return "PandaSimplePickPlaceMidpoint"
+        else:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
 
     def _gen_mission(self):
         if self.task_mode == "source":
@@ -175,8 +183,10 @@ class PandaGymPickPlaceEnv(gym.Env):
             return "Pick up the cube and place it beside the blue landmark."
         elif self.task_mode == "target2":
             return "Pick up the cube and place it beside the red landmark."
-        else:
+        elif self.task_mode == "target3":
             return "Pick up the cube and place it at the midpoint between the blue and red landmarks."
+        else:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
 
     def _get_environment_description(self):
         return (

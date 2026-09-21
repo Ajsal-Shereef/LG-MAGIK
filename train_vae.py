@@ -237,8 +237,9 @@ def train(args: DictConfig) -> None:
                     if should_log_media or should_generate:
                         media_payload = {}
                         tracker = accelerator.get_tracker("wandb")
+                        is_image_obs = cfg.model.get("observation_mode", "image") == "image"
 
-                        if should_log_media:
+                        if should_log_media and is_image_obs:
                             num_images_to_log = min(batch["pixel_values"].shape[0], 8)
                             
                             img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)

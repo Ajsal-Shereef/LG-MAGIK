@@ -1,7 +1,5 @@
 name : MiniWorld 
-objects : [["box", "ball"]]
-reward_objects : [["box"]]
-layout : ["grass/concrete"] #options:wood/brick_wall, grass/concrete
+task_mode : "source" # options: "source", "target1", "target2", "target3"
 max_steps : 100
 render_mode : "none"
 size : 10

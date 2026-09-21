@@ -11,6 +11,9 @@ from causal_world.task_generators import generate_task
 import numpy as np
 import cv2
 
+TASK_MODES = ("source", "target")
+
+
 class CausalWorldPickEnv(gymnasium.Env):
     """
     LG-MAGIK compatible wrapper for a CausalWorld pick and place task.
@@ -27,7 +30,11 @@ class CausalWorldPickEnv(gymnasium.Env):
         self.name = config.get("name", "CausalWorld")
         
         # Mode determines whether we are the training source or unseen target testing env
-        self.task_mode = config.get("task_mode", "source")
+        if "task_mode" not in config or config.get("task_mode") is None:
+            raise ValueError("`task_mode` must be defined in the config.")
+        self.task_mode = config["task_mode"]
+        if self.task_mode not in TASK_MODES:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
         
         # We lock the affordance to pick_and_place universally
         task = generate_task(task_generator_id="pick_and_place")
@@ -62,9 +69,11 @@ class CausalWorldPickEnv(gymnasium.Env):
     def _gen_mission(self):
         if self.task_mode == "source":
             return "Pick and place the blue block in the designated red area."
-        else:
+        elif self.task_mode == "target":
             # Target mode uses relational placement ("beside")
             return "Pick and place the green block beside the yellow cylinder."
+        else:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
 
     def reset(self, *, seed=None, options=None):
         if seed is not None:

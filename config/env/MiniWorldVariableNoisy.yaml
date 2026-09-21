@@ -1,0 +1,19 @@
+name : MiniWorldVariableNoisy
+task_mode : "source" # options: "source", "target1", "target2", "target3"
+max_steps : 100
+render_mode : "none"
+size : 10
+obs_width : 80
+obs_height : 80
+n_downsample : 3
+total_timestep : 200000
+fps : 2.5
+verbose : True
+observation_mode : image
+mission : ???
+validation_prompts :
+  - A green grass floor stretches toward a grey wall, under an open blue sky.
+  - A blue box is situated at 1.2 units and 24.0 degrees to the left, resting upon a green grass floor enclosed by gray walls beneath a clear blue sky.
+  - A blue box is visible at 3.3 units and 29.4 degrees to the left, while a green ball is positioned at 2.0 units and 24.5 degrees to the right, surrounded by a gray wall under a blue sky.
+  - A green ball sits at 1.8 units and 33.2 degrees to the left on a grassy surface against a gray wall, beneath a blue sky.
+  - Under a clear blue sky, a green ball sits on a green grass floor, positioned at 4.5 units and 0.2 degrees to the left against grey walls. Further away, a blue box is situated at 5.0 units and 27.5 degrees to the left.

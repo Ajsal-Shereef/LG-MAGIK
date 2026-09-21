@@ -13,7 +13,7 @@ data:
   num_workers: 8
   image_column: image
   caption_column: text
-  text_encoder_path: "openai/clip-vit-base-patch32" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14
+  text_encoder_path: "sentence-transformers/all-MiniLM-L6-v2" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14 
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   use_text_discriminator: ${models.use_text_discriminator}

@@ -28,12 +28,30 @@ from collections.abc import Iterable
 from torchvision.utils import make_grid
 from datasets import load_dataset
 from omegaconf import DictConfig
-from transformers import CLIPTokenizer
+from transformers import AutoTokenizer, AutoConfig, AutoModel, CLIPTextModel, CLIPTokenizer
 import torchvision.models as models
 from torch.utils.data import Dataset, DataLoader
 from torch import distributions as pyd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def load_text_encoder_and_tokenizer(model_path, trust_remote_code=True):
+    """
+    Universally loads a tokenizer and text encoder supporting:
+      - CLIP (e.g. 'openai/clip-vit-base-patch32')
+      - LongCLIP (e.g. 'zer0int/LongCLIP-GmP-ViT-L-14')
+      - SentenceTransformers / BERT / MiniLM (e.g. 'sentence-transformers/all-MiniLM-L6-v2')
+    """
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+    model_type = getattr(config, "model_type", "")
+    
+    if "clip" in model_type or (hasattr(config, "text_config") and "clip" in getattr(config.text_config, "model_type", "")):
+        encoder = CLIPTextModel.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+    else:
+        encoder = AutoModel.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+    return tokenizer, encoder
 
 
 def identity(x, dim=0):
@@ -312,7 +330,7 @@ class NumpyFeaturesDataset(Dataset):
 
         self.tokenizer = None
         if tokenizer_path:
-             self.tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
+             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
 
     def __len__(self):
         return len(self.metadata)
@@ -394,13 +412,13 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         if cfg.data.image_column not in column_names:
             raise ValueError(f"Image column '{cfg.data.image_column}' not found in {column_names}")
 
-        tokenizer = CLIPTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(cfg.data.text_encoder_path, trust_remote_code=True)
         def preprocess_train(examples: Dict) -> Dict:
             images = [image.convert("RGB") for image in examples[cfg.data.image_column]]
             examples["pixel_values"] = [train_transforms(image) for image in images]
             if cfg.data.caption_column:
                 
-                max_len = cfg.model.get("max_sequence_length", 77)
+                max_len = cfg.model.get("max_sequence_length", tokenizer.model_max_length)
                 input_ids, attention_mask = tokenize_captions(tokenizer, examples[cfg.data.caption_column], max_length=max_len)
                 examples["input_ids"] = input_ids
                 examples["attention_mask"] = attention_mask
@@ -713,7 +731,9 @@ def get_normalisation_1d(norm, norm_dim, affine=True):
     if norm == 'bn':
         return nn.BatchNorm1d(norm_dim, affine=affine)
     elif norm == 'in':
-        return nn.InstanceNorm1d(norm_dim, affine=affine)
+        # In 1D MLPs with 2D tensors (N, D), normalizing each instance across its features
+        # is LayerNorm. nn.InstanceNorm1d expects 3D (N, C, L) signals with a length dimension.
+        return nn.LayerNorm(norm_dim, elementwise_affine=affine)
     elif norm == 'ln':
         return nn.LayerNorm(norm_dim, elementwise_affine=affine)
     elif norm == 'group':

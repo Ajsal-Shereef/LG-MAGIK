@@ -6,7 +6,10 @@ import torch
 import logging
 import numpy as np
 from PIL import Image
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -24,6 +27,9 @@ def main(args: DictConfig) -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+    evaluated_env_name = args.env.name
+    task_mode = args.env.get("task_mode", "unknown")
+
     if args.env.name ==  "SimplePickup":
         if args.mode == "transfer":
             args.env.verbose = True
@@ -39,10 +45,10 @@ def main(args: DictConfig) -> None:
         if args.mode == "transfer":
             args.env.verbose = True
         from env.PickEnv import PickEnv
-        env = PickEnv(args.env, mode=args.env.mode)
+        env = PickEnv(args.env)
         env_name = "PickEnv"
         env_description = env.env_description
-    elif args.env.name == "MiniWorld":
+    elif args.env.name.startswith("MiniWorld"):
         if args.mode == "transfer":
             args.env.verbose = True
         from env.MiniWorld import PickObjectEnv
@@ -63,7 +69,11 @@ def main(args: DictConfig) -> None:
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
-    
+    if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "task_mode"):
+        task_mode = env.unwrapped.task_mode
+    elif hasattr(env, "task_mode"):
+        task_mode = env.task_mode
+
     print("[INFO] Agent name: ", args.agent_name)
     print("[INFO] Env:", args.env.name)
     print(f"[INFO] Using device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
@@ -131,8 +141,9 @@ def main(args: DictConfig) -> None:
         vision_model.eval()
         
         system_prompt = args.system_prompt
-        # Load the .env file
-        load_dotenv(dotenv_path="config/.env")
+        # Load the .env file if available
+        if load_dotenv is not None and os.path.exists("config/.env"):
+            load_dotenv(dotenv_path="config/.env")
     
         if args.querry_mode == "openrouter":
             # Access the API key
@@ -154,6 +165,9 @@ def main(args: DictConfig) -> None:
     # Get the mission
     mission = env.unwrapped.mission
   
+    scores = []
+    running_average_score = 0.0
+
     for episode in range(args.num_episode):
         frame_array_partial = []
         frame_array_full = []
@@ -233,6 +247,10 @@ def main(args: DictConfig) -> None:
             state = next_state
             # print(f"Episode step done: {episode_step}")
             episode_step += 1
+
+        scores.append(cumulative_reward)
+        running_average_score = float(np.mean(scores))
+
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
             save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/transfer"
@@ -240,13 +258,34 @@ def main(args: DictConfig) -> None:
             save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
-        print(f"----------- Episode done:  {episode} ----------------")
+        print(f"----------- Episode done:  {episode} | Score: {cumulative_reward} | Running Average Score: {running_average_score:.4f} ----------------")
     
     if args.env.name ==  "SimplePickup" or args.env.name ==  "MiniGridRelational":
         agent_performance = env.unwrapped.get_performance_metric()
     else:
         agent_performance = env.get_performance_metric()
+    if agent_performance is None:
+        agent_performance = {}
+    agent_performance["running_average_score"] = running_average_score
     print("Agent performance" , agent_performance)
+    
+    performance_md_file = args.get("performance_md_file", "Results/agent_performance.md")
+    if performance_md_file:
+        try:
+            from utils.update_performance_md import append_or_update_metric
+            append_or_update_metric(
+                md_file_path=performance_md_file,
+                env_name=evaluated_env_name,
+                task_mode=task_mode,
+                seed=base_seed,
+                agent_name=args.agent_name,
+                performance=agent_performance,
+                engine_name=args.get("llm_model", "google/gemma-4-12B-it"),
+                num_episodes=args.num_episode
+            )
+            print(f"[INFO] Performance metrics appended to {performance_md_file}")
+        except Exception as e:
+            print(f"[WARNING] Failed to update performance report: {e}")
     
 if __name__ == "__main__":
     main()

@@ -18,8 +18,8 @@ model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   use_text_discriminator: ${models.use_text_discriminator}
   input_dim: 12
-  norm: in
-  activ: selu
+  norm: group
+  activ: gelu
   pad_type: replicate
   encoder_hidden_dims:
   - 128

@@ -1,0 +1,24 @@
+defaults:
+  - _self_
+
+hydra:
+  job:
+    chdir: false
+
+paths:
+  var_dir: "data/Variable_data_MiniWorld"
+  noisy_dir: "data/MiniWorldNoisy"
+  output_dir: "data/MiniWorldVariableNoisy"
+  link_mode: "symlink" # "symlink" (instant, zero disk) or "copy"
+
+model:
+  model_id: "google/gemma-4-12B-it"
+  dtype: "bfloat16"
+  batch_size: 32
+  temperature: 0.2
+  top_p: 0.95
+  max_new_tokens: 80
+
+options:
+  limit: null # Set to integer (e.g. 100) for testing, or null for all
+  log_interval: 10

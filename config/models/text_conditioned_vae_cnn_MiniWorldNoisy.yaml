@@ -7,13 +7,13 @@ model_name : "VAE"
 use_text_discriminator: true
 seed: null
 data:
-  train_dir: data/${env.name}
+  train_dir: data/MiniWorldVariableNoisy
   cache_dir: null
   batch_size: 32
   num_workers: 8
   image_column: image
   caption_column: text
-  text_encoder_path: "openai/clip-vit-base-patch32" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14
+  text_encoder_path: "zer0int/LongCLIP-GmP-ViT-L-14" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14, sentence-transformers/all-MiniLM-L6-v2
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   use_text_discriminator: ${models.use_text_discriminator}

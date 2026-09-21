@@ -177,6 +177,8 @@ class RelationalGrid(Grid):
         cls._layered_tile_cache[key] = img
         return img
 
+TASK_MODES = ("source", "target1", "target2", "target3", "target4", "target5")
+
 
 class RelationalPickPlaceEnv(MiniGridEnv):
     """
@@ -210,6 +212,11 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             return "Pick up the red ball and drop it at the symmetric opposite of the yellow box."
         elif self.task_mode == "target3":
             return "Pick up the red ball and drop it on a cell that is exactly 2 Manhattan-distance away from the yellow box, choosing the one nearest to the agent not colluding with the agent location (choose only one if multiple)."
+        elif self.task_mode == "target4":
+            return (
+                "Pick up the red ball and drop it at the symmetric opposite "
+                "of the cell two cells above the yellow box."
+            )
         elif self.task_mode == "target5":
             return (
                 "Pick up the red ball and drop it on the yellow target and "
@@ -217,14 +224,15 @@ class RelationalPickPlaceEnv(MiniGridEnv):
                 "The two pairs may be completed in any order."
             )
         else:
-            return (
-                "Pick up the red ball and drop it at the symmetric opposite "
-                "of the cell two cells above the yellow box."
-            )
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
 
     def __init__(self, config: DictConfig, **kwargs):
         self.size = config.get("size", 8)
-        self.task_mode = config.get("task_mode", "source")
+        if "task_mode" not in config or config.get("task_mode") is None:
+            raise ValueError("`task_mode` must be defined in the config.")
+        self.task_mode = config["task_mode"]
+        if self.task_mode not in TASK_MODES:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES)}")
         self.verbose = config.get("verbose", False)
         
         max_steps = config.get("max_steps", 20)

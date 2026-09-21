@@ -4,8 +4,7 @@ from torch.distributions import Categorical, Normal
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from transformers import CLIPTokenizer, CLIPTextModel
-from architectures.common_utils import identity, get_activation, get_normalisation_1d
+from architectures.common_utils import identity, get_activation, get_normalisation_1d, load_text_encoder_and_tokenizer
 from architectures.math_utils import TanhNormal
 
 
@@ -413,8 +412,7 @@ class MLPTextConditionedDecoder(nn.Module):
         #Conv layer to map latent channel to dim
         self.mapping_linear = Linear(latent_dim, decoder_hidden_dims[0])
         #Text encoder and tockenizer
-        self.tokenizer=CLIPTokenizer.from_pretrained(clip_model)
-        self.text_encoder=CLIPTextModel.from_pretrained(clip_model)
+        self.tokenizer, self.text_encoder = load_text_encoder_and_tokenizer(clip_model, trust_remote_code=True)
         #Freeze the CLIP model parameters
         for params in self.text_encoder.parameters():
             params.requires_grad = False
@@ -478,7 +476,7 @@ class MLPTextConditionedDecoder(nn.Module):
         unique_embeddings_tensor = torch.stack(unique_embeddings)
         return unique_embeddings_tensor[inverse_indices]
 
-    def forward(self, z, text_tockens, attention_mask):
+    def forward(self, z, text_tockens, attention_mask, return_text_feats=False):
         raw_text_feats = self._encode_text(text_tockens, attention_mask=attention_mask)
         text_feats = self.text_adapter(raw_text_feats)
         # Expand text_feat to spatial (broadcast over H_z, W_z)
@@ -491,7 +489,10 @@ class MLPTextConditionedDecoder(nn.Module):
         for blk,linear in zip(self.attention_film_blocks, self.linear_blocks):
             x=blk(x,z,text_feats, attention_mask)
             x=linear(x)
-        return self.final(x, text_feats, attention_mask)
+        out = self.final(x, text_feats, attention_mask)
+        if return_text_feats:
+            return out, text_feats
+        return out
 
     def train(self, mode=True):
         """Override to keep frozen text encoder in eval mode."""

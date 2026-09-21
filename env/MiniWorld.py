@@ -196,6 +196,29 @@ class Agent(Entity):
     def step(self, delta_time):
         pass
 
+TASK_MODES = {
+    "source": {
+        "objects": [["box", "ball"]],
+        "reward_objects": [["box"]],
+        "layout": ["grass/concrete"],
+    },
+    "target1": {
+        "objects": [["duckie", "ball"]],
+        "reward_objects": [["duckie"]],
+        "layout": ["grass/concrete"],
+    },
+    "target2": {
+        "objects": [["duckie", "ball"]],
+        "reward_objects": [["duckie"]],
+        "layout": ["wood/brick_wall"],
+    },
+    "target3": {
+        "objects": [["ball", "box"]],
+        "reward_objects": [["ball"]],
+        "layout": ["grass/concrete"],
+    },
+}
+
 class PickObjectEnv(MiniWorldEnv):
     """
     A custom MiniWorld environment with two layout type : asphalt and grass.
@@ -222,9 +245,19 @@ class PickObjectEnv(MiniWorldEnv):
             self.max_steps = 4 * self.size * self.size
         else:
             self.max_steps = max_steps
-        self.objects = list(config.objects)
-        self.reward_objects = list(config.reward_objects)
-        self.layout = config.layout
+
+        if "task_mode" not in config or config.get("task_mode") is None:
+            raise ValueError("`task_mode` must be defined in the config.")
+
+        self.task_mode = config["task_mode"]
+        if self.task_mode not in TASK_MODES:
+            raise ValueError(f"Unknown task_mode: '{self.task_mode}'. Expected one of {list(TASK_MODES.keys())}")
+
+        mode_cfg = TASK_MODES[self.task_mode]
+        self.objects = list(mode_cfg["objects"])
+        self.reward_objects = list(mode_cfg["reward_objects"])
+        self.layout = list(mode_cfg["layout"])
+
         # caption_mode: "precise" (default) keeps exact numbers;
         # "qualitative" replaces them with structured distance/angle buckets.
         self.caption_mode = config.get("caption_mode", "precise")

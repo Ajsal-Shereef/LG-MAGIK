@@ -347,9 +347,9 @@ def main(args: DictConfig) -> None:
     # --- ENVIRONMENT SETUP ---
     if args.env.name == "PickEnv":
         from env.PickEnv import PickEnv
-        env = PickEnv(args.env, mode=args.env.mode, render_mode="rgb_array")
+        env = PickEnv(args.env, render_mode="rgb_array")
         mission = env.mission
-    elif args.env.name in ("MiniWorld", "MiniWorldQuantized"):
+    elif args.env.name.startswith("MiniWorld"):
         from env.MiniWorld import PickObjectEnv
         env = PickObjectEnv(args.env)
         mission = env.unwrapped.mission

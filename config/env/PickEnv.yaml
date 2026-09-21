@@ -13,7 +13,8 @@ force_penalty_coeff : 0.1
 verbose : true
 observation_mode : "feature" #feature/image
 mission : ???
-mode : train
+task_mode : "source" # Task distribution: "source" or "target"
+mode : "train" # Operational mode: "train" or "collect_data"
 fps : 3
 
 # New key for mode control
