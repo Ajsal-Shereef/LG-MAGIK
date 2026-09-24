@@ -112,7 +112,7 @@ def main(args: DictConfig) -> None:
     # Make the vision model
     # Setup Accelerator
     accelerator_project_config = ProjectConfiguration(
-        project_dir=args.models.accelerator.project_dir, 
+        project_dir=args.models.accelerator.project_dir,  
         logging_dir=args.models.accelerator.logging_dir
     )
     accelerator = Accelerator(
@@ -140,12 +140,35 @@ def main(args: DictConfig) -> None:
         #Setting the VAE model to eval mode
         vision_model.eval()
         
-        system_prompt = args.system_prompt
+        system_prompt = args.get("system_prompt", "")
         # Load the .env file if available
         if load_dotenv is not None and os.path.exists("config/.env"):
             load_dotenv(dotenv_path="config/.env")
     
-        if args.querry_mode == "openrouter":
+        mapping_strategy = args.get("mapping_strategy", "llm")
+        caption_retriever = None
+        if mapping_strategy == "retrieval":
+            from baselines.retrieval_baseline import CaptionRetriever
+            train_dir = cfg.data.train_dir
+            text_encoder_path = cfg.data.get("text_encoder_path", "openai/clip-vit-base-patch32")
+            caption_col = cfg.data.get("caption_column", "text")
+            unwrapped_vm = accelerator.unwrap_model(vision_model)
+            decoder = getattr(unwrapped_vm, "decoder", None)
+            tok = getattr(decoder, "tokenizer", None)
+            enc = getattr(decoder, "text_encoder", None)
+            caption_retriever = CaptionRetriever(
+                train_dir=train_dir,
+                text_encoder_path=text_encoder_path,
+                tokenizer=tok,
+                text_encoder=enc,
+                device=device,
+                caption_column=caption_col,
+                env_name=args.env.name
+            )
+            api_key = os.getenv('OPENROUTER_API_KEY')
+            pipe = None
+            alternative_pipe = None
+        elif args.querry_mode == "openrouter":
             # Access the API key
             api_key = os.getenv('OPENROUTER_API_KEY')
             pipe = args.llm_model
@@ -186,28 +209,30 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if args.get("llm_caption", False):
+                if args.env.name == "MiniWorldNoisy":
                     # Capture the frame
                     frame = state
                     # Encode the frame
                     base64_image = encode_image(frame)
                     
                     sensor_data = env.unwrapped.get_sensor_data()
-                    prompt_text = "Describe this image for a text-to-image training dataset."
+                    prompt_text = args.get("caption_user_prompt", "Describe this image for a text-to-image training dataset.")
                     if sensor_data:
-                        prompt_text += f"Sensor Data (Ground Truth):{sensor_data}, Incorporarate this sensor data into the description."
+                        prompt_text += f"\nSensor Data (Ground Truth): {sensor_data}, Incorporate this sensor data into the description."
 
                     vision_prompt = [
                         {"type": "text", "text": prompt_text},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-            ]
+                    ]
                     
                     try:
+                        vllm_api_key = api_key if api_key is not None else os.getenv('OPENROUTER_API_KEY')
+                        vllm_mode = args.get("vllm_mode", "openrouter" if (args.vllm_model and "/" in str(args.vllm_model)) else args.querry_mode)
                         caption = query_llm_vision(
                             system=args.caption_system_prompt,
                             prompt=vision_prompt,
-                            api_key=api_key,
-                            mode=args.querry_mode,
+                            api_key=vllm_api_key,
+                            mode=vllm_mode,
                             pipeline=args.vllm_model,
                             alternative_pipe=args.alternative_vllm,
                             temperature=0.1
@@ -227,15 +252,20 @@ def main(args: DictConfig) -> None:
                     except Exception as e:
                         print(f"[ERROR] LLM Captioning failed: {e}")
 
-                if "No other objects can be seen." in info['description']:
-                    llm_reply = info['description']
+                if mapping_strategy == "retrieval":
+                    target_caption = info['description']
+                    matched_caption, sim_score = caption_retriever.retrieve(target_caption)
+                    changed_state, imagined_state = vision_model.imagine(state, matched_caption)
                 else:
-                    llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, alternative_pipe, args.querry_mode)
-                llm_reply_json = preprocess_llm_output(llm_reply)
-                if llm_reply_json.get("imagine", False):
-                    changed_state, imagined_state = vision_model.imagine(state, llm_reply_json.get("description", ""))
-                else:
-                    changed_state, imagined_state = train_transforms(state), state
+                    if "No other objects can be seen." in info['description']:
+                        llm_reply = info['description']
+                    else:
+                        llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, alternative_pipe, args.querry_mode)
+                    llm_reply_json = preprocess_llm_output(llm_reply)
+                    if llm_reply_json.get("imagine", False):
+                        changed_state, imagined_state = vision_model.imagine(state, llm_reply_json.get("description", ""))
+                    else:
+                        changed_state, imagined_state = train_transforms(state), state
             else:
                 changed_state, imagined_state = train_transforms(state), state
             action = agent.predict(imagined_state, deterministic=False)[0]

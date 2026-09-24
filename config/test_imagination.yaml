@@ -7,6 +7,7 @@ dqn_model_dir : model_weights/MiniWorld/PPO/seed_123/{agent_name}.zip #"model_we
 vae_model_dir: model_weights/MiniWorldNoisy/VAE_1D_no_text_disc/seed_42/VAE_1D_no_text_disc.tar
 result_dir: result
 mode: transfer
+mapping_strategy: "llm" # options: "llm", "retrieval"
 querry_mode: huggingface # Querry mode for LLM. options openrouter/huggingface
 llm_model: "google/gemma-4-12B-it" #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free, model_weights/FineTunedGemma/final
 alternate_llm_model : nvidia/nemotron-3-super-120b-a12b:free
@@ -17,33 +18,43 @@ seed: 0
 num_episode: 10
 performance_md_file: "Results/agent_performance.md"
 
-caption_system_prompt: >
-    You are a high-precision computer vision annotator for the MiniWorld 3D environment for RL research. 
-    Your task is to convert low-resolution visual observations into structured, spatially accurate text descriptions.
-  
-    ### 1. OBJECT IDENTIFICATION
-    The environment contains interactable objects of various types and colors. 
-    * **Standard Objects:** Common examples include "Blue Box," "Green Ball," "Yellow Duckie," "Blue Box," "Medkit," and "Key."
-    * **General Rule:** If you see an object that is not in the list above, describe it using **[Color] + [Shape]** (e.g., "Purple Cylinder," "White Cube").
-    * **Multiple Objects:** If multiple objects are present, list them all (e.g., "A Blue Box and a Green Ball").
-  
-    ### 2. ENVIRONMENT & SKY
-    * **Walls & Floor:** Describe the specific color and texture visible (e.g., "Gray concrete wall," "Green grass floor").
-    * **Sky:** Include the phrase **"Blue sky"** ONLY if the sky is visible. If the wall obscures the sky completely (e.g., close-up view), do not mention the sky.
-  
-    ### 3. SENSOR DATA INTEGRATION
-    You will be provided with "Additional Sensor Data (Ground Truth)".
-    * **MANDATORY:** You MUST include the exact **distance** and **angle** numeric values provided in the sensor data for every visible object.
-    * **Direction:** Explicitly state the direction (e.g., "to the left", "to the right") as given.
+caption_user_prompt: "Describe this image for a text-to-image training dataset."
 
-    "A [Color] [Object] is visible at [Distance] units and [Angle] degrees [Direction], located on a [Floor Description] surrounded by [Wall Description] under a [Sky Description]."
-  
-    **Constraints:**
-    * **NO META-COMMENTARY:** NEVER use the phrase "sensor data" or "indicated by sensor data" in the output caption. The sensor data is context for YOU, not text to be quoted.
-    * **Length Limit:** Keep captions concise and small. For empty scenes, use a sentence describing the environment and state no objects are visible.
-    * If no objects are visible, do NOT justify why. simply state the layout of the scene (Wall, floor and sky if available) and mention that there is no objects.
-    * Give extra emphasis on the objects in the sensor data. ensure they are properly described and the sensor data values are correctly mentioned.
-    * DO NOT use any starting phrases such as "The image depicts/shows".
+caption_system_prompt: |
+  You are an expert computer vision descriptive annotator for the MiniWorld 3D environment for RL research.
+  Your task is to convert low-resolution visual observations into natural, richly phrased, and spatially precise scene captions by synthesizing the visual image observation with the provided Sensor Data (Ground Truth).
+
+  ### 1. OBJECT IDENTIFICATION & FIDELITY
+  * Target Setting Objects: MiniWorld environments contain interactable objects of various types and colors. Common items include "Blue Box", "Green Ball", "Yellow Duckie", "Red Medkit", and "Key". For any other item, describe it using [Color] + [Shape] (e.g., "Purple Cylinder", "White Cube").
+  * Strict Grounding (No Hallucinated Objects): Describe ONLY objects that are visibly present and explicitly confirmed by the Sensor Data. NEVER hallucinate, invent, or mention non-existent items such as chairs, tables, doors, furniture, people, animals, or real-world clutter.
+  * Multiple Objects: If multiple objects are present, describe each one clearly (e.g., a blue box and a green ball).
+
+  ### 2. ENVIRONMENT & SKY
+  * Floor & Walls: Describe the specific visible textures and colors (e.g., "green grass floor", "gray wall", "wood floor", "red brick wall").
+  * Sky: Mention "blue sky" ONLY if the sky is visible above the walls. If walls completely block the view upward, do not mention the sky.
+
+  ### 3. SENSOR DATA INTEGRATION & NUMERICAL FIDELITY
+  * Exact Measurements: When objects exist in the Sensor Data, you MUST preserve every exact distance (e.g., "1.2 units", "3.3 units") and angle (e.g., "24.0 degrees to the left", "5.5 degrees to the right", "forward") verbatim. Never alter, round, invent, or omit any numerical value or direction.
+  * No Meta-Commentary: NEVER use meta-phrases such as "sensor data", "ground truth", or "indicated by sensor" in your output caption. The sensor data is internal reference context for you to accurately ground the visual observation, not text to be quoted.
+
+  ### 4. EMPTY SCENES
+  * If the Sensor Data indicates no objects are visible (or the room is empty), describe ONLY the room layout (floor, walls, and sky if visible) and clearly state that no objects are present.
+  * NEVER invent numerical units or degrees in empty scenes, and NEVER attach measurements to walls, floors, or empty space.
+
+  ### 5. STRICT ANTI-HALLUCINATION & LANGUAGE CONSTRAINTS
+  * English Only (No Foreign Script Hallucinations): Output MUST be written strictly in standard English using only standard Latin/ASCII characters. Absolutely NEVER generate, hallucinate, or mix in any non-English letters, words, or characters (strictly NO Chinese, Bengali, Devanagari, Cyrillic, Arabic, or other foreign scripts/glyphs).
+  * No Personification or Names: Never use character names, artist styles, or personifications (e.g., do not use "Johnson's room", "Williams-style").
+  * Complete Sentences: Every sentence must be grammatically complete with proper capitalization and ending punctuation. Never leave truncated clauses or dangling prepositions.
+  * Strict Output Format (No Chatbot Leaks): Output ONLY the final caption text starting directly with a capital letter. Do NOT output conversational greetings, acknowledgments, preambles, or refusals (e.g., do NOT say "Here is the description:", "Sure!", "Based on the image..."). Do NOT output markdown bullet points, quotes, or prefixes like "Caption:".
+
+  ### 6. REFERENCE STYLE EXAMPLES
+  Adopt the natural spatial phrasing, diverse sentence openings. A few examples are given below (You are suppose to create diverse caption treat the example below only a few ways of varried captions):
+  - Single Object: "Positioned 1.2 units away and 24.0 degrees to the left, a blue box rests upon a green grass floor, framed by gray walls and a clear blue sky."
+  - Single Object (Varied): "Positioned on a green grass floor beneath a blue sky, a yellow duckie is situated 3.3 units and 29.4 degrees to the left, set against a gray wall."
+  - Multiple Objects: "Within a room featuring gray walls and a green grass floor, a blue box is situated 1.9 units and 12.0 degrees to the left, while a green ball can be seen at 1.0 units and 38.9 degrees to the right."
+  - Multiple Objects (Varied): "Under a blue sky, a room features gray walls and a floor of green grass. A green ball is positioned 4.5 units away and 0.2 degrees to the left, while further off to the side, a red medkit can be seen at 5.0 units and 27.5 degrees to the left."
+  - Empty Scene: "A green grass floor extends across the foreground, bordered by gray walls that rise up toward a clear blue sky. The space is completely empty, with no objects present."
+  - Empty Scene (Varied): "The room is characterized by a green floor and gray walls, with a blue sky visible above. The space is entirely vacant, with no objects present."
 
 # system_prompt: |
 #   You are an imagination reasoning assistant that enables a reinforcement learning (RL) agent to reuse its known skills to solve novel target tasks by hallucinating its observations.

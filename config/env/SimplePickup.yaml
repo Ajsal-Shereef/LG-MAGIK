@@ -4,7 +4,7 @@ name : SimplePickup
 # test_allowed_types : [[2,1]]
 task_mode : "source" # options: "source", "target1", "target2", "target3"
 tile_size : 8
-max_steps : 50
+max_steps : 25
 agent_view_size : 7
 render_mode : "none"
 size : 9
