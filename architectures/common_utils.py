@@ -1269,23 +1269,44 @@ def initialize_llm_hf_pipeline(model_id):
         else:
             try:
                 tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-            except AttributeError:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    model_id,
-                    trust_remote_code=True,
-                    extra_special_tokens={"video_token": "<|video|>"}
-                )
+            except Exception:
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, local_files_only=True)
+                except Exception:
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_id,
+                        trust_remote_code=True,
+                        extra_special_tokens={"video_token": "<|video|>"}
+                    )
             
             # Modern GPUs (Ampere, Hopper, etc.) benefit greatly from bfloat16
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                device_map="auto",
-                torch_dtype="auto",  
-                trust_remote_code=True 
-            )
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    device_map="auto",
+                    torch_dtype="auto",  
+                    trust_remote_code=True 
+                )
+            except Exception as load_err:
+                try:
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_id,
+                        device_map="auto",
+                        torch_dtype="auto",  
+                        trust_remote_code=True,
+                        local_files_only=True
+                    )
+                except Exception:
+                    raise load_err
+
+        try:
+            from transformers import AutoProcessor
+            model._processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        except Exception:
+            pass
         
         model.eval()
-        print("Model and tokenizer loaded successfully.")
+        print("Model and tokenizer loaded successfully.", flush=True)
         return tokenizer, model
 
     except ImportError:
@@ -1321,6 +1342,37 @@ def split_gptoss_analysis_final(text: str):
 
     return analysis, final_output
     
+_LAST_NVIDIA_CALL_TIME = 0.0
+_NVIDIA_MIN_INTERVAL = 2.5  # 2.5s idle gap ensures <= 24 RPM and prevents sub-second bursts
+_NVIDIA_TIMESTAMP_FILE = "/tmp/.nvidia_nim_rate_limit"
+
+def _pace_nvidia_call():
+    global _LAST_NVIDIA_CALL_TIME
+    last_call = _LAST_NVIDIA_CALL_TIME
+    try:
+        if os.path.exists(_NVIDIA_TIMESTAMP_FILE):
+            with open(_NVIDIA_TIMESTAMP_FILE, "r") as f:
+                val = f.read().strip()
+                if val:
+                    last_call = max(last_call, float(val))
+    except Exception:
+        pass
+
+    now = time.time()
+    elapsed = now - last_call
+    if elapsed < _NVIDIA_MIN_INTERVAL:
+        time.sleep(_NVIDIA_MIN_INTERVAL - elapsed)
+
+def _record_nvidia_call():
+    global _LAST_NVIDIA_CALL_TIME
+    new_time = time.time()
+    _LAST_NVIDIA_CALL_TIME = new_time
+    try:
+        with open(_NVIDIA_TIMESTAMP_FILE, "w") as f:
+            f.write(str(new_time))
+    except Exception:
+        pass
+
 def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative_pipe: str = None, mode: str = "openrouter") -> tuple[str, dict]:
     """
     Query LLM via OpenRouter, HuggingFace pipeline, or Google API 
@@ -1332,77 +1384,148 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
     
     # ... (other mode handling code, e.g., for "huggingface" or "google") ...
     
-    if mode == "openrouter":
-        
-        # Function to execute the OpenRouter API call
-        def execute_openrouter_query(model_name: str, system_prompt: str, user_prompt: str, api_key: str):
-            url = "https://openrouter.ai/api/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
+    if mode in ("openrouter", "nvidia", "openai"):
+        from openai import OpenAI
+
+        if not api_key:
+            if mode == "nvidia":
+                api_key = os.getenv("NVIDIA_API")
+            elif mode == "openrouter":
+                api_key = os.getenv("OPENROUTER_API_KEY")
+            elif mode == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+
+        provider_name = mode.upper() if mode in ("nvidia", "openai") else "OpenRouter"
+
+        if not api_key:
+            if alternative_pipe:
+                print(f"[{provider_name}] API key for '{mode}' is not provided or set. Gracefully falling back to HuggingFace model: {alternative_pipe}")
+                return query_llm(
+                    system=system,
+                    prompt=prompt,
+                    api_key=None,
+                    pipeline=alternative_pipe,
+                    alternative_pipe=None,
+                    mode="huggingface"
+                )
+            raise ValueError(f"API key for '{mode}' is not provided or set in environment.")
+
+        if mode == "openrouter":
+            base_url = "https://openrouter.ai/api/v1"
+            default_headers = {
                 "HTTP-Referer": "https://localhost:3000",
                 "X-Title": "LG-MAGIK",
             }
-            payload = {
-                "model": model_name,
-                "temperature": 0.1,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "stream": False,
-            }
+        elif mode == "nvidia":
+            base_url = "https://integrate.api.nvidia.com/v1"
+            default_headers = None
+        else:
+            base_url = None
+            default_headers = None
 
-            response = requests.post(url, headers=headers, json=payload)
-            return response
+        client = OpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            default_headers=default_headers,
+            max_retries=0 if mode == "nvidia" else 2
+        )
 
-        # Define the structured system prompt
-        structured_system_prompt = f"""{system}
-        """
+        def execute_openai_query(model_name: str, system_prompt: str, user_prompt: str):
+            clean_model = model_name
+            # In nvidia mode, remove ':free' suffix if present (since :free is OpenRouter specific)
+            if mode == "nvidia" and clean_model and clean_model.endswith(":free"):
+                clean_model = clean_model[:-5]
+
+            messages = []
+            if system_prompt and system_prompt.strip():
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": user_prompt})
+
+            max_retries = 3 if mode == "nvidia" else 1
+            for attempt in range(max_retries):
+                if mode == "nvidia":
+                    _pace_nvidia_call()
+
+                try:
+                    completion = client.chat.completions.create(
+                        model=clean_model,
+                        messages=messages,
+                        temperature=0.1
+                    )
+                    if mode == "nvidia":
+                        _record_nvidia_call()
+                    msg = completion.choices[0].message
+                    content = msg.content or ""
+                    reasoning = getattr(msg, "reasoning", getattr(msg, "reasoning_content", None))
+                    actual_model = getattr(completion, "model", clean_model) or clean_model
+                    return content, {"reasoning": reasoning, "model": actual_model}
+                except Exception as api_err:
+                    if mode == "nvidia":
+                        _record_nvidia_call()
+                    err_str = str(api_err).lower()
+                    if mode == "nvidia" and ("429" in err_str or "rate limit" in err_str or "too many requests" in err_str) and attempt < max_retries - 1:
+                        retry_after = None
+                        if hasattr(api_err, "response") and api_err.response is not None:
+                            headers = getattr(api_err.response, "headers", {})
+                            retry_after_hdr = headers.get("retry-after") or headers.get("x-ratelimit-reset")
+                            if retry_after_hdr:
+                                try:
+                                    retry_after = float(retry_after_hdr) + 2.0
+                                except ValueError:
+                                    pass
+                        if retry_after is not None and retry_after > 0:
+                            backoff = retry_after
+                        else:
+                            backoff = [35.0, 45.0, 65.0][attempt]
+                        print(f"[{provider_name}] Rate limit (429) hit. Backing off for {backoff:.1f}s to clear cooldown window ({attempt + 1}/{max_retries})...", flush=True)
+                        time.sleep(backoff)
+                        continue
+                    raise api_err
+
         # --- Attempt 1: Primary Model ---
         try:
-            response = execute_openrouter_query(pipeline, structured_system_prompt, prompt, api_key)
-            
-            if response.status_code == 200:
-                result = response.json()
-                # 2. Use your existing parser on the LLM output
-                final = result["choices"][0]["message"]["content"]
-                
-                # The 'analysis' can be returned as the reasoning dictionary
-                return final, None
-            
-            # If status code is NOT 200, it falls to the except block for a potential retry.
-            # We raise an error here to catch the non-200 status and move to the retry logic.
-            raise RuntimeError(f"OpenRouter failed with primary model ({pipeline}): {response.status_code}: {response.text}")
-            
-        except RuntimeError as e:
-            print(f"Primary model failure: {e}")
-            
-            # --- Attempt 2: Alternative Model (if provided) ---
+            return execute_openai_query(pipeline, system, prompt)
+        except Exception as e:
+            print(f"[{provider_name}] Primary API model failure ({pipeline}): {e}")
+
+            # --- Attempt 2: Graceful fallback to HuggingFace model (if provided) ---
             if alternative_pipe:
-                print(f"Retrying with alternative model: {alternative_pipe}")
+                print(f"[{provider_name}] Gracefully falling back to HuggingFace model: {alternative_pipe}")
                 try:
-                    response = execute_openrouter_query(alternative_pipe, structured_system_prompt, prompt, api_key)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        final = result["choices"][0]["message"]["content"]
-                        return final, None
-                    
-                    # If alternative also fails (non-200 status)
-                    raise RuntimeError(f"OpenRouter failed with alternative model ({alternative_pipe}): {response.status_code}: {response.text}")
-                
+                    return query_llm(
+                        system=system,
+                        prompt=prompt,
+                        api_key=None,
+                        pipeline=alternative_pipe,
+                        alternative_pipe=None,
+                        mode="huggingface"
+                    )
                 except Exception as inner_e:
-                    # If the alternative model attempt fails (API error or non-200 status)
-                    raise RuntimeError(f"Both OpenRouter attempts failed. Primary error: {e}. Alternative error: {inner_e}")
-            
+                    raise RuntimeError(
+                        f"Both {provider_name} API ({pipeline}) and HuggingFace fallback ({alternative_pipe}) failed.\n"
+                        f"  • {provider_name} error: {e}\n"
+                        f"  • HuggingFace error: {inner_e}"
+                    )
             else:
-                # If no alternative is provided, re-raise the original error
                 raise e
     
     elif mode == "huggingface":
-        tokenizer = pipeline[0]
-        model = pipeline[1]
+        if isinstance(pipeline, (tuple, list)):
+            tokenizer = pipeline[0]
+            model = pipeline[1]
+        elif isinstance(pipeline, str):
+            global _HF_LLM_CACHE
+            if "_HF_LLM_CACHE" not in globals():
+                globals()["_HF_LLM_CACHE"] = {}
+            if pipeline not in globals()["_HF_LLM_CACHE"]:
+                globals()["_HF_LLM_CACHE"][pipeline] = initialize_llm_hf_pipeline(pipeline)
+            tokenizer, model = globals()["_HF_LLM_CACHE"][pipeline]
+        elif hasattr(pipeline, "tokenizer") and hasattr(pipeline, "model"):
+            tokenizer = pipeline.tokenizer
+            model = pipeline.model
+        else:
+            raise ValueError(f"For mode 'huggingface', pipeline must be a (tokenizer, model) tuple or model_id string, got {type(pipeline)}")
+
         structured_system_prompt = f"""{system}
         
         Structure your response in two parts.
@@ -1414,19 +1537,42 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
             {"role": "user", "content": prompt},
         ]
 
-        inputs = tokenizer.apply_chat_template(
-                                                messages,
-                                                add_generation_prompt=True,
-                                                return_tensors="pt",
-                                                return_dict=True,
-                                               ).to(model.device)
- 
-        generated = model.generate(**inputs, max_new_tokens=4096, do_sample=False)
-        raw_output = tokenizer.decode(generated[0][inputs["input_ids"].shape[-1] :])
+        tok = getattr(tokenizer, "tokenizer", tokenizer)
+        try:
+            inputs = tok.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                return_dict=True,
+            )
+        except Exception:
+            # Fallback for models whose chat template doesn't accept a separate 'system' role (e.g. Gemma)
+            fallback_prompt = f"{structured_system_prompt.strip()}\n\n{prompt.strip()}"
+            fallback_messages = [{"role": "user", "content": fallback_prompt}]
+            inputs = tok.apply_chat_template(
+                fallback_messages,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                return_dict=True,
+            )
+
+        device_to_use = getattr(model, "device", None)
+        if device_to_use is None or str(device_to_use) == "meta":
+            device_to_use = "cuda" if torch.cuda.is_available() else "cpu"
+
+        if hasattr(inputs, "to"):
+            inputs = inputs.to(device_to_use)
+        elif isinstance(inputs, dict):
+            inputs = {k: (v.to(device_to_use) if hasattr(v, "to") else v) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            generated = model.generate(**inputs, max_new_tokens=4096, do_sample=False)
+        raw_output = tok.decode(generated[0][inputs["input_ids"].shape[-1] :])
         reasoning, final = split_gptoss_analysis_final(raw_output)
         if final is None:
             final = raw_output
-        return final, reasoning
+        model_name = pipeline if isinstance(pipeline, str) else getattr(model, "name_or_path", "huggingface_model")
+        return final, {"reasoning": reasoning, "model": model_name}
 
     elif mode == "google":
 

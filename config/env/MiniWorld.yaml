@@ -21,6 +21,7 @@ validation_prompts :
   - The agent is in a room with grass floor and concrete walls. No objects are visible in the current view.
   - The agent is in a room with grass floor and concrete walls. A blue ball is found to the right at angle 22.7 at a distance of 2.5 units.
   - The agent is in a room with grass floor and concrete walls. A green box is found to the left at angle 28.7 at a distance of 1.3 units.
+  - The agent is in a room with grass floor and concrete walls. A blue box is found to the left at angle 0.382 at a distance of 3.8 units. A green ball is found to the right at angle 33.5 at a distance of 1.3 units.
 
   
   

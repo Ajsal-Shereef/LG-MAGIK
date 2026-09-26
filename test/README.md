@@ -18,7 +18,7 @@ pip install fastapi uvicorn python-multipart hydra-core omegaconf torch torchvis
 ### 2. Start Backend
 From the project root (`LG-MAGIK/`):
 ```bash
-python3 -m uvicorn test.backend.app:app --host 0.0.0.0 --port 8000
+/home/s222147455/.conda/lg_magik/bin/python3 -m uvicorn test.backend.app:app --host 0.0.0.0 --port 8000
 ```
 Wait until you see `[INFO] Model loaded successfully`.
 

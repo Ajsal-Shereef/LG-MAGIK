@@ -1,4 +1,4 @@
 defaults:
-  - env : PickEnv
-  - models : text_conditioned_vae_mlp_${env}
+  - env : MiniWorld
+  - models : text_conditioned_vae_cnn_${env}
 save_path : model_weights

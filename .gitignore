@@ -25,3 +25,5 @@ imagination.png
 *.pth
 *.cpython-39.pyc
 scripts
+*.png
+*.log

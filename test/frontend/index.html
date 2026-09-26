@@ -4,20 +4,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Magik Lens</title>
+    <title>LG-MAGIK Imagination & Diagnostic Studio</title>
     <style>
         :root {
-            --bg-color: #0d0d0d;
-            --surface-color: #1a1a1a;
-            --primary-color: #bb86fc;
-            --secondary-color: #03dac6;
-            --text-color: #e0e0e0;
-            --input-bg: #262626;
-            --border-color: #333;
+            --bg-color: #0c0d12;
+            --surface-color: #14161f;
+            --surface-card: #1c1f2b;
+            --primary-color: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --secondary-color: #06b6d4;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-orange: #f59e0b;
+            --text-color: #f1f5f9;
+            --text-muted: #94a3b8;
+            --input-bg: #1e2230;
+            --border-color: #2e3547;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
@@ -52,12 +64,13 @@
 
         /* Panels */
         .panel {
-            padding: 20px;
+            padding: 16px;
             border: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
             overflow-y: auto;
             position: relative;
+            background-color: var(--surface-color);
         }
 
         .left-panel {
@@ -75,23 +88,24 @@
             grid-column: 1 / 3;
             grid-row: 2 / 3;
             background-color: var(--surface-color);
-            padding: 20px;
+            padding: 14px 20px;
             border-top: 1px solid var(--border-color);
             display: flex;
-            gap: 20px;
-            align-items: flex-start;
-            height: 250px;
-            box-sizing: border-box;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 420px;
+            overflow-y: auto;
         }
 
-        /* 2x2 Inner Layout within Panels */
-        /* Note: To ensure vertical alignment across panels, we use strict percentages or flex ratios */
         .section-header {
-            color: var(--primary-color);
-            font-weight: 300;
-            font-size: 1.1rem;
-            margin-bottom: 10px;
-            text-align: center;
+            color: var(--secondary-color);
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            letter-spacing: 0.5px;
         }
 
         .image-container {
@@ -99,23 +113,23 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #111;
-            border-radius: 8px;
+            background: #090a0f;
+            border-radius: var(--radius-md);
             border: 1px solid var(--border-color);
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             overflow: hidden;
             position: relative;
-            min-height: 200px;
+            min-height: 180px;
         }
 
-        /* Interactive Upload Container */
         .upload-container {
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: all 0.2s ease;
         }
 
         .upload-container:hover {
             border-color: var(--primary-color);
+            background: #111420;
         }
 
         .upload-placeholder {
@@ -125,192 +139,271 @@
             justify-content: center;
             width: 100%;
             height: 100%;
-            color: #888;
+            color: var(--text-muted);
             pointer-events: none;
         }
 
-        /* Images */
         img {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
             display: block;
+            image-rendering: pixelated;
         }
 
-        /* Hide File Input */
         input[type="file"] {
             display: none;
         }
 
-        /* Controls */
-        .controls {
-            flex: 1;
-            display: flex;
-            gap: 20px;
-            width: 100%;
-            height: 100%;
+        /* Form Controls */
+        textarea, select, input[type="text"] {
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 12px;
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.2s;
         }
 
-        .caption-box {
-            flex: 4;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
+        textarea:focus, select:focus, input[type="text"]:focus {
+            border-color: var(--primary-color);
         }
 
         textarea {
-            background-color: var(--input-bg);
-            border: 1px solid var(--border-color);
-            color: #e0e0e0;
-            padding: 10px;
-            border-radius: 6px;
             resize: none;
-            flex: 1;
-            font-family: inherit;
-        }
-
-        .sliders-box {
-            flex: 5;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            height: 100%;
-        }
-
-        .sliders-scroll {
-            overflow-y: auto;
-            flex: 1;
-            padding-right: 5px;
-        }
-
-        .slider-row {
-            display: flex;
-            align-items: center;
-            font-size: 0.8rem;
-            gap: 10px;
-            margin-bottom: 5px;
-        }
-
-        input[type="range"] {
-            flex: 1;
-            cursor: pointer;
-        }
-
-        .action-box {
-            flex: 2;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            justify-content: center;
+            width: 100%;
         }
 
         button {
-            padding: 10px 20px;
-            border-radius: 8px;
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
             border: none;
             background-color: var(--primary-color);
-            color: #000;
-            font-weight: bold;
+            color: #fff;
+            font-weight: 600;
             cursor: pointer;
-            font-size: 1rem;
+            font-size: 0.88rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s ease;
         }
 
         button:hover {
-            filter: brightness(1.1);
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
         }
 
         button:disabled {
-            background-color: #555;
+            background-color: #3b3f52;
+            color: #7b8296;
             cursor: not-allowed;
+            transform: none;
         }
 
-        .sm-btn {
-            padding: 5px 10px;
-            font-size: 0.8rem;
-            background: #333;
-            color: #fff;
+        .btn-secondary {
+            background-color: var(--surface-card);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: #292d3e;
+        }
+
+        .btn-accent {
+            background-color: var(--secondary-color);
+            color: #090a0f;
+        }
+
+        .btn-accent:hover {
+            filter: brightness(1.15);
         }
 
         .switch-btn {
             position: absolute;
-            top: 10px;
+            top: 12px;
             right: 20px;
             z-index: 100;
-            background-color: var(--secondary-color);
-            font-size: 0.8rem;
-            padding: 8px 15px;
+            background-color: var(--surface-card);
+            border: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.82rem;
+            padding: 6px 14px;
         }
 
-        /* Latent Overlay */
+        /* Diagnostic Badges & Cards */
+        .diag-card {
+            background-color: var(--surface-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .diag-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: fit-content;
+        }
+
+        .badge-pass {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .badge-fail {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .badge-warn {
+            background-color: rgba(245, 158, 11, 0.15);
+            color: var(--accent-orange);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .diag-metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .metric-item {
+            background: #10121a;
+            padding: 5px 8px;
+            border-radius: 6px;
+            border: 1px solid #232738;
+        }
+
+        .metric-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .metric-value {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Overlay Loader */
         .overlay-loader {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(12, 13, 18, 0.85);
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 12px;
             color: var(--secondary-color);
-            font-weight: bold;
+            font-weight: 600;
             z-index: 10;
         }
 
-        /* Zoom btns */
+        /* Zoom controls */
         .zoom-ctrl {
             position: absolute;
-            top: 10px;
-            right: 10px;
+            top: 8px;
+            right: 8px;
             display: flex;
-            gap: 5px;
+            gap: 4px;
             z-index: 5;
         }
 
         .zoom-btn {
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
             padding: 0;
+            background: rgba(28, 31, 43, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        /* Sliders */
+        .slider-row {
             display: flex;
             align-items: center;
-            justify-content: center;
+            font-size: 0.78rem;
+            gap: 8px;
+            margin-bottom: 3px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            cursor: pointer;
+            accent-color: var(--secondary-color);
         }
     </style>
 </head>
 
 <body>
-    <div id="status-badge" style="position: fixed; top: 12px; left: 20px; font-size: 0.85rem; font-weight: 500; color: #888; z-index: 1000; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border-color); pointer-events: none;">Connecting to backend...</div>
+    <!-- Top System Status Badge -->
+    <div id="status-badge" style="position: fixed; top: 12px; left: 20px; font-size: 0.82rem; font-weight: 500; color: #888; z-index: 1000; background: rgba(20,22,31,0.85); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); pointer-events: none; backdrop-filter: blur(4px);">
+        Connecting to backend...
+    </div>
 
     <!-- ============================================ -->
-    <!-- VIEW 1: LATENT VISUALIZATION (Default)       -->
+    <!-- VIEW 1: LATENT VISUALIZATION                 -->
     <!-- ============================================ -->
-    <div id="view-latent" class="view-container active">
-        <button class="switch-btn" onclick="switchView('imagine')">Switch to Imagination Mode</button>
+    <div id="view-latent" class="view-container">
+        <button class="switch-btn" onclick="switchView('imagine')">Switch to Imagination & Diagnostics Mode</button>
 
         <div class="view-grid">
             <!-- Left Panel -->
             <div class="panel left-panel">
-                <!-- 1. Input Image Section -->
                 <div class="section-header">Input Image</div>
-                <div class="image-container upload-container" id="latent-dropzone"
-                    onclick="document.getElementById('latent-upload').click()">
+                <div class="image-container upload-container" id="latent-dropzone" onclick="document.getElementById('latent-upload').click()">
                     <div class="zoom-ctrl">
                         <button class="zoom-btn" onclick="zoom('latent-input', -1, event)">-</button>
                         <button class="zoom-btn" onclick="zoom('latent-input', 1, event)">+</button>
                     </div>
-                    <!-- Placeholder -->
                     <div id="latent-placeholder" class="upload-placeholder">
                         <span style="font-size: 2rem;">+</span>
-                        <span>Click or Drag Image Here</span>
+                        <span>Click or Drag Observation Here</span>
                     </div>
-                    <!-- Image Preview (Replaces placeholder) -->
                     <img id="latent-input-preview" src="" style="display: none;">
-
                     <input type="file" id="latent-upload" accept="image/*" onchange="handleLatentUpload(this)">
                 </div>
 
-                <!-- 2. Original Latent Section -->
-                <div class="section-header">Original Latent</div>
+                <div class="section-header">Original Latent Distribution</div>
                 <div class="image-container">
                     <img id="latent-orig-img" src="" style="display: none;">
                 </div>
@@ -318,10 +411,36 @@
 
             <!-- Right Panel -->
             <div class="panel right-panel">
-                <div id="latent-loader" class="overlay-loader" style="display: none;">Processing...</div>
+                <div id="latent-loader" class="overlay-loader" style="display: none;">
+                    <div class="spinner" style="width: 24px; height: 24px;"></div>
+                    <span>Processing VAE Reconstruction...</span>
+                </div>
 
-                <!-- 1. Reconstruction Section -->
-                <div class="section-header">Reconstruction</div>
+                <div class="section-header">
+                    <span>Reconstructed Image</span>
+                    <span id="latent-smudge-badge" class="diag-badge" style="display: none;">Sharp</span>
+                </div>
+
+                <!-- Live Quality Bar in Latent View -->
+                <div id="latent-smudge-bar" style="display: none; background: #10121a; padding: 6px 12px; border-radius: 6px; border: 1px solid #232738; margin-bottom: 8px; font-size: 0.78rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="color: var(--text-muted);">VAE Status: </span>
+                        <strong id="latent-smudge-text" style="color: var(--accent-green);">PASS</strong>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-muted);">Differing Grids: </span>
+                        <strong id="latent-grid-diff">0 / 64</strong>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-muted);">Latent L2: </span>
+                        <strong id="latent-cycle-l2">0.0</strong>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-muted);">Latent Cosine: </span>
+                        <strong id="latent-cycle-cos">1.0</strong>
+                    </div>
+                </div>
+
                 <div class="image-container">
                     <div class="zoom-ctrl">
                         <button class="zoom-btn" onclick="zoom('latent-recon', -1, event)">-</button>
@@ -330,31 +449,29 @@
                     <img id="latent-recon-img" src="" style="display: none;">
                 </div>
 
-                <!-- 2. Modified Latent Section -->
-                <div class="section-header">Modified Latent</div>
+                <div class="section-header">Modified Latent Distribution</div>
                 <div class="image-container">
                     <img id="latent-mod-img" src="" style="display: none;">
                 </div>
             </div>
 
             <!-- Bottom Panel -->
-            <div class="bottom-panel">
-                <div class="controls">
-                    <div class="caption-box">
-                        <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Caption</label>
-                        <textarea
-                            id="latent-caption">A blue box is visible at 3.1 units and 5.5 degrees to the left, and a green ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.</textarea>
-                    </div>
+            <div class="bottom-panel" style="flex-direction: row; height: 240px;">
+                <div style="flex: 4; display: flex; flex-direction: column;">
+                    <label style="color: var(--text-muted); font-size: 0.78rem; margin-bottom: 4px;">Conditioning Caption</label>
+                    <textarea id="latent-caption" style="flex: 1;">A blue box is visible at 3.1 units and 5.5 degrees to the left, and a green ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.</textarea>
+                </div>
 
-                    <div class="sliders-box">
-                        <label id="sliders-label" style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Latent Channels ([-10, 10])</label>
-                        <div id="sliders-container" class="sliders-scroll"></div>
+                <div style="flex: 5; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label id="sliders-label" style="color: var(--text-muted); font-size: 0.78rem;">Slide Channels to Test Smudging ([-10, 10])</label>
+                        <button class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px;" onclick="resetSliders()">Reset Scales</button>
                     </div>
+                    <div id="sliders-container" style="overflow-y: auto; flex: 1; padding-right: 6px;"></div>
+                </div>
 
-                    <div class="action-box">
-                        <button id="latent-generate-btn" onclick="generateLatent(true)">Reconstruct</button>
-                        <button class="sm-btn" onclick="resetSliders()">Reset Scale</button>
-                    </div>
+                <div style="flex: 2; display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+                    <button id="latent-generate-btn" onclick="generateLatent(true)">Reconstruct</button>
                 </div>
             </div>
         </div>
@@ -362,17 +479,19 @@
 
 
     <!-- ============================================ -->
-    <!-- VIEW 2: IMAGINATION MODE                     -->
+    <!-- VIEW 2: IMAGINATION & DIAGNOSTICS (Default)  -->
     <!-- ============================================ -->
-    <div id="view-imagine" class="view-container">
-        <button class="switch-btn" onclick="switchView('latent')">Switch to Latent Visualization</button>
+    <div id="view-imagine" class="view-container active">
+        <button class="switch-btn" onclick="switchView('latent')">Switch to Latent Manipulation View</button>
 
         <div class="view-grid">
-            <!-- Left Panel -->
+            <!-- Left Panel: Input & LLM Mapping -->
             <div class="panel left-panel">
-                <div class="section-header">Input Image</div>
-                <div class="image-container upload-container" id="imagine-dropzone" style="flex: 1; max-height: none;"
-                    onclick="document.getElementById('imagine-upload').click()">
+                <div class="section-header">
+                    <span>Target Observation (Input)</span>
+                    <span id="env-badge" style="font-size: 0.75rem; color: var(--secondary-color); font-weight: 500;">MiniWorld / target1</span>
+                </div>
+                <div class="image-container upload-container" id="imagine-dropzone" onclick="document.getElementById('imagine-upload').click()">
                     <div class="zoom-ctrl">
                         <button class="zoom-btn" onclick="zoom('imagine-input', -1, event)">-</button>
                         <button class="zoom-btn" onclick="zoom('imagine-input', 1, event)">+</button>
@@ -380,26 +499,30 @@
 
                     <div id="imagine-placeholder" class="upload-placeholder">
                         <span style="font-size: 2rem;">+</span>
-                        <span>Click or Drag Image Here</span>
+                        <span>Click or Drag Target Observation Image</span>
                     </div>
                     <img id="imagine-input-preview" src="" style="display: none;">
-
                     <input type="file" id="imagine-upload" accept="image/*" onchange="handleImagineUpload(this)">
                 </div>
 
-                <!-- 2. Original Latent Section (Imagination Mode) -->
-                <div class="section-header">Original Latent</div>
-                 <div class="image-container">
+                <div class="section-header">Original Latent Mean Map</div>
+                <div class="image-container">
                     <img id="imagine-orig-latent" src="" style="display: none;">
                 </div>
             </div>
 
-            <!-- Right Panel -->
+            <!-- Right Panel: Output & VAE Quality -->
             <div class="panel right-panel">
-                <div id="imagine-loader" class="overlay-loader" style="display: none;">Imagining...</div>
+                <div id="imagine-loader" class="overlay-loader" style="display: none;">
+                    <div class="spinner" style="width: 24px; height: 24px;"></div>
+                    <span id="imagine-loader-text">Imagining with VAE...</span>
+                </div>
 
-                <div class="section-header">Output</div>
-                <div class="image-container" style="flex: 1; max-height: none;">
+                <div class="section-header">
+                    <span>Imagined Observation (Source Space)</span>
+                    <span id="vae-status-badge" class="diag-badge" style="display: none;">Pending</span>
+                </div>
+                <div class="image-container">
                     <div class="zoom-ctrl">
                         <button class="zoom-btn" onclick="zoom('imagine-output', -1, event)">-</button>
                         <button class="zoom-btn" onclick="zoom('imagine-output', 1, event)">+</button>
@@ -407,25 +530,176 @@
                     <img id="imagine-result-img" src="" style="display: none;">
                 </div>
 
-                <!-- 2. Reconstructed Latent Section (Imagination Mode) -->
-                <div class="section-header">Reconstructed Latent</div>
+                <div class="section-header">Reconstructed Latent Mean Map</div>
                 <div class="image-container">
                     <img id="imagine-recon-latent" src="" style="display: none;">
                 </div>
             </div>
 
-            <!-- Bottom Panel -->
+            <!-- Bottom Panel: Dual Diagnostic Console -->
             <div class="bottom-panel">
-                <div class="controls">
-                    <div class="caption-box">
-                        <label style="color: #888; font-size: 0.8rem; margin-bottom: 5px;">Caption Prompt</label>
-                        <textarea
-                            id="imagine-caption">A blue box is visible at 3.1 units and 5.5 degrees to the left, and a green ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.</textarea>
+                <!-- Environment, Scenario & LLM Configuration Controls -->
+                <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Environment:</label>
+                        <select id="diag-env-select" style="width: auto; padding: 5px 8px; font-size: 0.78rem;" onchange="onEnvironmentChanged()">
+                            <option value="SimplePickup">SimplePickup (GridWorld)</option>
+                            <option value="MiniWorld" selected>MiniWorld (3D Continuous)</option>
+                            <option value="PickEnv">PickEnv (2D Shapes & Mass)</option>
+                            <option value="MiniGridRelational">MiniGridRelational (Spatial Relations)</option>
+                        </select>
                     </div>
 
-                    <div class="action-box">
-                        <button id="imagine-generate-btn" onclick="generateImagine()"
-                            style="width: 50%; align-self: center;">Imagine</button>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Target Mode:</label>
+                        <select id="diag-target-select" style="width: auto; padding: 5px 8px; font-size: 0.78rem;" onchange="onTargetChanged()">
+                            <!-- Dynamically populated -->
+                        </select>
+                    </div>
+
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Query Mode:</label>
+                        <select id="diag-query-mode-select" style="width: auto; padding: 5px 8px; font-size: 0.78rem;" onchange="onQueryModeChanged()">
+                            <option value="nvidia" selected>nvidia (NVIDIA NIM)</option>
+                            <option value="huggingface">huggingface (Local HF)</option>
+                            <option value="openrouter">openrouter (OpenRouter API)</option>
+                            <option value="google">google (Google Gemini)</option>
+                        </select>
+                    </div>
+
+                    <div style="display: flex; gap: 6px; align-items: center; flex: 1; min-width: 240px;">
+                        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; white-space: nowrap;">Model Name:</label>
+                        <input type="text" id="diag-llm-model-input" value="nvidia/nemotron-3-super-120b-a12b" placeholder="Model identifier (e.g. nvidia/nemotron-3-super-120b-a12b)" style="padding: 5px 8px; font-size: 0.78rem; font-family: monospace;">
+                    </div>
+
+                    <button class="btn-secondary" style="font-size: 0.78rem; padding: 5px 10px; white-space: nowrap;" onclick="loadDefaultCaption()">Load Default Sample</button>
+                </div>
+
+                <!-- Two-Column Diagnostic & Execution Section -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <!-- Column A: LLM Reasoning & Error Analysis -->
+                    <div class="diag-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">1. LLM Imagination Mapping</span>
+                            <span id="llm-badge" class="diag-badge" style="display: none;">Awaiting Run</span>
+                        </div>
+
+                        <!-- Agent Knowledge & Target Task Indicator -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; margin: 4px 0 6px 0; font-size: 0.73rem; display: flex; flex-direction: column; gap: 3px;">
+                            <div>
+                                <span style="color: var(--text-muted);">What Agent Knows: </span>
+                                <span id="diag-known-mission" style="color: #6ee7b7; font-weight: 500;">Pick the blue box and avoid green ball from the room with grass floor and concrete wall</span>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-muted);">Target Task Spec (env.mission): </span>
+                                <span id="diag-target-mission" style="color: #93c5fd; font-weight: 500;">Pick the yellow duckie and avoid green ball from the room with grass floor and concrete wall</span>
+                            </div>
+                        </div>
+
+                        <label style="color: var(--text-muted); font-size: 0.75rem;">Input Scene Observation Description:</label>
+                        <textarea id="diag-input-caption" rows="2" placeholder="Describe the current observation..."></textarea>
+
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button id="remap-llm-btn" onclick="triggerLLMRemap()">
+                                <span id="llm-spinner" class="spinner" style="display: none;"></span>
+                                <span id="llm-btn-text">Remap Caption with LLM</span>
+                            </button>
+                            <span id="llm-status-text" style="font-size: 0.78rem; color: var(--text-muted);"></span>
+                        </div>
+
+                        <!-- LLM Verdict & Reason -->
+                        <div id="llm-verdict-box" style="display: none; background: #0f1118; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #666; font-size: 0.8rem;">
+                            <div id="llm-verdict-title" style="font-weight: 600; margin-bottom: 2px;"></div>
+                            <div id="llm-verdict-reason" style="color: var(--text-muted);"></div>
+                            <div id="llm-output-json" style="margin-top: 6px; font-family: monospace; font-size: 0.75rem; color: #a5b4fc; word-break: break-all;"></div>
+                        </div>
+
+                        <!-- LLM Model Reasoning -->
+                        <div id="llm-reasoning-box" style="display: none; margin-top: 8px; background: #0e111a; border: 1px solid #1f2438; border-radius: 6px; padding: 8px 12px; font-size: 0.78rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-weight: 600; color: #93c5fd; display: flex; align-items: center; gap: 4px;">
+                                    🧠 Model Reasoning / Thinking:
+                                </span>
+                                <span id="reasoning-len-badge" style="font-size: 0.7rem; color: var(--text-muted);"></span>
+                            </div>
+                            <pre id="llm-reasoning-text" style="white-space: pre-wrap; font-family: monospace; color: #cbd5e1; margin: 0; max-height: 180px; overflow-y: auto; font-size: 0.73rem; line-line: 1.4; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05);"></pre>
+                        </div>
+
+                        <!-- Exact Prompts Inspector (test_imagination.py replication) -->
+                        <div id="llm-prompts-box" style="display: none; margin-top: 8px; background: #0c0f17; border: 1px solid #1a2030; border-radius: 6px; padding: 8px 12px; font-size: 0.78rem;">
+                            <details style="cursor: pointer;" open>
+                                <summary style="font-weight: 600; color: #a5b4fc; outline: none; user-select: none;">
+                                    📋 Exact Timestep User Prompt (test_imagination.py:L219-L224)
+                                </summary>
+                                <pre id="diag-user-prompt-text" style="white-space: pre-wrap; font-family: monospace; color: #e2e8f0; margin-top: 6px; max-height: 180px; overflow-y: auto; font-size: 0.72rem; line-height: 1.35; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);"></pre>
+                            </details>
+                            <details style="cursor: pointer; margin-top: 6px;">
+                                <summary style="font-weight: 600; color: #94a3b8; outline: none; user-select: none; font-size: 0.74rem;">
+                                    ⚙️ System Prompt (config/test_imagination.yaml)
+                                </summary>
+                                <pre id="diag-system-prompt-text" style="white-space: pre-wrap; font-family: monospace; color: #94a3b8; margin-top: 6px; max-height: 160px; overflow-y: auto; font-size: 0.70rem; line-height: 1.35; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);"></pre>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Column B: VAE Generation & Smudge/Cycle Consistency Analysis -->
+                    <div class="diag-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--secondary-color);">2. VAE Quality & Artifact Analysis</span>
+                            <span id="vae-badge" class="diag-badge" style="display: none;">Awaiting Run</span>
+                        </div>
+
+                        <label style="color: var(--text-muted); font-size: 0.75rem;">Conditioning Caption for VAE:</label>
+                        <textarea id="imagine-caption" rows="2" placeholder="Will be filled by LLM or can be typed manually..."></textarea>
+
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button id="imagine-generate-btn" class="btn-accent" onclick="generateImagine()">
+                                <span>Generate Imagined Observation</span>
+                            </button>
+                        </div>
+
+                        <!-- Interactive Latent Channel Slider in Imagination Mode -->
+                        <div style="background: #111420; border: 1px solid #232738; border-radius: 6px; padding: 8px; margin-top: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: 0.76rem; font-weight: 600; color: var(--secondary-color);">Slide Latent Channels (Live Perturbation):</span>
+                                <button class="btn-secondary" style="font-size: 0.70rem; padding: 2px 8px;" onclick="resetImagineSliders()">Reset Channels</button>
+                            </div>
+                            <div id="imagine-sliders-container" style="max-height: 80px; overflow-y: auto; padding-right: 4px;"></div>
+                        </div>
+
+                        <!-- VAE Metrics Verdict & Breakdown -->
+                        <div id="vae-verdict-box" style="display: none; background: #0f1118; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #666; font-size: 0.8rem; margin-top: 4px;">
+                            <div id="vae-verdict-title" style="font-weight: 600; margin-bottom: 2px;"></div>
+                            <div id="vae-verdict-reason" style="color: var(--text-muted); margin-bottom: 6px;"></div>
+
+                            <!-- Metrics Grid -->
+                            <div class="diag-metrics-grid">
+                                <div class="metric-item">
+                                    <div class="metric-label">Differing Grids</div>
+                                    <div id="metric-grid-count" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Grid Resolution</div>
+                                    <div id="metric-grid-spec" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Max / Mean Grid MAE</div>
+                                    <div id="metric-grid-diff" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Latent L2 Dist</div>
+                                    <div id="metric-latent-l2" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Latent Cosine</div>
+                                    <div id="metric-latent-cos" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Std Dev / Range</div>
+                                    <div id="metric-std" class="metric-value">-</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -436,6 +710,7 @@
     <script>
         // State
         let scales = Array(8).fill(1.0);
+        let imagineScales = Array(8).fill(1.0);
         let currentFile = null;
         let zoomLevels = {
             'imagine-input': 1.0,
@@ -444,7 +719,177 @@
             'latent-recon': 1.0
         };
 
+        const ENV_CONFIGS = {
+            "SimplePickup": {
+                targets: ["target1", "target2", "target3"],
+                default_captions: {
+                    "target1": "Agent is at (3, 4) facing right. The purple box is at (2, 2). The green ball is at (5, 5).",
+                    "target2": "Agent is at (1, 1) facing down. The purple box is at (4, 4). The blue wall is at (0, 0).",
+                    "target3": "Agent is at (3, 3) facing up. The green ball is at (2, 5). The red ball is at (6, 6)."
+                }
+            },
+            "MiniWorld": {
+                targets: ["target1", "target2", "target3"],
+                default_captions: {
+                    "target1": "A duckie is visible at 3.1 units and 5.5 degrees to the left, and a ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.",
+                    "target2": "Under a blue sky, within a room of red brick walls and wood floor, a duckie is at 2.5 units to the left.",
+                    "target3": "A ball is at 3.0 units ahead and a box is at 4.2 units to the right, set against a gray wall and green grass floor."
+                }
+            },
+            "PickEnv": {
+                targets: ["target"],
+                default_captions: {
+                    "target": "The heavy circle is at (-0.2, 0.4) and the light square is at (0.3, -0.1)."
+                }
+            },
+            "MiniGridRelational": {
+                targets: ["target1", "target2", "target3", "target4", "target5"],
+                default_captions: {
+                    "target1": "Agent is at (3, 4) facing right. The red ball is at (2, 2). The yellow box is at (4, 4).",
+                    "target2": "Agent is at (2, 2) facing left. The red ball is at (1, 4). The yellow box is at (5, 5).",
+                    "target3": "Agent is at (3, 2) facing down. The red ball is at (4, 1). The yellow box is at (3, 4).",
+                    "target4": "Agent is at (1, 1) facing right. The red ball is at (2, 3). The yellow box is at (4, 5).",
+                    "target5": "Agent is at (3, 3) facing up. The red ball is at (2, 2). The yellow target is at (5, 5). The purple ball is at (1, 4). The grey target is at (6, 2)."
+                }
+            }
+        };
+
+        // --- Init Environment Dropdowns & Agent Knowledge ---
+        let SERVER_METADATA = null;
+        function updateTargetMission() {
+            const env = document.getElementById("diag-env-select").value;
+            const target = document.getElementById("diag-target-select").value;
+            const targetEl = document.getElementById("diag-target-mission");
+            if (!targetEl) return;
+            if (SERVER_METADATA && SERVER_METADATA[env]?.target_missions?.[target]) {
+                targetEl.innerText = SERVER_METADATA[env].target_missions[target];
+            } else if (env === "MiniWorld") {
+                if (target === "target1") targetEl.innerText = "Pick the yellow duckie and avoid green ball from the room with grass floor and concrete wall";
+                else if (target === "target2") targetEl.innerText = "Pick the yellow duckie and avoid green ball from the room with wood floor and brick_wall wall";
+                else if (target === "target3") targetEl.innerText = "Pick the green ball and avoid blue box from the room with grass floor and concrete wall";
+                else targetEl.innerText = "Pick up the duckie.";
+            } else if (env === "SimplePickup") {
+                if (target === "target1") targetEl.innerText = "Pick the purple box and avoid green ball from the room with grey wall";
+                else if (target === "target2") targetEl.innerText = "Pick the purple box and avoid green ball from the room with blue wall";
+                else if (target === "target3") targetEl.innerText = "Pick the green ball and avoid red ball from the room with grey wall";
+                else targetEl.innerText = "Pick up the purple box.";
+            } else {
+                targetEl.innerText = `Solve ${target}`;
+            }
+        }
+
+        function updateKnownMission() {
+            const env = document.getElementById("diag-env-select").value;
+            const missionEl = document.getElementById("diag-known-mission");
+            if (!missionEl) return;
+            if (SERVER_METADATA && SERVER_METADATA[env]?.source_mission) {
+                missionEl.innerText = SERVER_METADATA[env].source_mission;
+            } else if (env === "MiniWorld") {
+                missionEl.innerText = "Pick the blue box and avoid green ball from the room with grass floor and concrete wall";
+            } else if (env === "SimplePickup") {
+                missionEl.innerText = "Pick the red ball and avoid green ball from the room with grey wall";
+            } else if (env === "MiniGridRelational") {
+                missionEl.innerText = "Pick up the blue ball and drop it on the green target.";
+            } else if (env === "PickEnv") {
+                missionEl.innerText = "Pick the light circle or heavy square without breaking it by applying required force.";
+            }
+        }
+
+        async function fetchServerMetadata() {
+            try {
+                const res = await fetch("/metadata/environments");
+                if (res.ok) {
+                    SERVER_METADATA = await res.json();
+                    updateKnownMission();
+                    updateTargetMission();
+                }
+            } catch (e) {
+                console.warn("Could not fetch server metadata:", e);
+            }
+        }
+
+        function initEnvironments() {
+            onEnvironmentChanged();
+            fetchServerMetadata();
+        }
+
+        async function onEnvironmentChanged() {
+            const env = document.getElementById("diag-env-select").value;
+            const targetSelect = document.getElementById("diag-target-select");
+            const targets = ENV_CONFIGS[env]?.targets || ["target1"];
+
+            targetSelect.innerHTML = "";
+            targets.forEach(t => {
+                const opt = document.createElement("option");
+                opt.value = t;
+                opt.innerText = t;
+                targetSelect.appendChild(opt);
+            });
+
+            updateKnownMission();
+            onTargetChanged();
+
+            // Automatically reload the matching VAE model for the selected environment
+            await reloadVAEForEnv(env);
+        }
+
+        async function reloadVAEForEnv(env) {
+            const vaeBadge = document.getElementById("vae-badge");
+            if (vaeBadge) {
+                vaeBadge.style.display = "inline-flex";
+                vaeBadge.className = "diag-badge";
+                vaeBadge.innerHTML = `<span class="spinner" style="display:inline-block; width:10px; height:10px; margin-right:4px;"></span> Reloading ${env} VAE...`;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append("env_name", env);
+                const res = await fetch("/load_env_model", { method: "POST", body: formData });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === "success") {
+                        if (vaeBadge) {
+                            vaeBadge.className = "diag-badge badge-pass";
+                            vaeBadge.innerText = `✓ VAE LOADED (${env})`;
+                        }
+                        if (data.latent_channels) {
+                            if (typeof initImagineSliders === "function") initImagineSliders(data.latent_channels);
+                            if (typeof initSliders === "function") initSliders(data.latent_channels);
+                        }
+                    } else {
+                        if (vaeBadge) {
+                            vaeBadge.className = "diag-badge badge-fail";
+                            vaeBadge.innerText = `✗ VAE NOT FOUND (${env})`;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not reload VAE model for env:", e);
+                if (vaeBadge) {
+                    vaeBadge.className = "diag-badge badge-fail";
+                    vaeBadge.innerText = `✗ VAE ERROR (${env})`;
+                }
+            }
+        }
+
+        function onTargetChanged() {
+            const env = document.getElementById("diag-env-select").value;
+            const target = document.getElementById("diag-target-select").value;
+            document.getElementById("env-badge").innerText = `${env} / ${target}`;
+            updateTargetMission();
+            loadDefaultCaption();
+        }
+
+        function loadDefaultCaption() {
+            const env = document.getElementById("diag-env-select").value;
+            const target = document.getElementById("diag-target-select").value;
+            const defaultCap = ENV_CONFIGS[env]?.default_captions[target] || "";
+            document.getElementById("diag-input-caption").value = defaultCap;
+            document.getElementById("imagine-caption").value = defaultCap;
+        }
+
         // --- Health Check ---
+        let configInitialized = false;
         async function checkHealth() {
             const badge = document.getElementById('status-badge');
             try {
@@ -453,23 +898,50 @@
                     const data = await res.json();
                     if (data.latent_channels && data.latent_channels !== scales.length) {
                         initSliders(data.latent_channels);
+                        initImagineSliders(data.latent_channels);
+                    }
+                    if (!configInitialized) {
+                        if (data.querry_mode) {
+                            const modeSelect = document.getElementById("diag-query-mode-select");
+                            if (modeSelect) modeSelect.value = data.querry_mode;
+                        }
+                        if (data.llm_model) {
+                            const modelInput = document.getElementById("diag-llm-model-input");
+                            if (modelInput) modelInput.value = data.llm_model;
+                        }
+                        configInitialized = true;
                     }
                     if (badge) {
                         if (data.status === 'ready') {
-                            badge.innerHTML = `<span style="color: var(--secondary-color);">●</span> Model Ready (${data.device})`;
+                            badge.innerHTML = `<span style="color: var(--accent-green);">●</span> Model Ready (${data.device})`;
                         } else {
-                            badge.innerHTML = `<span style="color: #ffaa00;">●</span> Model Initializing...`;
+                            badge.innerHTML = `<span style="color: var(--accent-orange);">●</span> Model Initializing...`;
                         }
                     }
                 } else {
-                    if (badge) badge.innerHTML = `<span style="color: #ff5555;">●</span> Server Error (${res.status})`;
+                    if (badge) badge.innerHTML = `<span style="color: var(--accent-red);">●</span> Server Error (${res.status})`;
                 }
             } catch (e) {
-                if (badge) badge.innerHTML = `<span style="color: #ff5555;">●</span> Server Disconnected`;
+                if (badge) badge.innerHTML = `<span style="color: var(--accent-red);">●</span> Server Disconnected`;
             }
         }
         checkHealth();
         setInterval(checkHealth, 10000);
+
+        function onQueryModeChanged() {
+            const mode = document.getElementById("diag-query-mode-select").value;
+            const modelInput = document.getElementById("diag-llm-model-input");
+            if (!modelInput) return;
+            if (mode === "nvidia") {
+                modelInput.value = "nvidia/nemotron-3-super-120b-a12b";
+            } else if (mode === "huggingface") {
+                modelInput.value = "google/gemma-4-12B-it";
+            } else if (mode === "openrouter") {
+                modelInput.value = "meta-llama/llama-3.3-70b-instruct:free";
+            } else if (mode === "google") {
+                modelInput.value = "gemini-1.5-pro";
+            }
+        }
 
         // --- View Switching ---
         function switchView(mode) {
@@ -493,38 +965,311 @@
             if (img) img.style.transform = `scale(${zoomLevels[target]})`;
         }
 
-        // --- Logic: Latent View ---
+        // --- LLM Remap Invocation & Error Analyser ---
+        async function triggerLLMRemap() {
+            const inputCaption = document.getElementById("diag-input-caption").value;
+            const env = document.getElementById("diag-env-select").value;
+            const target = document.getElementById("diag-target-select").value;
+            const queryMode = document.getElementById("diag-query-mode-select") ? document.getElementById("diag-query-mode-select").value : "nvidia";
+            const llmModel = document.getElementById("diag-llm-model-input") ? document.getElementById("diag-llm-model-input").value.trim() : "";
 
-        function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
+            const btn = document.getElementById("remap-llm-btn");
+            const spinner = document.getElementById("llm-spinner");
+            const btnText = document.getElementById("llm-btn-text");
+            const statusText = document.getElementById("llm-status-text");
+
+            const badge = document.getElementById("llm-badge");
+            const verdictBox = document.getElementById("llm-verdict-box");
+            const verdictTitle = document.getElementById("llm-verdict-title");
+            const verdictReason = document.getElementById("llm-verdict-reason");
+            const outputJson = document.getElementById("llm-output-json");
+            const reasoningBox = document.getElementById("llm-reasoning-box");
+            const reasoningText = document.getElementById("llm-reasoning-text");
+            const reasoningBadge = document.getElementById("reasoning-len-badge");
+
+            btn.disabled = true;
+            spinner.style.display = "inline-block";
+            const shortModel = llmModel ? llmModel.split('/').pop() : 'LLM';
+            btnText.innerText = `Querying ${queryMode.toUpperCase()} (${shortModel})...`;
+            statusText.innerText = "Running multi-step analogy mapping...";
+
+            const formData = new FormData();
+            formData.append("caption", inputCaption);
+            formData.append("env_name", env);
+            formData.append("task_mode", target);
+            if (queryMode) formData.append("query_mode", queryMode);
+            if (llmModel) formData.append("llm_model", llmModel);
+
+            try {
+                const res = await fetch("/remap_caption", { method: "POST", body: formData });
+                const data = await res.json();
+
+                badge.style.display = "inline-flex";
+                verdictBox.style.display = "block";
+
+                const timeStr = data.response_time !== undefined && data.response_time !== null ? `${data.response_time}s` : null;
+                const timeTag = timeStr ? ` (${timeStr})` : '';
+
+                const analysis = data.llm_analysis;
+                if (analysis.is_valid) {
+                    badge.className = "diag-badge badge-pass";
+                    badge.innerText = `✓ LLM MAPPING VALID${timeTag}`;
+                    verdictBox.style.borderLeftColor = "var(--accent-green)";
+                    verdictTitle.innerText = `Rule Check Passed${timeTag}`;
+                    verdictTitle.style.color = "var(--accent-green)";
+                } else {
+                    badge.className = "diag-badge badge-fail";
+                    badge.innerText = `✗ ${analysis.error_type || "LLM MAPPING ERROR"}${timeTag}`;
+                    verdictBox.style.borderLeftColor = "var(--accent-red)";
+                    verdictTitle.innerText = `Violation: ${analysis.error_type}${timeTag}`;
+                    verdictTitle.style.color = "var(--accent-red)";
+                }
+
+                verdictReason.innerText = analysis.reason || "";
+                outputJson.innerText = JSON.stringify(data.reply_json, null, 2);
+
+                if (data.reasoning && data.reasoning.trim()) {
+                    reasoningBox.style.display = "block";
+                    reasoningText.innerText = data.reasoning.trim();
+                    if (reasoningBadge) {
+                        const lenStr = `${data.reasoning.trim().length} chars`;
+                        reasoningBadge.innerText = timeStr ? `${lenStr} | ⏱️ ${timeStr}` : lenStr;
+                    }
+                } else {
+                    reasoningBox.style.display = "none";
+                }
+
+                if (data.user_prompt) {
+                    const promptsBox = document.getElementById("llm-prompts-box");
+                    if (promptsBox) promptsBox.style.display = "block";
+                    const uPromptEl = document.getElementById("diag-user-prompt-text");
+                    if (uPromptEl) uPromptEl.innerText = data.user_prompt;
+                    const sPromptEl = document.getElementById("diag-system-prompt-text");
+                    if (sPromptEl && data.system_prompt) sPromptEl.innerText = data.system_prompt;
+                }
+
+                if (data.remapped_caption) {
+                    document.getElementById("imagine-caption").value = data.remapped_caption;
+                }
+
+                statusText.innerText = timeStr ? `LLM completed in ${timeStr}.` : "LLM analysis complete.";
+
+            } catch (err) {
+                console.error(err);
+                badge.style.display = "inline-flex";
+                badge.className = "diag-badge badge-fail";
+                badge.innerText = "✗ LLM CALL FAILED";
+                verdictBox.style.display = "block";
+                verdictBox.style.borderLeftColor = "var(--accent-red)";
+                verdictTitle.innerText = "Server Error";
+                verdictTitle.style.color = "var(--accent-red)";
+                verdictReason.innerText = err.message;
+                if (reasoningBox) reasoningBox.style.display = "none";
+                statusText.innerText = "Failed to query LLM.";
+            } finally {
+                btn.disabled = false;
+                spinner.style.display = "none";
+                btnText.innerText = "Remap Caption with LLM";
+            }
         }
 
-        const debouncedGenerateLatent = debounce(() => generateLatent(true), 150);
+        // --- VAE Imagination Generation & Smudge / Cycle Analysis ---
+        async function generateImagine(useSliders = false) {
+            const fileInput = document.getElementById('imagine-upload');
+            const file = fileInput.files[0] || currentFile;
+            if (!file) return alert("Please upload an observation image first");
 
-        // Dynamic Slider Initialization
+            const caption = document.getElementById('imagine-caption').value;
+            const btn = document.getElementById('imagine-generate-btn');
+            const loader = document.getElementById('imagine-loader');
+
+            const vaeBadge = document.getElementById('vae-badge');
+            const topBadge = document.getElementById('vae-status-badge');
+            const verdictBox = document.getElementById('vae-verdict-box');
+            const verdictTitle = document.getElementById('vae-verdict-title');
+            const verdictReason = document.getElementById('vae-verdict-reason');
+
+            if (!useSliders) {
+                btn.disabled = true;
+                loader.style.display = 'flex';
+            }
+
+            const env = document.getElementById("diag-env-select") ? document.getElementById("diag-env-select").value : "MiniWorld";
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('caption', caption);
+            formData.append('mode', 'imagination');
+            formData.append('env_name', env);
+
+            // Send slider channels if modified
+            formData.append('channel_scales', JSON.stringify(imagineScales));
+
+            try {
+                const res = await fetch('/imagine', { method: 'POST', body: formData });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({ detail: res.statusText }));
+                    throw new Error(errData.detail || `Server returned ${res.status}`);
+                }
+
+                const data = await res.json();
+
+                if (data.result) {
+                    const img = document.getElementById('imagine-result-img');
+                    img.src = data.result;
+                    img.style.display = 'block';
+                }
+
+                if (data.original_latent) {
+                    const img = document.getElementById('imagine-orig-latent');
+                    img.src = data.original_latent;
+                    img.style.display = 'block';
+                }
+
+                if (data.reconstructed_latent) {
+                    const img = document.getElementById('imagine-recon-latent');
+                    img.src = data.reconstructed_latent;
+                    img.style.display = 'block';
+                }
+
+                // Render VAE Quality (Grid & Latent Diagnostics)
+                if (data.vae_analysis) {
+                    const vae = data.vae_analysis;
+                    vaeBadge.style.display = "inline-flex";
+                    topBadge.style.display = "inline-flex";
+                    verdictBox.style.display = "block";
+
+                    const m = vae.metrics || {};
+                    const gridM = m.grid_analysis || {};
+                    const latentM = m.latent_analysis || {};
+
+                    if (vae.is_valid) {
+                        vaeBadge.className = "diag-badge badge-pass";
+                        vaeBadge.innerText = "✓ VAE PASS: GRIDS & LATENT OK";
+                        topBadge.className = "diag-badge badge-pass";
+                        topBadge.innerText = "Quality Passed";
+                        verdictBox.style.borderLeftColor = "var(--accent-green)";
+                        verdictTitle.innerText = "VAE Quality Passed";
+                        verdictTitle.style.color = "var(--accent-green)";
+                    } else {
+                        vaeBadge.className = "diag-badge badge-fail";
+                        vaeBadge.innerText = `✗ ${vae.error_type || "VAE ARTIFACT ERROR"}`;
+                        topBadge.className = "diag-badge badge-fail";
+                        topBadge.innerText = vae.error_type === "VAE_GRID_DIFFERENCE_FAILURE" ? "Grid Difference Fail" : (vae.error_type === "VAE_LATENT_DIFFERENCE_FAILURE" ? "Latent Difference Fail" : "VAE Fail");
+                        verdictBox.style.borderLeftColor = "var(--accent-red)";
+                        verdictTitle.innerText = `Artifact Error: ${vae.error_type}`;
+                        verdictTitle.style.color = "var(--accent-red)";
+                    }
+
+                    verdictReason.innerText = vae.reason || "";
+
+                    // Grid metrics
+                    const gridCountEl = document.getElementById("metric-grid-count");
+                    if (gridCountEl) {
+                        const diffCount = m.differing_grid_count !== undefined ? m.differing_grid_count : (gridM.differing_grid_count || 0);
+                        const totalCells = m.total_cells || gridM.total_cells || 64;
+                        gridCountEl.innerText = `${diffCount} / ${totalCells} cells`;
+                        gridCountEl.style.color = diffCount >= (m.grid_fail_threshold || 5) ? "var(--accent-red)" : "var(--accent-green)";
+                    }
+
+                    const gridSpecEl = document.getElementById("metric-grid-spec");
+                    if (gridSpecEl) {
+                        const gShape = m.grid_shape || gridM.grid_shape || [8, 8];
+                        const cSize = m.cell_size || gridM.cell_size || [10, 10];
+                        gridSpecEl.innerText = `${gShape[0]}x${gShape[1]} (${cSize[0]}x${cSize[1]}px)`;
+                    }
+
+                    const gridDiffEl = document.getElementById("metric-grid-diff");
+                    if (gridDiffEl) {
+                        const maxD = m.max_grid_diff !== undefined ? m.max_grid_diff : (gridM.max_grid_diff || 0);
+                        const meanD = m.mean_grid_diff !== undefined ? m.mean_grid_diff : (gridM.mean_grid_diff || 0);
+                        gridDiffEl.innerText = `Max: ${maxD} | Avg: ${meanD}`;
+                    }
+
+                    // Latent difference metrics
+                    const latentL2El = document.getElementById("metric-latent-l2");
+                    const l2Val = m.latent_l2 !== undefined && m.latent_l2 !== null ? m.latent_l2 : (m.cycle_l2 !== undefined ? m.cycle_l2 : null);
+                    if (latentL2El) {
+                        latentL2El.innerText = l2Val !== null ? l2Val : "N/A";
+                        if (l2Val !== null) {
+                            const thresh = m.latent_l2_threshold || m.cycle_l2_threshold || 0.23;
+                            latentL2El.style.color = (l2Val >= thresh) ? "var(--accent-red)" : "var(--accent-green)";
+                        }
+                    }
+
+                    const latentCosEl = document.getElementById("metric-latent-cos");
+                    const cosVal = m.latent_cosine !== undefined && m.latent_cosine !== null ? m.latent_cosine : (m.cycle_cosine !== undefined ? m.cycle_cosine : null);
+                    if (latentCosEl) {
+                        latentCosEl.innerText = cosVal !== null ? cosVal : "N/A";
+                        if (cosVal !== null) {
+                            latentCosEl.style.color = (cosVal < 0.20) ? "var(--accent-red)" : "var(--accent-green)";
+                        }
+                    }
+
+                    const stdEl = document.getElementById("metric-std");
+                    if (stdEl) {
+                        stdEl.innerText = m.imagined_std !== undefined ? `${m.imagined_std} (rng: ${m.dynamic_range})` : "-";
+                    }
+                }
+
+            } catch (err) {
+                console.error(err);
+                if (!useSliders) alert("Error during imagination: " + err.message);
+            } finally {
+                btn.disabled = false;
+                loader.style.display = 'none';
+            }
+        }
+
+        // --- Sliders for Imagination View (Testing Smudge by Sliding Latent) ---
+        function initImagineSliders(numChannels = 8) {
+            imagineScales = Array(numChannels).fill(1.0);
+            const container = document.getElementById('imagine-sliders-container');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let i = 0; i < numChannels; i++) {
+                const row = document.createElement('div');
+                row.className = 'slider-row';
+                row.innerHTML = `
+                    <span style="width: 28px; text-align: right; color: var(--text-muted);">Z${i}</span>
+                    <input type="range" min="-10" max="10" step="0.1" value="1.0"
+                        oninput="updateImagineScale(${i}, this.value); debouncedImagineSliders()">
+                    <span id="imagine-val-${i}" style="width: 38px; text-align: right; color: var(--text-color);">1.0</span>
+                `;
+                container.appendChild(row);
+            }
+        }
+        initImagineSliders(8);
+
+        function updateImagineScale(idx, val) {
+            imagineScales[idx] = parseFloat(val);
+            document.getElementById(`imagine-val-${idx}`).innerText = val;
+        }
+
+        function resetImagineSliders() {
+            imagineScales.fill(1.0);
+            document.querySelectorAll('#imagine-sliders-container input').forEach(inp => inp.value = 1.0);
+            document.querySelectorAll('#imagine-sliders-container span[id^="imagine-val-"]').forEach(sp => sp.innerText = '1.0');
+            generateImagine(true);
+        }
+
+        const debouncedImagineSliders = debounce(() => generateImagine(true), 150);
+
+        // --- Latent View Logic ---
         function initSliders(numChannels = 8) {
             scales = Array(numChannels).fill(1.0);
             const slidersDiv = document.getElementById('sliders-container');
             const label = document.getElementById('sliders-label');
-            if (label) label.innerText = `Latent Channels (${numChannels} Channels, [-10, 10])`;
+            if (label) label.innerText = `Slide Channels to Test Smudging (${numChannels} Ch, [-10, 10])`;
+            if (!slidersDiv) return;
             slidersDiv.innerHTML = '';
             for (let i = 0; i < numChannels; i++) {
                 const row = document.createElement('div');
                 row.className = 'slider-row';
                 row.innerHTML = `
-                    <span style="width: 30px; text-align: right;">Ch${i}</span>
+                    <span style="width: 28px; text-align: right; color: var(--text-muted);">Ch${i}</span>
                     <input type="range" min="-10" max="10" step="0.1" value="1.0" 
-                        oninput="updateScale(${i}, this.value); debouncedGenerateLatent()"
-                        >
-                    <span id="val-${i}" style="width: 40px; text-align: right;">1.0</span>
+                        oninput="updateScale(${i}, this.value); debouncedGenerateLatent()">
+                    <span id="val-${i}" style="width: 38px; text-align: right; color: var(--text-color);">1.0</span>
                 `;
                 slidersDiv.appendChild(row);
             }
@@ -544,24 +1289,18 @@
             if (fileInput.files[0] || currentFile) generateLatent(true);
         }
 
-        // Handle Upload & Preview
-        function handleLatentUpload(input) {
-            const file = input.files ? input.files[0] : input;
-            if (file) {
-                currentFile = file;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    document.getElementById('latent-placeholder').style.display = 'none';
-                    const img = document.getElementById('latent-input-preview');
-                    img.src = ev.target.result;
-                    img.style.display = 'block';
-
-                    // Auto-trigger generation
-                    generateLatent(false);
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
                 };
-                reader.readAsDataURL(file);
-            }
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
+        const debouncedGenerateLatent = debounce(() => generateLatent(true), 150);
 
         async function generateLatent(isModification = false) {
             const fileInput = document.getElementById('latent-upload');
@@ -572,14 +1311,22 @@
             const btn = document.getElementById('latent-generate-btn');
             const loader = document.getElementById('latent-loader');
 
+            const statusBadge = document.getElementById('latent-smudge-badge');
+            const statusBox = document.getElementById('latent-smudge-bar');
+            const statusText = document.getElementById('latent-smudge-text');
+            const gridDiffText = document.getElementById('latent-grid-diff');
+            const cycleL2Text = document.getElementById('latent-cycle-l2');
+            const cycleCosText = document.getElementById('latent-cycle-cos');
+
             btn.disabled = true;
-            btn.innerText = "Processing...";
             loader.style.display = 'flex';
 
+            const env = document.getElementById("diag-env-select") ? document.getElementById("diag-env-select").value : "MiniWorld";
             const formData = new FormData();
             formData.append('file', file);
             formData.append('caption', caption);
             formData.append('mode', 'latent');
+            formData.append('env_name', env);
 
             if (isModification) {
                 formData.append('channel_scales', JSON.stringify(scales));
@@ -587,16 +1334,7 @@
 
             try {
                 const res = await fetch('/imagine', { method: 'POST', body: formData });
-                if (!res.ok) {
-                    const errData = await res.json().catch(() => ({ detail: res.statusText }));
-                    throw new Error(errData.detail || `Server returned ${res.status}`);
-                }
-
                 const data = await res.json();
-
-                if (data.latent_channels && data.latent_channels !== scales.length) {
-                    initSliders(data.latent_channels);
-                }
 
                 if (data.original_latent) {
                     const img = document.getElementById('latent-orig-img');
@@ -616,30 +1354,69 @@
                     mod.style.display = 'block';
                 }
 
+                // Render live VAE metrics in latent view
+                if (data.vae_analysis) {
+                    const vae = data.vae_analysis;
+                    const m = vae.metrics || {};
+                    statusBadge.style.display = 'inline-flex';
+                    statusBox.style.display = 'flex';
+
+                    if (vae.is_valid) {
+                        statusBadge.className = 'diag-badge badge-pass';
+                        statusBadge.innerText = 'PASS';
+                        statusText.innerText = 'PASS';
+                        statusText.style.color = 'var(--accent-green)';
+                    } else {
+                        statusBadge.className = 'diag-badge badge-fail';
+                        statusBadge.innerText = 'FAIL';
+                        statusText.innerText = vae.error_type || 'FAIL';
+                        statusText.style.color = 'var(--accent-red)';
+                    }
+
+                    const diffCount = m.differing_grid_count !== undefined ? m.differing_grid_count : 0;
+                    const totalCells = m.total_cells || 64;
+                    if (gridDiffText) {
+                        gridDiffText.innerText = `${diffCount} / ${totalCells} cells`;
+                        gridDiffText.style.color = diffCount >= (m.grid_fail_threshold || 5) ? 'var(--accent-red)' : 'var(--accent-green)';
+                    }
+
+                    const l2Val = m.latent_l2 !== undefined && m.latent_l2 !== null ? m.latent_l2 : m.cycle_l2;
+                    if (cycleL2Text) {
+                        cycleL2Text.innerText = l2Val !== undefined && l2Val !== null ? l2Val : 'N/A';
+                        if (l2Val !== undefined && l2Val !== null) {
+                            const thresh = m.latent_l2_threshold || m.cycle_l2_threshold || 0.23;
+                            cycleL2Text.style.color = (l2Val >= thresh) ? "var(--accent-red)" : "var(--accent-green)";
+                        }
+                    }
+
+                    if (cycleCosText) {
+                        const cosVal = m.latent_cosine !== undefined && m.latent_cosine !== null ? m.latent_cosine : m.cycle_cosine;
+                        cycleCosText.innerText = cosVal !== undefined && cosVal !== null ? cosVal : 'N/A';
+                        if (cosVal !== undefined && cosVal !== null) {
+                            cycleCosText.style.color = (cosVal < 0.20) ? "var(--accent-red)" : "var(--accent-green)";
+                        }
+                    }
+                }
+
             } catch (err) {
                 console.error(err);
-                alert("Error: " + err.message);
             } finally {
                 btn.disabled = false;
-                btn.innerText = "Reconstruct";
                 loader.style.display = 'none';
             }
         }
 
-
-        // --- Logic: Imagination View ---
-
+        // --- File Upload Handlers ---
         function handleImagineUpload(input) {
             const file = input.files ? input.files[0] : input;
             if (file) {
+                currentFile = file;
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     document.getElementById('imagine-placeholder').style.display = 'none';
                     const img = document.getElementById('imagine-input-preview');
                     img.src = ev.target.result;
                     img.style.display = 'block';
-
-                    // Reset zoom
                     zoomLevels['imagine-input'] = 1.0;
                     img.style.transform = 'scale(1.0)';
                 };
@@ -647,76 +1424,29 @@
             }
         }
 
-        async function generateImagine() {
-            const fileInput = document.getElementById('imagine-upload');
-            if (!fileInput.files[0]) return alert("Please upload an image first");
-
-            const file = fileInput.files[0];
-            const caption = document.getElementById('imagine-caption').value;
-            const btn = document.getElementById('imagine-generate-btn');
-            const loader = document.getElementById('imagine-loader');
-
-            btn.disabled = true;
-            btn.innerText = "Processing...";
-            loader.style.display = 'flex';
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('caption', caption);
-            formData.append('mode', 'imagination');
-
-            try {
-                const res = await fetch('/imagine', { method: 'POST', body: formData });
-                if (!res.ok) {
-                    const errData = await res.json().catch(() => ({ detail: res.statusText }));
-                    throw new Error(errData.detail || `Server returned ${res.status}`);
-                }
-
-                const data = await res.json();
-
-                if (data.result) {
-                    const img = document.getElementById('imagine-result-img');
-                    img.src = data.result;
+        function handleLatentUpload(input) {
+            const file = input.files ? input.files[0] : input;
+            if (file) {
+                currentFile = file;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    document.getElementById('latent-placeholder').style.display = 'none';
+                    const img = document.getElementById('latent-input-preview');
+                    img.src = ev.target.result;
                     img.style.display = 'block';
-
-                    // Reset zoom
-                    zoomLevels['imagine-output'] = 1.0;
-                    img.style.transform = 'scale(1.0)';
-                }
-
-                if (data.original_latent) {
-                    const img = document.getElementById('imagine-orig-latent');
-                    img.src = data.original_latent;
-                    img.style.display = 'block';
-                }
-
-                if (data.reconstructed_latent) {
-                    const img = document.getElementById('imagine-recon-latent');
-                    img.src = data.reconstructed_latent;
-                    img.style.display = 'block';
-                }
-
-            } catch (err) {
-                console.error(err);
-                alert("Error: " + err.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Imagine";
-                loader.style.display = 'none';
+                    generateLatent(false);
+                };
+                reader.readAsDataURL(file);
             }
         }
 
-        // --- Drag and drop support ---
+        // --- Drag and Drop ---
         function setupDragAndDrop(dropzoneId, fileInputId, handler) {
             const el = document.getElementById(dropzoneId);
             if (!el) return;
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                el.addEventListener(eventName, preventDefaults, false);
+                el.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
             });
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
             ['dragenter', 'dragover'].forEach(eventName => {
                 el.addEventListener(eventName, () => el.style.borderColor = 'var(--secondary-color)', false);
             });
@@ -724,18 +1454,18 @@
                 el.addEventListener(eventName, () => el.style.borderColor = 'var(--border-color)', false);
             });
             el.addEventListener('drop', (e) => {
-                const dt = e.dataTransfer;
-                const files = dt.files;
+                const files = e.dataTransfer.files;
                 if (files.length > 0) {
-                    const fileInput = document.getElementById(fileInputId);
-                    fileInput.files = files;
+                    document.getElementById(fileInputId).files = files;
                     handler(files[0]);
                 }
             }, false);
         }
         setupDragAndDrop('latent-dropzone', 'latent-upload', handleLatentUpload);
         setupDragAndDrop('imagine-dropzone', 'imagine-upload', handleImagineUpload);
+
+        // Initialize on load
+        window.addEventListener("DOMContentLoaded", initEnvironments);
     </script>
 </body>
-
 </html>

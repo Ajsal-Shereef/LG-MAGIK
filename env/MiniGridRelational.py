@@ -710,7 +710,7 @@ if __name__ == "__main__":
         description="Visual rollout of RelationalPickPlaceEnv for inspection.",
     )
     parser.add_argument(
-        "--mode", default="target1",
+        "--mode", default="target5",
         choices=["source", "target1", "target2", "target3", "target4", "target5"],
         help="task_mode to run (default: target5).",
     )
@@ -744,7 +744,7 @@ if __name__ == "__main__":
         ep_dir = out_root / f"ep_{ep:02d}"
         ep_dir.mkdir(parents=True, exist_ok=True)
 
-        obs, _ = env.reset(seed=args.seed + ep)
+        obs, info = env.reset(seed=args.seed + ep)
         Image.fromarray(obs).save(ep_dir / "step_00_init.png")
 
         log_path = ep_dir / "log.txt"

@@ -77,103 +77,188 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: s
     if mode is None:
         raise ValueError("Mode must be provided either explicitly or via cfg.")
 
-    if mode == "openrouter":
-        def execute_openrouter_query(model_name: str, system_prompt: str, user_prompt: Union[str, List[dict]], key: str):
-            url = "https://openrouter.ai/api/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
+    if mode in ("openrouter", "nvidia", "openai"):
+        from openai import OpenAI
+
+        if not api_key:
+            if mode == "nvidia":
+                api_key = os.getenv("NVIDIA_API") 
+            elif mode == "openrouter":
+                api_key = os.getenv("OPENROUTER_API_KEY")
+            elif mode == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+
+        provider_name = mode.upper() if mode in ("nvidia", "openai") else "OpenRouter"
+
+        if not api_key:
+            if alternative_pipe:
+                print(f"[{provider_name}] API key for '{mode}' is not provided or set. Gracefully falling back to HuggingFace model: {alternative_pipe}")
+                return query_llm(
+                    system=system,
+                    prompt=prompt,
+                    api_key=None,
+                    mode="huggingface",
+                    pipeline=alternative_pipe,
+                    temperature=temperature,
+                    alternative_pipe=None
+                )
+            raise ValueError(f"API key for '{mode}' is not provided or set in environment.")
+
+        if mode == "openrouter":
+            base_url = "https://openrouter.ai/api/v1"
+            default_headers = {
                 "HTTP-Referer": "https://localhost:3000", 
             }
-            
-            structured_system_prompt = f"""{system_prompt}
-            """
-            
-            payload = {
-                "model": model_name,
-                "temperature": temperature,
-                "messages": [
-                    {"role": "system", "content": structured_system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "stream": False,
-            }
+        elif mode == "nvidia":
+            base_url = "https://integrate.api.nvidia.com/v1"
+            if cfg and hasattr(cfg.model, "base_url") and cfg.model.base_url:
+                base_url = cfg.model.base_url.rstrip("/chat/completions")
+            default_headers = None
+        else:
+            base_url = None
+            default_headers = None
 
-            return requests.post(url, headers=headers, json=payload)
+        client = OpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            default_headers=default_headers
+        )
+
+        def execute_chat_query(model_name: str, sys_p: str, user_p: Union[str, List[dict]]):
+            clean_model = model_name
+            if mode == "nvidia" and clean_model and clean_model.endswith(":free"):
+                clean_model = clean_model[:-5]
+
+            messages = []
+            if sys_p and str(sys_p).strip():
+                messages.append({"role": "system", "content": str(sys_p)})
+            messages.append({"role": "user", "content": user_p})
+
+            temp = 0.1 if (temperature is None) else temperature
+            completion = client.chat.completions.create(
+                model=clean_model,
+                messages=messages,
+                temperature=temp,
+            )
+            return completion.choices[0].message.content or ""
 
         # --- Attempt 1: Primary Model ---
         try:
-            response = execute_openrouter_query(pipeline, system, prompt, api_key)
-            if response.status_code == 200:
-                result = response.json()
-                if not result.get("choices"):
-                     raise RuntimeError(f"OpenRouter returned no choices: {result}")
-                final = result["choices"][0]["message"]["content"]
-                return final
-            
-            raise RuntimeError(f"OpenRouter failed with primary model ({pipeline}): {response.status_code}: {response.text}")
+            return execute_chat_query(pipeline, system, prompt)
+        except Exception as e:
+            print(f"[{provider_name}] Primary model failure ({pipeline}): {e}")
 
-        except RuntimeError as e:
-            print(f"Primary model failure: {e}")
-            
-            # --- Attempt 2: Alternative Model (if provided) ---
+            # --- Attempt 2: Graceful fallback to HuggingFace model (if provided) ---
             if alternative_pipe:
-                print(f"Retrying with alternative model: {alternative_pipe}")
+                print(f"[{provider_name}] Gracefully falling back to HuggingFace model: {alternative_pipe}")
                 try:
-                    response = execute_openrouter_query(alternative_pipe, system, prompt, api_key)
-                    if response.status_code == 200:
-                        result = response.json()
-                        if not result.get("choices"):
-                            raise RuntimeError(f"OpenRouter returned no choices: {result}")
-                        final = result["choices"][0]["message"]["content"]
-                        return final
-                    
-                    raise RuntimeError(f"OpenRouter failed with alternative model ({alternative_pipe}): {response.status_code}: {response.text}")
-                
+                    return query_llm(
+                        system=system,
+                        prompt=prompt,
+                        api_key=None,
+                        mode="huggingface",
+                        pipeline=alternative_pipe,
+                        temperature=temperature,
+                        alternative_pipe=None
+                    )
                 except Exception as inner_e:
-                     # If the alternative model attempt fails
-                    raise RuntimeError(f"Both OpenRouter attempts failed. Primary error: {e}. Alternative error: {inner_e}")
+                    raise RuntimeError(f"Both {provider_name} ({pipeline}) and HuggingFace fallback ({alternative_pipe}) failed. Primary error: {e}. Fallback error: {inner_e}")
             else:
-                 # If no alternative is provided, re-raise the original error
-                 raise e
+                raise e
 
-    
-    elif mode == "nvidia":
+    elif mode == "huggingface":
+        import io
+        import torch
+        from PIL import Image
+        import numpy as np
+        from transformers import AutoProcessor, AutoModelForCausalLM
 
-        invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
-        if cfg and hasattr(cfg.model, "base_url") and cfg.model.base_url:
-            invoke_url = cfg.model.base_url
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": pipeline,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature,
-            "top_p": 0.01,
-            "max_tokens": 1024,
-            "stream": False
-        }
-        
-        # Add system prompt if exists
-        if system:
-             payload["messages"].insert(0, {"role": "system", "content": system})
-
-        response = requests.post(invoke_url, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            result = response.json()
-            if not result.get("choices"):
-                 raise RuntimeError(f"Nvidia API returned no choices: {result}")
-            return result["choices"][0]["message"]["content"]
+        # Determine processor and model
+        if isinstance(pipeline, (tuple, list)):
+            processor, model = pipeline[0], pipeline[1]
         else:
-             raise RuntimeError(f"Nvidia API failed: {response.status_code}: {response.text}")
+            model_id = pipeline if pipeline else "google/gemma-4-12B-it"
+            global _HF_VISION_CACHE
+            if "_HF_VISION_CACHE" not in globals():
+                globals()["_HF_VISION_CACHE"] = {}
+            if model_id not in globals()["_HF_VISION_CACHE"]:
+                proc = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+                mdl = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    device_map="auto",
+                    torch_dtype="auto",
+                    trust_remote_code=True
+                )
+                mdl.eval()
+                globals()["_HF_VISION_CACHE"][model_id] = (proc, mdl)
+            processor, model = globals()["_HF_VISION_CACHE"][model_id]
+
+        # Extract text and image from prompt
+        pil_img = None
+        user_text = ""
+
+        if isinstance(prompt, list):
+            for item in prompt:
+                if item.get("type") == "text":
+                    user_text += item.get("text", "")
+                elif item.get("type") == "image_url":
+                    url = item.get("image_url", {}).get("url", "")
+                    if url.startswith("data:image"):
+                        b64_data = url.split(",", 1)[1]
+                        pil_img = Image.open(io.BytesIO(base64.b64decode(b64_data))).convert("RGB")
+                    elif os.path.exists(url):
+                        pil_img = Image.open(url).convert("RGB")
+                elif item.get("type") == "image" and "image" in item:
+                    raw_img = item["image"]
+                    if isinstance(raw_img, Image.Image):
+                        pil_img = raw_img.convert("RGB")
+                    elif isinstance(raw_img, np.ndarray):
+                        pil_img = Image.fromarray(raw_img).convert("RGB")
+        elif isinstance(prompt, str):
+            user_text = prompt
+
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+
+        user_content = []
+        if pil_img is not None:
+            user_content.append({"type": "image"})
+        user_content.append({"type": "text", "text": user_text})
+        messages.append({"role": "user", "content": user_content})
+
+        # Ensure processor has vision support
+        proc = getattr(model, "_processor", None)
+        if proc is None:
+            if hasattr(processor, "image_processor"):
+                proc = processor
+            else:
+                proc = AutoProcessor.from_pretrained(
+                    getattr(model.config, "_name_or_path", "google/gemma-4-12B-it"),
+                    trust_remote_code=True
+                )
+                model._processor = proc
+
+        if pil_img is not None:
+            text_prompt = proc.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+            inputs = proc(text=text_prompt, images=pil_img, return_tensors="pt").to(model.device)
+        else:
+            tok = getattr(proc, "tokenizer", processor)
+            inputs = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", return_dict=True).to(model.device)
+
+        gen_kwargs = {
+            "max_new_tokens": 128,
+            "do_sample": False if (temperature is None or temperature == 0.0) else True,
+        }
+        if temperature is not None and temperature > 0.0 and gen_kwargs["do_sample"]:
+            gen_kwargs["temperature"] = temperature
+
+        with torch.no_grad():
+            output_ids = model.generate(**inputs, **gen_kwargs)
+
+        input_len = inputs["input_ids"].shape[-1]
+        caption = proc.decode(output_ids[0][input_len:], skip_special_tokens=True).strip()
+        return caption
 
 # --- 4. Main Processing Logic ---
 def process_dataset(cfg: DictConfig, api_key: str):

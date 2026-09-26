@@ -120,8 +120,8 @@ TASK_MODES = {
         "wall_color": ["blue"],
     },
     "target3": {
-        "objects": [["purple box", "red ball"]],
-        "reward_objects": [["purple box"]],
+        "objects": [["green ball", "red ball"]],
+        "reward_objects": [["green ball"]],
         "wall_color": ["grey"],
     },
 }
