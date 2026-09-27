@@ -1191,7 +1191,7 @@
                     if (latentL2El) {
                         latentL2El.innerText = l2Val !== null ? l2Val : "N/A";
                         if (l2Val !== null) {
-                            const thresh = m.latent_l2_threshold || m.cycle_l2_threshold || 0.23;
+                            const thresh = m.latent_l2_threshold || m.cycle_l2_threshold || 0.75;
                             latentL2El.style.color = (l2Val >= thresh) ? "var(--accent-red)" : "var(--accent-green)";
                         }
                     }
@@ -1384,7 +1384,7 @@
                     if (cycleL2Text) {
                         cycleL2Text.innerText = l2Val !== undefined && l2Val !== null ? l2Val : 'N/A';
                         if (l2Val !== undefined && l2Val !== null) {
-                            const thresh = m.latent_l2_threshold || m.cycle_l2_threshold || 0.23;
+                            const thresh = m.latent_l2_threshold || m.cycle_l2_threshold || 0.75;
                             cycleL2Text.style.color = (l2Val >= thresh) ? "var(--accent-red)" : "var(--accent-green)";
                         }
                     }

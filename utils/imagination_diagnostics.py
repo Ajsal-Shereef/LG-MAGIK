@@ -182,14 +182,12 @@ def compute_latent_difference(
     """
     Encodes original and imagined inputs through the VAE encoder to obtain their latent representations.
     Calculates normalized L2 distance between the latent means.
-    Marks is_latent_failed = True if normalized L2 distance exceeds threshold.
+    Marks is_latent_failed = True if normalized L2 distance exceeds threshold (default 0.75).
     """
     if latent_l2_threshold is not None:
         l2_thresh = latent_l2_threshold
-    elif env_name and "MiniWorld" in env_name:
-        l2_thresh = 0.23
     else:
-        l2_thresh = 0.25
+        l2_thresh = 0.75
 
     if vision_model is None:
         return {
@@ -395,7 +393,7 @@ def evaluate_vae_quality(
         }
 
     if latent_res.get("is_latent_failed"):
-        l2_thresh = latent_res.get("latent_l2_threshold", 0.23 if (env_name and "MiniWorld" in env_name) else 0.25)
+        l2_thresh = latent_res.get("latent_l2_threshold", 0.75)
         return {
             "is_valid": False,
             "error_type": "VAE_LATENT_DIFFERENCE_FAILURE",

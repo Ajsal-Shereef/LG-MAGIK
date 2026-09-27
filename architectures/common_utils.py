@@ -1346,7 +1346,7 @@ _LAST_NVIDIA_CALL_TIME = 0.0
 _NVIDIA_MIN_INTERVAL = 2.5  # 2.5s idle gap ensures <= 24 RPM and prevents sub-second bursts
 _NVIDIA_TIMESTAMP_FILE = "/tmp/.nvidia_nim_rate_limit"
 
-def _pace_nvidia_call():
+def _pace_nvidia_call() -> float:
     global _LAST_NVIDIA_CALL_TIME
     last_call = _LAST_NVIDIA_CALL_TIME
     try:
@@ -1360,8 +1360,11 @@ def _pace_nvidia_call():
 
     now = time.time()
     elapsed = now - last_call
+    wait_time = 0.0
     if elapsed < _NVIDIA_MIN_INTERVAL:
-        time.sleep(_NVIDIA_MIN_INTERVAL - elapsed)
+        wait_time = _NVIDIA_MIN_INTERVAL - elapsed
+        time.sleep(wait_time)
+    return wait_time
 
 def _record_nvidia_call():
     global _LAST_NVIDIA_CALL_TIME
@@ -1373,17 +1376,152 @@ def _record_nvidia_call():
     except Exception:
         pass
 
-def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative_pipe: str = None, mode: str = "openrouter") -> tuple[str, dict]:
+def query_gemini_api(system: str, prompt: str, model_name: str = "gemini-3.8-flash", api_key: str = None, force_google_client: bool = False) -> tuple[str, dict]:
     """
-    Query LLM via OpenRouter, HuggingFace pipeline, or Google API 
-    with CONSISTENT formatting.
-    
-    :param alternative_pipe: An optional second model to try if the first one fails 
-                             in 'openrouter' mode.
+    Invokes Google Gemini API with a resilient 2-tier client strategy:
+      1. Prefer using the OpenAI client pointing to Google's OpenAI-compatible endpoint
+         (https://generativelanguage.googleapis.com/v1beta/openai/).
+      2. If OpenAI client fails, fallback to native google.generativeai client.
     """
+    google_api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not google_api_key:
+        try:
+            from dotenv import load_dotenv
+            if os.path.exists("config/.env"):
+                load_dotenv("config/.env")
+            elif os.path.exists(".env"):
+                load_dotenv(".env")
+            google_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        except Exception:
+            pass
+
+    if not google_api_key:
+        raise ValueError("Google API key (GOOGLE_API_KEY or GEMINI_API_KEY) is not set in environment or config/.env.")
+
+    openai_err = None
+    # --- Step 1: Try OpenAI client with Google OpenAI-compatible endpoint ---
+    if not force_google_client:
+        try:
+            from openai import OpenAI
+            gemini_client = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=google_api_key,
+                max_retries=1
+            )
+            messages = []
+            if system and str(system).strip():
+                messages.append({"role": "system", "content": str(system)})
+            messages.append({"role": "user", "content": str(prompt)})
+
+            t_req_start = time.time()
+            completion = gemini_client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=2048
+            )
+            net_latency = time.time() - t_req_start
+            msg = completion.choices[0].message
+            content = msg.content or ""
+            reasoning = getattr(msg, "reasoning", getattr(msg, "reasoning_content", None))
+
+            analysis, final = split_gptoss_analysis_final(content)
+            if final and final.strip():
+                content = final
+                if analysis and not reasoning:
+                    reasoning = analysis
+
+            usage_info = {}
+            if getattr(completion, "usage", None) is not None:
+                u = completion.usage
+                usage_info = {
+                    "prompt_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
+                    "completion_tokens": int(getattr(u, "completion_tokens", 0) or 0),
+                    "total_tokens": int(getattr(u, "total_tokens", 0) or 0),
+                }
+
+            latency_info = {
+                "net_latency": round(net_latency, 3),
+                "wait_time": 0.0,
+                "gross_latency": round(net_latency, 3),
+            }
+
+            return content, {"reasoning": reasoning, "model": model_name, "provider": "google_openai", "usage": usage_info, "latency": latency_info}
+        except Exception as e:
+            openai_err = e
+            print(f"[Google API] OpenAI client failed for '{model_name}': {e}. Attempting native google.generativeai client...")
+
+    # --- Step 2: Fallback to native google.generativeai client ---
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=google_api_key)
+        model = genai.GenerativeModel(model_name)
+
+        structured_system_prompt = f"""{system}
+
+Please structure your response in two parts.
+First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
+Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
+"""
+        full_prompt = f"{structured_system_prompt}\n\nUser Question: {prompt}" if system else str(prompt)
+        t_req_start = time.time()
+        response = model.generate_content(full_prompt)
+        net_latency = time.time() - t_req_start
+        raw_text = response.text or ""
+        analysis, final = split_gptoss_analysis_final(raw_text)
+        final_text = final if (final and final.strip()) else raw_text
+        usage_info = {}
+        if hasattr(response, "usage_metadata") and response.usage_metadata is not None:
+            um = response.usage_metadata
+            usage_info = {
+                "prompt_tokens": int(getattr(um, "prompt_token_count", 0) or 0),
+                "completion_tokens": int(getattr(um, "candidates_token_count", 0) or 0),
+                "total_tokens": int(getattr(um, "total_token_count", 0) or 0),
+            }
+        latency_info = {
+            "net_latency": round(net_latency, 3),
+            "wait_time": 0.0,
+            "gross_latency": round(net_latency, 3),
+        }
+        return final_text, {"reasoning": analysis, "model": model_name, "provider": "google_genai", "usage": usage_info, "latency": latency_info}
+    except Exception as google_err:
+        raise RuntimeError(
+            f"Both OpenAI client and Google client failed for Gemini ({model_name}).\n"
+            f"  • OpenAI client error: {openai_err}\n"
+            f"  • Google client error: {google_err}"
+        )
+
+
+def query_llm(
+    system: str,
+    prompt: str,
+    api_key: str,
+    pipeline: str,
+    alternative_pipe: str = None,
+    mode: str = "openrouter",
+    secondary_api_model: str = "gemini-3.8-flash",
+    local_pipe = None
+) -> tuple[str, dict]:
+    """
+    Query LLM with a 3-tier fallback architecture:
+      Tier 1: Primary API model (OpenRouter, NVIDIA, OpenAI, or Google)
+      Tier 2: Secondary API model via Google API (default: 'gemini-3.8-flash' using OpenAI client, then Google client)
+      Tier 3: Local model (HuggingFace pipeline) - invoked ONLY if both Tier 1 and Tier 2 fail.
     
-    # ... (other mode handling code, e.g., for "huggingface" or "google") ...
-    
+    :param alternative_pipe: An optional model to try if the primary fails.
+    :param secondary_api_model: Secondary API model name (defaults to 'gemini-3.8-flash').
+    :param local_pipe: Local HuggingFace model or pipeline to use as final fallback.
+    """
+    # Resolve secondary API model and local fallback target
+    if secondary_api_model is None:
+        secondary_api_model = os.getenv("SECONDARY_API_MODEL", "gemini-3.8-flash")
+
+    if isinstance(alternative_pipe, str) and alternative_pipe.startswith("gemini"):
+        secondary_api_model = alternative_pipe
+        target_local_pipe = local_pipe
+    else:
+        target_local_pipe = local_pipe if local_pipe is not None else alternative_pipe
+
     if mode in ("openrouter", "nvidia", "openai"):
         from openai import OpenAI
 
@@ -1398,17 +1536,29 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
         provider_name = mode.upper() if mode in ("nvidia", "openai") else "OpenRouter"
 
         if not api_key:
-            if alternative_pipe:
-                print(f"[{provider_name}] API key for '{mode}' is not provided or set. Gracefully falling back to HuggingFace model: {alternative_pipe}")
+            print(f"[{provider_name}] API key for '{mode}' is not provided or set in environment.")
+            # Tier 2: Try Secondary Google API model
+            sec_err = None
+            if secondary_api_model:
+                try:
+                    print(f"[{provider_name}] Attempting secondary API call ({secondary_api_model}) via Google API...")
+                    return query_gemini_api(system=system, prompt=prompt, model_name=secondary_api_model)
+                except Exception as err:
+                    sec_err = err
+                    print(f"[{provider_name}] Secondary API model ({secondary_api_model}) failed: {err}")
+
+            # Tier 3: Local HuggingFace model (only if both fail)
+            if target_local_pipe:
+                print(f"[{provider_name}] Falling back to local HuggingFace model: {target_local_pipe}")
                 return query_llm(
                     system=system,
                     prompt=prompt,
                     api_key=None,
-                    pipeline=alternative_pipe,
+                    pipeline=target_local_pipe,
                     alternative_pipe=None,
                     mode="huggingface"
                 )
-            raise ValueError(f"API key for '{mode}' is not provided or set in environment.")
+            raise ValueError(f"API key for '{mode}' is not provided, secondary Gemini failed ({sec_err}), and no local model was provided.")
 
         if mode == "openrouter":
             base_url = "https://openrouter.ai/api/v1"
@@ -1441,29 +1591,46 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": user_prompt})
 
-            max_retries = 3 if mode == "nvidia" else 1
+            total_wait_time = 0.0
+            max_retries = 3 if mode == "nvidia" else 2
             for attempt in range(max_retries):
                 if mode == "nvidia":
-                    _pace_nvidia_call()
+                    wait_dur = _pace_nvidia_call()
+                    total_wait_time += wait_dur
 
                 try:
+                    t_req_start = time.time()
                     completion = client.chat.completions.create(
                         model=clean_model,
                         messages=messages,
                         temperature=0.1
                     )
+                    net_latency = time.time() - t_req_start
                     if mode == "nvidia":
                         _record_nvidia_call()
                     msg = completion.choices[0].message
                     content = msg.content or ""
                     reasoning = getattr(msg, "reasoning", getattr(msg, "reasoning_content", None))
                     actual_model = getattr(completion, "model", clean_model) or clean_model
-                    return content, {"reasoning": reasoning, "model": actual_model}
+                    usage_info = {}
+                    if getattr(completion, "usage", None) is not None:
+                        u = completion.usage
+                        usage_info = {
+                            "prompt_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
+                            "completion_tokens": int(getattr(u, "completion_tokens", 0) or 0),
+                            "total_tokens": int(getattr(u, "total_tokens", 0) or 0),
+                        }
+                    latency_info = {
+                        "net_latency": round(net_latency, 3),
+                        "wait_time": round(total_wait_time, 3),
+                        "gross_latency": round(net_latency + total_wait_time, 3),
+                    }
+                    return content, {"reasoning": reasoning, "model": actual_model, "usage": usage_info, "latency": latency_info}
                 except Exception as api_err:
                     if mode == "nvidia":
                         _record_nvidia_call()
                     err_str = str(api_err).lower()
-                    if mode == "nvidia" and ("429" in err_str or "rate limit" in err_str or "too many requests" in err_str) and attempt < max_retries - 1:
+                    if ("429" in err_str or "rate limit" in err_str or "too many requests" in err_str) and attempt < max_retries - 1:
                         retry_after = None
                         if hasattr(api_err, "response") and api_err.response is not None:
                             headers = getattr(api_err.response, "headers", {})
@@ -1476,37 +1643,55 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
                         if retry_after is not None and retry_after > 0:
                             backoff = retry_after
                         else:
-                            backoff = [35.0, 45.0, 65.0][attempt]
-                        print(f"[{provider_name}] Rate limit (429) hit. Backing off for {backoff:.1f}s to clear cooldown window ({attempt + 1}/{max_retries})...", flush=True)
+                            backoff = [35.0, 45.0, 65.0][attempt] if mode == "nvidia" else [5.0, 10.0][attempt]
+                        print(f"[{provider_name}] Rate limit (429) hit. Backing off for {backoff:.1f}s ({attempt + 1}/{max_retries})...", flush=True)
+                        total_wait_time += backoff
                         time.sleep(backoff)
                         continue
                     raise api_err
 
-        # --- Attempt 1: Primary Model ---
+        # --- Tier 1: Primary Model ---
         try:
             return execute_openai_query(pipeline, system, prompt)
         except Exception as e:
             print(f"[{provider_name}] Primary API model failure ({pipeline}): {e}")
 
-            # --- Attempt 2: Graceful fallback to HuggingFace model (if provided) ---
-            if alternative_pipe:
-                print(f"[{provider_name}] Gracefully falling back to HuggingFace model: {alternative_pipe}")
+            # --- Tier 2: Secondary API model (Gemini 3.8 Flash via Google API) ---
+            sec_err = None
+            if secondary_api_model:
+                print(f"[{provider_name}] Attempting secondary API model ({secondary_api_model}) via Google API...")
+                try:
+                    return query_gemini_api(system=system, prompt=prompt, model_name=secondary_api_model)
+                except Exception as err:
+                    sec_err = err
+                    print(f"[{provider_name}] Secondary API model ({secondary_api_model}) failed: {err}")
+
+            # --- Tier 3: Local HuggingFace model (only if both Tier 1 and Tier 2 fail) ---
+            if target_local_pipe:
+                print(f"[{provider_name}] Both API models failed. Gracefully falling back to local HuggingFace model: {target_local_pipe}")
                 try:
                     return query_llm(
                         system=system,
                         prompt=prompt,
                         api_key=None,
-                        pipeline=alternative_pipe,
+                        pipeline=target_local_pipe,
                         alternative_pipe=None,
                         mode="huggingface"
                     )
                 except Exception as inner_e:
                     raise RuntimeError(
-                        f"Both {provider_name} API ({pipeline}) and HuggingFace fallback ({alternative_pipe}) failed.\n"
-                        f"  • {provider_name} error: {e}\n"
-                        f"  • HuggingFace error: {inner_e}"
+                        f"All model invocations failed:\n"
+                        f"  • Primary ({provider_name}/{pipeline}) error: {e}\n"
+                        f"  • Secondary Gemini ({secondary_api_model}) error: {sec_err}\n"
+                        f"  • Local HuggingFace ({target_local_pipe}) error: {inner_e}"
                     )
             else:
+                if sec_err:
+                    raise RuntimeError(
+                        f"Both primary ({provider_name}/{pipeline}) and secondary Gemini ({secondary_api_model}) failed, and no local fallback model was provided.\n"
+                        f"  • Primary error: {e}\n"
+                        f"  • Secondary error: {sec_err}"
+                    )
                 raise e
     
     elif mode == "huggingface":
@@ -1565,37 +1750,76 @@ def query_llm(system: str, prompt: str, api_key: str, pipeline: str, alternative
         elif isinstance(inputs, dict):
             inputs = {k: (v.to(device_to_use) if hasattr(v, "to") else v) for k, v in inputs.items()}
 
+        t_req_start = time.time()
         with torch.no_grad():
             generated = model.generate(**inputs, max_new_tokens=4096, do_sample=False)
+        net_latency = time.time() - t_req_start
         raw_output = tok.decode(generated[0][inputs["input_ids"].shape[-1] :])
         reasoning, final = split_gptoss_analysis_final(raw_output)
         if final is None:
             final = raw_output
         model_name = pipeline if isinstance(pipeline, str) else getattr(model, "name_or_path", "huggingface_model")
-        return final, {"reasoning": reasoning, "model": model_name}
+        p_tokens = int(inputs["input_ids"].shape[-1]) if (isinstance(inputs, dict) and "input_ids" in inputs) else (int(inputs.shape[-1]) if hasattr(inputs, "shape") else 0)
+        tot_tokens = int(generated.shape[-1]) if hasattr(generated, "shape") else 0
+        c_tokens = max(0, tot_tokens - p_tokens)
+        usage_info = {
+            "prompt_tokens": p_tokens,
+            "completion_tokens": c_tokens,
+            "total_tokens": tot_tokens,
+        }
+        latency_info = {
+            "net_latency": round(net_latency, 3),
+            "wait_time": 0.0,
+            "gross_latency": round(net_latency, 3),
+        }
+        return final, {"reasoning": reasoning, "model": model_name, "usage": usage_info, "latency": latency_info}
 
     elif mode == "google":
-
-        # 1. Add formatting instructions to the system prompt
-        structured_system_prompt = f"""{system}
-        
-        Please structure your response in two parts.
-        First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
-        Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
-        """
-        
-        full_prompt = f"{structured_system_prompt}\n\nUser Question: {prompt}"
-        
         try:
-            response = pipeline.generate_content(full_prompt)
-            
-            # 2. Use your existing parser on the Gemini output
-            analysis, final = split_gptoss_analysis_final(response.text)
-            
-            # The 'analysis' can be returned as the reasoning dictionary
-            return final, {"reasoning": analysis} if analysis else {}
-            
+            if isinstance(pipeline, str):
+                return query_gemini_api(system=system, prompt=prompt, model_name=pipeline, api_key=api_key)
+            elif hasattr(pipeline, "generate_content"):
+                structured_system_prompt = f"""{system}
+        
+Please structure your response in two parts.
+First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
+Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
+"""
+                full_prompt = f"{structured_system_prompt}\n\nUser Question: {prompt}"
+                t_req_start = time.time()
+                response = pipeline.generate_content(full_prompt)
+                net_latency = time.time() - t_req_start
+                raw_text = response.text or ""
+                analysis, final = split_gptoss_analysis_final(raw_text)
+                final_text = final if (final and final.strip()) else raw_text
+                usage_info = {}
+                if hasattr(response, "usage_metadata") and response.usage_metadata is not None:
+                    um = response.usage_metadata
+                    usage_info = {
+                        "prompt_tokens": int(getattr(um, "prompt_token_count", 0) or 0),
+                        "completion_tokens": int(getattr(um, "candidates_token_count", 0) or 0),
+                        "total_tokens": int(getattr(um, "total_token_count", 0) or 0),
+                    }
+                latency_info = {
+                    "net_latency": round(net_latency, 3),
+                    "wait_time": 0.0,
+                    "gross_latency": round(net_latency, 3),
+                }
+                return final_text, {"reasoning": analysis, "model": getattr(pipeline, "_model_name", "google_genai"), "usage": usage_info, "latency": latency_info}
+            else:
+                return query_gemini_api(system=system, prompt=prompt, model_name="gemini-3.8-flash", api_key=api_key)
         except Exception as e:
+            print(f"[GOOGLE] Primary Gemini API call failed: {e}")
+            if target_local_pipe:
+                print(f"[GOOGLE] Falling back to local HuggingFace model: {target_local_pipe}")
+                return query_llm(
+                    system=system,
+                    prompt=prompt,
+                    api_key=None,
+                    pipeline=target_local_pipe,
+                    alternative_pipe=None,
+                    mode="huggingface"
+                )
             raise RuntimeError(f"Google API call failed: {e}")
             
     else:
@@ -1626,26 +1850,74 @@ def preprocess_llm_output(raw_text: str) -> dict:
     cleaned_text = raw_text.strip()
 
     # Remove markdown/code fences if present
-    cleaned_text = re.sub(r"^```(?:json)?|```$", "", cleaned_text.strip(), flags=re.MULTILINE)
+    cleaned_text = re.sub(r"^```(?:json)?|```$", "", cleaned_text.strip(), flags=re.MULTILINE).strip()
 
-    # Extract JSON substring if extra tokens appear before/after
-    json_match = re.search(r"\{.*\}", cleaned_text, flags=re.DOTALL)
-    if json_match:
-        cleaned_text = json_match.group(0)
-    else:
-        # Fallback if no valid JSON braces found
-        return {"imagine": False, "description": "Agent sees nothing."}
-
+    # Fast direct parse if the entire output is already clean JSON
+    parsed = None
     try:
-        parsed = json.loads(cleaned_text)
-    except json.JSONDecodeError:
-        # Try a looser parse: remove trailing commas and retry
-        cleaned_text = re.sub(r",\s*}", "}", cleaned_text)
-        cleaned_text = re.sub(r",\s*\]", "]", cleaned_text)
-        try:
-            parsed = json.loads(cleaned_text)
-        except Exception:
-            return {"imagine": False, "description": "Agent sees nothing."}
+        p = json.loads(cleaned_text)
+        if isinstance(p, dict):
+            parsed = p
+    except Exception:
+        pass
+
+    if parsed is None:
+        # Balanced-brace candidate extraction for embedded JSON, LaTeX \boxed{ ... }, etc.
+        candidates = []
+        start_indices = [i for i, c in enumerate(cleaned_text) if c == '{']
+        for start in start_indices:
+            depth = 0
+            in_string = False
+            escape = False
+            for i in range(start, len(cleaned_text)):
+                c = cleaned_text[i]
+                if escape:
+                    escape = False
+                    continue
+                if c == '\\':
+                    escape = True
+                    continue
+                if c == '"':
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if c == '{':
+                        depth += 1
+                    elif c == '}':
+                        depth -= 1
+                        if depth == 0:
+                            candidates.append(cleaned_text[start:i+1])
+                            break
+
+        # Priority 1: Candidates containing key schema fields ('description' or 'imagine')
+        for cand in candidates:
+            for text in [cand, re.sub(r",\s*([}\]])", r"\1", cand)]:
+                try:
+                    p = json.loads(text)
+                    if isinstance(p, dict) and ("description" in p or "imagine" in p):
+                        parsed = p
+                        break
+                except Exception:
+                    pass
+            if parsed is not None:
+                break
+
+        # Priority 2: Any valid JSON dict candidate
+        if parsed is None:
+            for cand in candidates:
+                for text in [cand, re.sub(r",\s*([}\]])", r"\1", cand)]:
+                    try:
+                        p = json.loads(text)
+                        if isinstance(p, dict):
+                            parsed = p
+                            break
+                    except Exception:
+                        pass
+                if parsed is not None:
+                    break
+
+    if parsed is None or not isinstance(parsed, dict):
+        return {"imagine": False, "description": "Agent sees nothing."}
 
     # Fill defaults if missing
     imagine = parsed.get("imagine")

@@ -180,10 +180,8 @@ def main(args: DictConfig) -> None:
         elif args.querry_mode == "google":
             # Access the API key
             api_key = os.getenv('GOOGLE_API_KEY')
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            pipe = genai.GenerativeModel(args.llm_model)
-            alternative_pipe = None
+            pipe = args.llm_model
+            alternative_pipe = args.alternate_llm_model
         elif args.querry_mode == "nvidia":
             api_key = os.getenv('NVIDIA_API')
             pipe = args.llm_model
@@ -280,6 +278,12 @@ def main(args: DictConfig) -> None:
         ep_llm_errors = 0
         ep_vae_errors = 0
         ep_llm_times = []
+        ep_llm_net_times = []
+        ep_llm_wait_times = []
+        ep_prompt_tokens = 0
+        ep_completion_tokens = 0
+        ep_total_tokens = 0
+        ep_cached_tokens = 0
         while not done:
             if args.mode == "transfer":
                 first_user_prompt = (
@@ -362,20 +366,47 @@ def main(args: DictConfig) -> None:
                         llm_reply = cached_entry.get("reply", "")
                         reasoning = cached_entry.get("reasoning", None)
                         called_model = cached_entry.get("model", pipe)
+                        cached_usage = cached_entry.get("usage") or {}
+                        ep_cached_tokens += cached_usage.get("total_tokens", 0)
                     else:
                         cache_misses += 1
                         _t_start = time.time()
                         llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, alternative_pipe, args.querry_mode)
                         _llm_dt = time.time() - _t_start
                         ep_llm_times.append(_llm_dt)
+
+                        net_dt = _llm_dt
+                        wait_dt = 0.0
                         called_model = pipe
-                        if isinstance(reasoning, dict) and reasoning.get("model"):
-                            called_model = reasoning["model"]
+                        usage_info = {}
+                        if isinstance(reasoning, dict):
+                            if reasoning.get("model"):
+                                called_model = reasoning["model"]
+                            if reasoning.get("usage"):
+                                usage_info = reasoning["usage"]
+                            if reasoning.get("latency"):
+                                net_dt = reasoning["latency"].get("net_latency", _llm_dt)
+                                wait_dt = reasoning["latency"].get("wait_time", 0.0)
+
+                        ep_llm_net_times.append(net_dt)
+                        ep_llm_wait_times.append(wait_dt)
+
+                        call_prompt_tokens = usage_info.get("prompt_tokens", 0)
+                        call_comp_tokens = usage_info.get("completion_tokens", 0)
+                        call_tot_tokens = usage_info.get("total_tokens", call_prompt_tokens + call_comp_tokens)
+
+                        ep_prompt_tokens += call_prompt_tokens
+                        ep_completion_tokens += call_comp_tokens
+                        ep_total_tokens += call_tot_tokens
+
                         llm_cache[first_user_prompt] = {
                             "reply": llm_reply,
                             "reasoning": reasoning,
                             "response_time": _llm_dt,
-                            "model": called_model
+                            "net_latency": net_dt,
+                            "wait_time": wait_dt,
+                            "model": called_model,
+                            "usage": usage_info
                         }
                         llm_cache.move_to_end(first_user_prompt)
                         if len(llm_cache) > max_cache_size:
@@ -422,7 +453,8 @@ def main(args: DictConfig) -> None:
                                 original_np=state,
                                 imagined_np=imagined_state,
                                 vision_model=vision_model,
-                                env_name=args.env.name
+                                env_name=args.env.name,
+                                latent_l2_threshold=getattr(args, "latent_l2_threshold", None)
                             )
                             if not vae_res["is_valid"]:
                                 ep_vae_errors += 1
@@ -465,7 +497,7 @@ def main(args: DictConfig) -> None:
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
         total_lookups = cache_hits + cache_misses
         hit_rate = (cache_hits / total_lookups * 100) if total_lookups > 0 else 0.0
-        print(f"----------- Episode done:  {episode}/{args.num_episode} | Score: {cumulative_reward} | Running Average Score: {running_average_score:.4f} | LLM Cache: {cache_hits} hits, {cache_misses} misses ({hit_rate:.1f}% hit rate) ----------------", flush=True)
+        print(f"----------- Episode done:  {episode}/{args.num_episode} | Score: {cumulative_reward} | Running Average Score: {running_average_score:.4f} | LLM Cache: {cache_hits} hits, {cache_misses} misses ({hit_rate:.1f}% hit rate) | Tokens: {ep_total_tokens} (P: {ep_prompt_tokens}, C: {ep_completion_tokens}) ----------------", flush=True)
 
         is_success = (cumulative_reward > 5.0) if args.env.name.startswith("MiniWorld") else (cumulative_reward > 0.0)
         if is_success:
@@ -486,6 +518,8 @@ def main(args: DictConfig) -> None:
         prior_perf = merge_performances(prior_perf, ep_perf_delta)
 
         avg_llm_time = round(float(np.mean(ep_llm_times)), 3) if ep_llm_times else 0.0
+        avg_llm_net_time = round(float(np.mean(ep_llm_net_times)), 3) if ep_llm_net_times else 0.0
+        avg_llm_wait_time = round(float(np.mean(ep_llm_wait_times)), 3) if ep_llm_wait_times else 0.0
         ep_diag = {
             "episode": episode,
             "seed": episode_seed,
@@ -497,16 +531,25 @@ def main(args: DictConfig) -> None:
             "llm_errors": ep_llm_errors,
             "vae_errors": ep_vae_errors,
             "avg_llm_response_time": avg_llm_time,
+            "avg_llm_net_latency": avg_llm_net_time,
+            "avg_llm_wait_time": avg_llm_wait_time,
+            "token_usage": {
+                "prompt_tokens": ep_prompt_tokens,
+                "completion_tokens": ep_completion_tokens,
+                "total_tokens": ep_total_tokens,
+                "cached_tokens": ep_cached_tokens
+            },
             "failure_cause": failure_cause,
             "performance": ep_perf_delta
         }
         diagnostic_records.append(ep_diag)
         episode_records_map[f"episode_{episode}"] = ep_diag
 
+        lat_info_str = f"{avg_llm_net_time}s net ({avg_llm_time}s wall, {avg_llm_wait_time}s wait)" if avg_llm_wait_time > 0 else f"{avg_llm_net_time}s"
         if not is_success:
-            print(f"[DIAGNOSTIC] Episode {episode}/{args.num_episode} FAILED -> Attributed Cause: {failure_cause} (LLM errors: {ep_llm_errors}/{ep_imagination_steps} steps, VAE errors: {ep_vae_errors}/{ep_imagination_steps} steps, Avg LLM Time: {avg_llm_time}s)", flush=True)
+            print(f"[DIAGNOSTIC] Episode {episode}/{args.num_episode} FAILED -> Attributed Cause: {failure_cause} (LLM errors: {ep_llm_errors}/{ep_imagination_steps} steps, VAE errors: {ep_vae_errors}/{ep_imagination_steps} steps, Avg LLM Time: {lat_info_str}, Tokens: {ep_total_tokens} [P: {ep_prompt_tokens}, C: {ep_completion_tokens}])", flush=True)
         else:
-            print(f"[DIAGNOSTIC] Episode {episode}/{args.num_episode} SUCCESS (Score: {cumulative_reward:.2f}, Avg LLM Time: {avg_llm_time}s)", flush=True)
+            print(f"[DIAGNOSTIC] Episode {episode}/{args.num_episode} SUCCESS (Score: {cumulative_reward:.2f}, Avg LLM Time: {lat_info_str}, Tokens: {ep_total_tokens} [P: {ep_prompt_tokens}, C: {ep_completion_tokens}])", flush=True)
 
         # Compute running diagnostics summary metrics across all diagnostic_records
         total_eps = len(diagnostic_records)
@@ -523,6 +566,19 @@ def main(args: DictConfig) -> None:
         llm_err_pct = (total_llm_errs / total_imag_steps * 100) if total_imag_steps > 0 else 0.0
         vae_err_pct = (total_vae_errs / total_imag_steps * 100) if total_imag_steps > 0 else 0.0
 
+        total_prompt_tokens = sum(d.get("token_usage", {}).get("prompt_tokens", 0) for d in diagnostic_records)
+        total_comp_tokens = sum(d.get("token_usage", {}).get("completion_tokens", 0) for d in diagnostic_records)
+        total_tokens = sum(d.get("token_usage", {}).get("total_tokens", 0) for d in diagnostic_records)
+        total_cached_tokens = sum(d.get("token_usage", {}).get("cached_tokens", 0) for d in diagnostic_records)
+
+        all_net_latencies = [d.get("avg_llm_net_latency", d.get("avg_llm_response_time", 0.0)) for d in diagnostic_records if d.get("avg_llm_net_latency") is not None or d.get("avg_llm_response_time") is not None]
+        all_gross_latencies = [d.get("avg_llm_response_time", 0.0) for d in diagnostic_records if d.get("avg_llm_response_time") is not None]
+        all_wait_times = [d.get("avg_llm_wait_time", 0.0) for d in diagnostic_records if d.get("avg_llm_wait_time") is not None]
+
+        mean_net_lat = round(float(np.mean(all_net_latencies)), 3) if all_net_latencies else 0.0
+        mean_gross_lat = round(float(np.mean(all_gross_latencies)), 3) if all_gross_latencies else 0.0
+        mean_wait_time = round(float(np.mean(all_wait_times)), 3) if all_wait_times else 0.0
+
         running_perf = copy.deepcopy(prior_perf)
         running_perf["running_average_score"] = running_average_score
         running_perf["success_rate"] = round((successes / total_eps * 100) if total_eps > 0 else 0.0, 1)
@@ -532,6 +588,17 @@ def main(args: DictConfig) -> None:
         running_perf["llm_error_rate_pct"] = round(llm_err_pct, 2) if do_llm_analysis else None
         running_perf["vae_error_rate_pct"] = round(vae_err_pct, 2) if do_vae_analysis else None
         running_perf["failure_breakdown"] = cause_counts if (do_llm_analysis or do_vae_analysis) else None
+        running_perf["avg_llm_net_latency"] = mean_net_lat
+        running_perf["avg_llm_response_time"] = mean_gross_lat
+        running_perf["avg_llm_wait_time"] = mean_wait_time
+        running_perf["token_usage"] = {
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_comp_tokens,
+            "total_tokens": total_tokens,
+            "cached_tokens_saved": total_cached_tokens,
+            "avg_tokens_per_episode": round(total_tokens / total_eps, 1) if total_eps > 0 else 0
+        }
+        running_perf["total_tokens"] = total_tokens
 
         # Real-time persistence of each completed episode and updated running performance
         if performance_md_file:
@@ -582,6 +649,18 @@ def main(args: DictConfig) -> None:
             "vae_error_rate_pct": round(vae_err_pct, 2) if do_vae_analysis else None
         },
         "failure_breakdown": cause_counts if (do_llm_analysis or do_vae_analysis) else None,
+        "token_usage": {
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_comp_tokens,
+            "total_tokens": total_tokens,
+            "cached_tokens_saved": total_cached_tokens,
+            "avg_tokens_per_episode": round(total_tokens / total_eps, 1) if total_eps > 0 else 0
+        },
+        "latency_metrics": {
+            "avg_llm_net_latency": mean_net_lat,
+            "avg_llm_response_time": mean_gross_lat,
+            "avg_llm_wait_time": mean_wait_time
+        },
         "episodes": diagnostic_records
     }
     with open(diag_file, "w") as f:
@@ -590,6 +669,10 @@ def main(args: DictConfig) -> None:
     print("\n================ DIAGNOSTIC FAILURE ANALYSIS SUMMARY ================", flush=True)
     print(f"Scenario: {evaluated_env_name} ({task_mode}) | Seed: {base_seed} | Agent: {args.agent_name}", flush=True)
     print(f"Total Episodes: {total_eps} | Successes: {successes} | Failures: {fails}", flush=True)
+    if all_net_latencies and mean_net_lat > 0:
+        print(f"LLM Latency:    {mean_net_lat}s net inference ({mean_gross_lat}s wall-clock, {mean_wait_time}s wait/pacing)", flush=True)
+    if total_tokens > 0 or total_cached_tokens > 0:
+        print(f"Token Usage:    {total_tokens:,} total (Prompt: {total_prompt_tokens:,} | Completion: {total_comp_tokens:,} | Cache Saved: {total_cached_tokens:,} | Avg/ep: {round(total_tokens / total_eps, 1) if total_eps > 0 else 0})", flush=True)
     if do_llm_analysis or do_vae_analysis:
         llm_str = f"{total_llm_errs} ({llm_err_pct:.1f}%)" if do_llm_analysis else "N/A (Disabled)"
         vae_str = f"{total_vae_errs} ({vae_err_pct:.1f}%)" if do_vae_analysis else "N/A (Disabled)"

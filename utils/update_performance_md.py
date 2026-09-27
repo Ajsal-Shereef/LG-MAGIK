@@ -38,6 +38,20 @@ def format_err_pct(val, is_disabled=False):
         return f"{val:.1f}%"
     return str(val)
 
+def format_token_count(val):
+    if val is None or val == "-":
+        return "-"
+    if isinstance(val, (int, float)) and val > 0:
+        return f"{int(val):,}"
+    return "-"
+
+def format_latency(val):
+    if val is None or val == "-":
+        return "-"
+    if isinstance(val, (int, float)) and val > 0:
+        return f"{val:.2f}s"
+    return "-"
+
 def compute_performance_delta(after_perf, before_perf):
     """
     Computes delta of metrics earned in a single episode.
@@ -218,8 +232,8 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
     # Master Overview Table
     lines.append("## Overall Performance Summary (Aggregated Across Seeds)")
     lines.append("")
-    lines.append("| Environment | Target | Seeds Completed | Mean Score ± Std | Primary Metric (Mean) | Step LLM Err % | Step VAE Err % | Episode Failures (LLM / VAE / Policy) |")
-    lines.append("|-------------|--------|-----------------|-------------------|------------------------|----------------|----------------|----------------------------------------|")
+    lines.append("| Environment | Target | Seeds Completed | Mean Score ± Std | Primary Metric (Mean) | Step LLM Err % | Step VAE Err % | Episode Failures (LLM / VAE / Policy) | Tokens (Total) | Net Latency |")
+    lines.append("|-------------|--------|-----------------|-------------------|------------------------|----------------|----------------|----------------------------------------|----------------|-------------|")
 
     # Order keys in overview
     all_envs = sorted(list(grouped.keys()), key=lambda x: env_order.index(x) if x in env_order else 99)
@@ -278,8 +292,18 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
                     primary_vals.append(0)
 
             mean_primary = np.mean(primary_vals) if primary_vals else 0.0
+
+            tok_vals = [r["performance"].get("total_tokens", 0) for r in t_recs]
+            mean_tok = np.mean(tok_vals) if any(v > 0 for v in tok_vals) else None
+            mean_tok_str = format_token_count(mean_tok)
+
+            lat_vals = [r["performance"].get("avg_llm_net_latency", r["performance"].get("avg_llm_response_time", 0.0)) for r in t_recs]
+            lat_vals_clean = [v for v in lat_vals if isinstance(v, (int, float)) and v > 0]
+            mean_lat = np.mean(lat_vals_clean) if lat_vals_clean else None
+            mean_lat_str = format_latency(mean_lat)
+
             lines.append(
-                f"| {env_k} | `{target}` | {seeds_str} | **{mean_score:.4f} ± {std_score:.4f}** | {mean_primary:.2f} ({primary_name}) | {mean_llm_err} | {mean_vae_err} | {tot_fails_str} |"
+                f"| {env_k} | `{target}` | {seeds_str} | **{mean_score:.4f} ± {std_score:.4f}** | {mean_primary:.2f} ({primary_name}) | {mean_llm_err} | {mean_vae_err} | {tot_fails_str} | {mean_tok_str} | {mean_lat_str} |"
             )
 
     lines.append("")
@@ -297,13 +321,15 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
         lines.append("")
 
         if env_k in ("SimplePickup", "MiniWorld", "MiniWorldNoisy"):
-            lines.append("| Target | Seed | Agent | Rewarding Picked | Non-Rewarding Picked | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Completed At |")
-            lines.append("|--------|------|-------|------------------|----------------------|-------------------|----------------|----------------|---------------------------|--------------|")
+            lines.append("| Target | Seed | Agent | Rewarding Picked | Non-Rewarding Picked | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Total Tokens | Net Latency | Completed At |")
+            lines.append("|--------|------|-------|------------------|----------------------|-------------------|----------------|----------------|---------------------------|--------------|-------------|--------------|")
             for r in env_recs:
                 perf = r["performance"]
                 rew = format_metric_value(perf.get("rewarding_objects", {}))
                 non_rew = format_metric_value(perf.get("non_rewarding_objects", {}))
                 score = perf.get("running_average_score", 0.0)
+                tok_str = format_token_count(perf.get("total_tokens"))
+                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time"))
                 if env_k == "MiniWorldNoisy":
                     llm_err = "-"
                     vae_err = "-"
@@ -313,35 +339,39 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
                     vae_err = format_err_pct(perf.get("vae_error_rate_pct"))
                     fb_str = format_failure_breakdown(perf.get("failure_breakdown"), env_name=env_k)
                 lines.append(
-                    f"| `{r['task_mode']}` | {r['seed']} | {r['agent_name']} | {rew} | {non_rew} | **{score:.4f}** | {llm_err} | {vae_err} | {fb_str} | {r['timestamp']} |"
+                    f"| `{r['task_mode']}` | {r['seed']} | {r['agent_name']} | {rew} | {non_rew} | **{score:.4f}** | {llm_err} | {vae_err} | {fb_str} | {tok_str} | {lat_str} | {r['timestamp']} |"
                 )
         elif env_k == "PickEnv":
-            lines.append("| Target | Seed | Agent | Picked | Broken | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Completed At |")
-            lines.append("|--------|------|-------|--------|--------|-------------------|----------------|----------------|---------------------------|--------------|")
+            lines.append("| Target | Seed | Agent | Picked | Broken | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Total Tokens | Net Latency | Completed At |")
+            lines.append("|--------|------|-------|--------|--------|-------------------|----------------|----------------|---------------------------|--------------|-------------|--------------|")
             for r in env_recs:
                 perf = r["performance"]
                 picked = perf.get("picked", 0)
                 broken = perf.get("brocken", 0)
                 score = perf.get("running_average_score", 0.0)
+                tok_str = format_token_count(perf.get("total_tokens"))
+                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time"))
                 llm_err = format_err_pct(perf.get("llm_error_rate_pct"))
                 vae_err = "-"
                 fb_str = format_failure_breakdown(perf.get("failure_breakdown"), env_name="PickEnv")
                 lines.append(
-                    f"| `{r['task_mode']}` | {r['seed']} | {r['agent_name']} | {picked} | {broken} | **{score:.4f}** | {llm_err} | {vae_err} | {fb_str} | {r['timestamp']} |"
+                    f"| `{r['task_mode']}` | {r['seed']} | {r['agent_name']} | {picked} | {broken} | **{score:.4f}** | {llm_err} | {vae_err} | {fb_str} | {tok_str} | {lat_str} | {r['timestamp']} |"
                 )
         elif env_k == "MiniGridRelational":
-            lines.append("| Target | Seed | Agent | Successful Pick | Successful Drop | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Completed At |")
-            lines.append("|--------|------|-------|-----------------|-----------------|-------------------|----------------|----------------|---------------------------|--------------|")
+            lines.append("| Target | Seed | Agent | Successful Pick | Successful Drop | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Total Tokens | Net Latency | Completed At |")
+            lines.append("|--------|------|-------|-----------------|-----------------|-------------------|----------------|----------------|---------------------------|--------------|-------------|--------------|")
             for r in env_recs:
                 perf = r["performance"]
                 pick = perf.get("successful_pick", 0)
                 drop = perf.get("successful_drop", 0)
                 score = perf.get("running_average_score", 0.0)
+                tok_str = format_token_count(perf.get("total_tokens"))
+                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time"))
                 llm_err = format_err_pct(perf.get("llm_error_rate_pct"))
                 vae_err = format_err_pct(perf.get("vae_error_rate_pct"))
                 fb_str = format_failure_breakdown(perf.get("failure_breakdown"), env_name="MiniGridRelational")
                 lines.append(
-                    f"| `{r['task_mode']}` | {r['seed']} | {r['agent_name']} | {pick} | {drop} | **{score:.4f}** | {llm_err} | {vae_err} | {fb_str} | {r['timestamp']} |"
+                    f"| `{r['task_mode']}` | {r['seed']} | {r['agent_name']} | {pick} | {drop} | **{score:.4f}** | {llm_err} | {vae_err} | {fb_str} | {tok_str} | {lat_str} | {r['timestamp']} |"
                 )
         else:
             # Generic fallback table with all keys

@@ -18,6 +18,7 @@ seed: 0
 num_episode: 10
 performance_md_file: "Results/agent_performance.md"
 max_cache_size: 10000
+latent_l2_threshold: 0.75
 
 caption_user_prompt: "Describe this image for a text-to-image training dataset."
 

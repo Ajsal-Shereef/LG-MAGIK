@@ -526,11 +526,13 @@ async def remap_caption(
         llm_response_time = round(time.time() - start_time, 3)
         llm_reply_json = preprocess_llm_output(raw_reply)
 
-        # Extract reasoning content from query_llm metadata or raw response
+        # Extract reasoning content and token usage from query_llm metadata or raw response
+        token_usage = {}
         if isinstance(raw_reasoning, str) and raw_reasoning.strip():
             reasoning_text = raw_reasoning.strip()
         elif isinstance(raw_reasoning, dict):
             reasoning_text = raw_reasoning.get("reasoning") or raw_reasoning.get("analysis")
+            token_usage = raw_reasoning.get("usage", {})
 
         # Fallback: check if reasoning was produced within thinking tags or before the JSON object in raw_reply
         if not reasoning_text and raw_reply:
@@ -585,6 +587,7 @@ async def remap_caption(
         "reply_json": llm_reply_json,
         "remapped_caption": llm_reply_json.get("description", "") if isinstance(llm_reply_json, dict) else "",
         "imagine": llm_reply_json.get("imagine", False) if isinstance(llm_reply_json, dict) else False,
+        "token_usage": token_usage,
         "llm_analysis": llm_analysis
     })
 
