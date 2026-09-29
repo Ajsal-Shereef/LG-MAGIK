@@ -19,6 +19,10 @@ num_episode: 10
 performance_md_file: "Results/agent_performance.md"
 max_cache_size: 10000
 latent_l2_threshold: 0.75
+vae_diff_threshold: 38.0 # Difference threshold for connected component spatial localization (sweet spot 35-50 isolates object without horizon/grass margins)
+vae_min_ratio: 0.35 # Minimum dominant blob concentration ratio
+vae_max_total_occupancy: 0.65 # Maximum total changed pixel occupancy before flagging global distortion
+
 
 caption_user_prompt: "Describe this image for a text-to-image training dataset."
 

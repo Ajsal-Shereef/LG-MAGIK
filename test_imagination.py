@@ -84,13 +84,13 @@ def main(args: DictConfig) -> None:
         print(f"[INFO] Environment seeding enabled with base_seed: {base_seed}")
     
     #Make the agent
-    if args.agent_name == "SAC":
+    if "SAC" in args.agent_name:
         from stable_baselines3 import SAC
         agent = SAC.load(args.dqn_model_dir)
-    elif args.agent_name == "PPO":
+    elif "PPO" in args.agent_name:
         from stable_baselines3 import PPO
         agent = PPO.load(args.dqn_model_dir)
-    elif args.agent_name == "DQN":
+    elif "DQN" in args.agent_name:
         from stable_baselines3 import DQN
         agent = DQN.load(args.dqn_model_dir)
         
@@ -454,10 +454,15 @@ def main(args: DictConfig) -> None:
                                 imagined_np=imagined_state,
                                 vision_model=vision_model,
                                 env_name=args.env.name,
-                                latent_l2_threshold=getattr(args, "latent_l2_threshold", None)
+                                latent_l2_threshold=getattr(args, "latent_l2_threshold", None),
+                                diff_threshold=float(getattr(args, "vae_diff_threshold", 38.0)),
+                                min_ratio=float(getattr(args, "vae_min_ratio", 0.35)),
+                                max_total_occupancy=float(getattr(args, "vae_max_total_occupancy", 0.65)),
+                                caption=llm_reply_json.get("description", "")
                             )
                             if not vae_res["is_valid"]:
                                 ep_vae_errors += 1
+                                print(f"[VAE WARNING] Ep {episode} Step {episode_step} failed {vae_res.get('failed_component', 'VAE')}: {vae_res.get('reason', '')}", flush=True)
                                 from utils.imagination_diagnostics import save_vae_error_sample
                                 save_vae_error_sample(
                                     original_np=state,
@@ -469,7 +474,9 @@ def main(args: DictConfig) -> None:
                                     task_mode=task_mode,
                                     seed=base_seed,
                                     episode=episode,
-                                    step=episode_step
+                                    step=episode_step,
+                                    failed_component=vae_res.get("failed_component", "CONNECTED_COMPONENT_ANALYSIS"),
+                                    binary_mask=vae_res.get("metrics", {}).get("binary_mask")
                                 )
                     else:
                         changed_state, imagined_state = train_transforms(state), state
@@ -661,7 +668,7 @@ def main(args: DictConfig) -> None:
             "avg_llm_response_time": mean_gross_lat,
             "avg_llm_wait_time": mean_wait_time
         },
-        "episodes": diagnostic_records
+        "episodes": sorted(diagnostic_records, key=lambda d: d.get("episode", 0))
     }
     with open(diag_file, "w") as f:
         json.dump(diag_summary, f, indent=2)

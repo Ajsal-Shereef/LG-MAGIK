@@ -3,11 +3,12 @@ defaults:
 seed: 42
 agent_name : PPO
 save_every : 500000
-use_wandb : false
+use_wandb : true
 log_every : 100
 save_data : true
 data_dave_dir : data
 save_model_dir : model_weights
 number_data_to_collect : 150000
 fine_tune : false
-fine_tune_checkpoint : model_weights/${env.name}/${agent_name}/2026-01-22_13-07-03_RVBGSP/${agent_name}.zip
+fine_tune_checkpoint : model_weights/${env.name}/${agent_name}/seed_${seed}/${agent_name}.zip
+max_episodes : null

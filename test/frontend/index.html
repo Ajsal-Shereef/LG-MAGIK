@@ -534,6 +534,43 @@
                 <div class="image-container">
                     <img id="imagine-recon-latent" src="" style="display: none;">
                 </div>
+
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Connected Component Difference Mask</span>
+                    <span id="cc-diff-badge" style="font-size: 0.72rem; color: var(--secondary-color); font-weight: 500;">Threshold: <span id="cc-threshold-badge-val">38</span> Δ</span>
+                </div>
+                
+                <!-- Interactive Threshold Slider for Sweet Spot Tuning -->
+                <div style="background: #111420; border: 1px solid #232738; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label for="cc-threshold-slider" style="font-size: 0.76rem; font-weight: 600; color: #a5b4fc; display: flex; align-items: center; gap: 6px;">
+                            <span>Diff Threshold (Pixel Δ):</span>
+                            <span id="cc-slider-value" style="color: #38bdf8; font-family: monospace; font-weight: bold;">38</span>
+                        </label>
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" class="btn-secondary" style="font-size: 0.68rem; padding: 2px 6px;" onclick="setCCThreshold(30)">30</button>
+                            <button type="button" class="btn-secondary" style="font-size: 0.68rem; padding: 2px 6px;" onclick="setCCThreshold(35)">35</button>
+                            <button type="button" class="btn-secondary" style="font-size: 0.68rem; padding: 2px 6px;" onclick="setCCThreshold(38)">38 (Opt)</button>
+                            <button type="button" class="btn-secondary" style="font-size: 0.68rem; padding: 2px 6px;" onclick="setCCThreshold(45)">45</button>
+                            <button type="button" class="btn-secondary" style="font-size: 0.68rem; padding: 2px 6px;" onclick="setCCThreshold(50)">50</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.70rem; color: var(--text-muted); font-family: monospace;">10</span>
+                        <input type="range" id="cc-threshold-slider" min="10" max="90" step="1" value="38" 
+                               style="flex: 1; height: 6px; accent-color: #38bdf8; cursor: pointer;"
+                               oninput="onCCThresholdInput(this.value)" onchange="onCCThresholdChange(this.value)">
+                        <span style="font-size: 0.70rem; color: var(--text-muted); font-family: monospace;">90</span>
+                    </div>
+                    <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 4px; display: flex; justify-content: space-between;">
+                        <span>Sweet spot (~35–50) eliminates sky/wall & grass boundary artifacts</span>
+                        <span id="cc-live-status" style="color: #38bdf8; font-weight: 500;"></span>
+                    </div>
+                </div>
+
+                <div class="image-container" style="min-height: 120px;">
+                    <img id="imagine-binary-mask" src="" style="display: none; image-rendering: pixelated; width: 100%; max-height: 200px; object-fit: contain;">
+                </div>
             </div>
 
             <!-- Bottom Panel: Dual Diagnostic Console -->
@@ -675,6 +712,26 @@
                             <!-- Metrics Grid -->
                             <div class="diag-metrics-grid">
                                 <div class="metric-item">
+                                    <div class="metric-label">Semantic Presence</div>
+                                    <div id="metric-semantic-presence" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Max Blob Ratio</div>
+                                    <div id="metric-cc-ratio" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Object Occupancy</div>
+                                    <div id="metric-cc-occupancy" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Blobs / Total Diff</div>
+                                    <div id="metric-cc-blobs" class="metric-value">-</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">Diff Threshold</div>
+                                    <div id="metric-cc-threshold" class="metric-value">38 Δ</div>
+                                </div>
+                                <div class="metric-item">
                                     <div class="metric-label">Differing Grids</div>
                                     <div id="metric-grid-count" class="metric-value">-</div>
                                 </div>
@@ -712,6 +769,9 @@
         let scales = Array(8).fill(1.0);
         let imagineScales = Array(8).fill(1.0);
         let currentFile = null;
+        let currentOriginalBase64 = null;
+        let currentImaginedBase64 = null;
+        let ccThresholdDebounceTimer = null;
         let zoomLevels = {
             'imagine-input': 1.0,
             'imagine-output': 1.0,
@@ -1095,11 +1155,13 @@
             }
 
             const env = document.getElementById("diag-env-select") ? document.getElementById("diag-env-select").value : "MiniWorld";
+            const diffThresh = document.getElementById("cc-threshold-slider") ? document.getElementById("cc-threshold-slider").value : 38;
             const formData = new FormData();
             formData.append('file', file);
             formData.append('caption', caption);
             formData.append('mode', 'imagination');
             formData.append('env_name', env);
+            formData.append('diff_threshold', diffThresh);
 
             // Send slider channels if modified
             formData.append('channel_scales', JSON.stringify(imagineScales));
@@ -1117,6 +1179,12 @@
                     const img = document.getElementById('imagine-result-img');
                     img.src = data.result;
                     img.style.display = 'block';
+                    currentImaginedBase64 = data.result;
+                }
+
+                const origInputImg = document.getElementById('imagine-input-preview');
+                if (origInputImg) {
+                    currentOriginalBase64 = getBase64FromImageEl(origInputImg);
                 }
 
                 if (data.original_latent) {
@@ -1144,23 +1212,118 @@
 
                     if (vae.is_valid) {
                         vaeBadge.className = "diag-badge badge-pass";
-                        vaeBadge.innerText = "✓ VAE PASS: GRIDS & LATENT OK";
+                        vaeBadge.innerText = "✓ VAE PASS: LOCALIZED & SEMANTIC OK";
                         topBadge.className = "diag-badge badge-pass";
                         topBadge.innerText = "Quality Passed";
                         verdictBox.style.borderLeftColor = "var(--accent-green)";
-                        verdictTitle.innerText = "VAE Quality Passed";
+                        verdictTitle.innerText = "VAE Quality Passed (Localized & Semantic OK)";
                         verdictTitle.style.color = "var(--accent-green)";
                     } else {
                         vaeBadge.className = "diag-badge badge-fail";
                         vaeBadge.innerText = `✗ ${vae.error_type || "VAE ARTIFACT ERROR"}`;
                         topBadge.className = "diag-badge badge-fail";
-                        topBadge.innerText = vae.error_type === "VAE_GRID_DIFFERENCE_FAILURE" ? "Grid Difference Fail" : (vae.error_type === "VAE_LATENT_DIFFERENCE_FAILURE" ? "Latent Difference Fail" : "VAE Fail");
+                        topBadge.innerText = vae.failed_component ? `${vae.failed_component} Fail` : (vae.error_type || "VAE Fail");
                         verdictBox.style.borderLeftColor = "var(--accent-red)";
-                        verdictTitle.innerText = `Artifact Error: ${vae.error_type}`;
+                        verdictTitle.innerText = `Artifact Error: ${vae.error_type || "Failed"}`;
                         verdictTitle.style.color = "var(--accent-red)";
                     }
 
                     verdictReason.innerText = vae.reason || "";
+
+                    // Render Binary Mask image
+                    const maskImg = document.getElementById("imagine-binary-mask");
+                    const cc = m.connected_components || data.connected_components || {};
+                    const maskB64 = data.binary_mask || m.mask_base64 || cc.mask_base64;
+                    if (maskImg) {
+                        if (maskB64) {
+                            maskImg.src = maskB64;
+                            maskImg.style.display = 'block';
+                        } else {
+                            maskImg.style.display = 'none';
+                        }
+                    }
+
+                    // Semantic presence metric
+                    const sem = m.semantic_presence || (cc ? cc.semantic_presence : null);
+                    const semEl = document.getElementById("metric-semantic-presence");
+                    if (semEl) {
+                        if (sem && sem.all_targets && sem.all_targets.length > 1) {
+                            const pass = !sem.is_failed;
+                            const summary = sem.all_targets.map(t => {
+                                const sec = t.sector ? ` [${t.sector[0].toUpperCase()}]` : "";
+                                const shortName = t.target_object.replace(' box', '').replace(' ball', '');
+                                return `${shortName}: ${t.target_pixels}px${sec}`;
+                            }).join(" | ");
+                            semEl.innerText = summary;
+                            semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                            semEl.title = sem.reason || "";
+                        } else if (sem && sem.target_object) {
+                            const pass = !sem.is_failed;
+                            const secInfo = sem.sector ? ` [${sem.sector}]` : "";
+                            semEl.innerText = `${sem.target_object}: ${sem.target_pixels.toLocaleString()} px${secInfo}`;
+                            semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                            semEl.title = sem.reason || "";
+                        } else if (sem && sem.target_color) {
+                            const pass = !sem.is_failed;
+                            semEl.innerText = `${sem.target_color}: ${sem.target_pixels.toLocaleString()} px`;
+                            semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                            semEl.title = sem.reason || "";
+                        } else if (sem && sem.reason && sem.reason.includes("Empty")) {
+                            const pass = !sem.is_failed;
+                            semEl.innerText = pass ? "Empty Scene Verified" : "Hallucination Detected";
+                            semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                            semEl.title = sem.reason || "";
+                        } else {
+                            semEl.innerText = "N/A";
+                            semEl.style.color = "var(--text-muted)";
+                        }
+                    }
+
+                    // Connected Component metrics
+                    const ccRatioEl = document.getElementById("metric-cc-ratio");
+                    if (ccRatioEl) {
+                        if (cc.concentration_ratio !== undefined) {
+                            const rPct = (cc.concentration_ratio * 100).toFixed(1) + "%";
+                            ccRatioEl.innerText = rPct;
+                            ccRatioEl.style.color = cc.concentration_ratio >= 0.35 ? "var(--accent-green)" : "var(--accent-red)";
+                        } else {
+                            ccRatioEl.innerText = "-";
+                        }
+                    }
+
+                    const ccOccEl = document.getElementById("metric-cc-occupancy");
+                    if (ccOccEl) {
+                        if (cc.occupancy_ratio !== undefined) {
+                            ccOccEl.innerText = (cc.occupancy_ratio * 100).toFixed(1) + "% of frame";
+                            ccOccEl.style.color = cc.occupancy_ratio <= 0.45 ? "var(--accent-green)" : "var(--accent-red)";
+                        } else {
+                            ccOccEl.innerText = "-";
+                        }
+                    }
+
+                    const ccBlobsEl = document.getElementById("metric-cc-blobs");
+                    if (ccBlobsEl) {
+                        if (cc.num_blobs !== undefined && cc.total_diff_area !== undefined) {
+                            ccBlobsEl.innerText = `${cc.num_blobs} blob(s) / ${cc.total_diff_area} px`;
+                        } else {
+                            ccBlobsEl.innerText = "-";
+                        }
+                    }
+
+                    const ccThreshEl = document.getElementById("metric-cc-threshold");
+                    if (ccThreshEl) {
+                        const curT = cc.diff_threshold !== undefined ? cc.diff_threshold : diffThresh;
+                        ccThreshEl.innerText = `${curT} Δ`;
+                    }
+                    const badgeVal = document.getElementById('cc-threshold-badge-val');
+                    if (badgeVal && cc.diff_threshold !== undefined) {
+                        badgeVal.innerText = cc.diff_threshold;
+                    }
+                    const sliderEl = document.getElementById('cc-threshold-slider');
+                    if (sliderEl && cc.diff_threshold !== undefined) {
+                        sliderEl.value = cc.diff_threshold;
+                        document.getElementById('cc-slider-value').innerText = cc.diff_threshold;
+                    }
 
                     // Grid metrics
                     const gridCountEl = document.getElementById("metric-grid-count");
@@ -1168,7 +1331,6 @@
                         const diffCount = m.differing_grid_count !== undefined ? m.differing_grid_count : (gridM.differing_grid_count || 0);
                         const totalCells = m.total_cells || gridM.total_cells || 64;
                         gridCountEl.innerText = `${diffCount} / ${totalCells} cells`;
-                        gridCountEl.style.color = diffCount >= (m.grid_fail_threshold || 5) ? "var(--accent-red)" : "var(--accent-green)";
                     }
 
                     const gridSpecEl = document.getElementById("metric-grid-spec");
@@ -1219,6 +1381,206 @@
                 loader.style.display = 'none';
             }
         }
+
+        // --- Interactive Connected Component Difference Threshold Slider ---
+        function getBase64FromImageEl(imgEl) {
+            if (!imgEl || !imgEl.src) return null;
+            if (imgEl.src.startsWith('data:')) return imgEl.src;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgEl.naturalWidth || imgEl.width || 200;
+                canvas.height = imgEl.naturalHeight || imgEl.height || 200;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(imgEl, 0, 0);
+                return canvas.toDataURL('image/png');
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function onCCThresholdInput(val) {
+            document.getElementById('cc-slider-value').innerText = val;
+            const badgeVal = document.getElementById('cc-threshold-badge-val');
+            if (badgeVal) badgeVal.innerText = val;
+            const metricVal = document.getElementById('metric-cc-threshold');
+            if (metricVal) metricVal.innerText = val + " Δ";
+
+            clearTimeout(ccThresholdDebounceTimer);
+            ccThresholdDebounceTimer = setTimeout(() => {
+                updateConnectedComponentsLive(val);
+            }, 60);
+        }
+
+        function onCCThresholdChange(val) {
+            clearTimeout(ccThresholdDebounceTimer);
+            updateConnectedComponentsLive(val);
+        }
+
+        function setCCThreshold(val) {
+            const slider = document.getElementById('cc-threshold-slider');
+            if (slider) slider.value = val;
+            onCCThresholdInput(val);
+            onCCThresholdChange(val);
+        }
+
+        async function updateConnectedComponentsLive(threshold) {
+            if (!currentOriginalBase64) {
+                const origImg = document.getElementById('imagine-input-preview');
+                currentOriginalBase64 = getBase64FromImageEl(origImg);
+            }
+            if (!currentImaginedBase64) {
+                const imagImg = document.getElementById('imagine-result-img');
+                currentImaginedBase64 = getBase64FromImageEl(imagImg);
+            }
+
+            if (!currentOriginalBase64 || !currentImaginedBase64) {
+                return;
+            }
+
+            const statusEl = document.getElementById('cc-live-status');
+            if (statusEl) statusEl.innerText = "Evaluating...";
+
+            const captionInput = document.getElementById('imagine-caption');
+            const caption = captionInput ? captionInput.value.trim() : "";
+            const envSelect = document.getElementById('imagine-env-select');
+            const envName = envSelect ? envSelect.value : "MiniWorld";
+
+            try {
+                const res = await fetch('/diagnostics/connected_components_json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        original_base64: currentOriginalBase64,
+                        imagined_base64: currentImaginedBase64,
+                        diff_threshold: parseFloat(threshold),
+                        min_ratio: 0.35,
+                        max_total_occupancy: 0.65,
+                        caption: caption,
+                        env_name: envName
+                    })
+                });
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const cc = await res.json();
+
+                // 1. Update binary difference mask
+                const maskImg = document.getElementById("imagine-binary-mask");
+                if (maskImg && cc.mask_base64) {
+                    maskImg.src = cc.mask_base64;
+                    maskImg.style.display = 'block';
+                }
+
+                // 2. Update Semantic Presence metric
+                const sem = cc.semantic_presence;
+                const semEl = document.getElementById("metric-semantic-presence");
+                if (semEl) {
+                    if (sem && sem.all_targets && sem.all_targets.length > 1) {
+                        const pass = !sem.is_failed;
+                        const summary = sem.all_targets.map(t => {
+                            const sec = t.sector ? ` [${t.sector[0].toUpperCase()}]` : "";
+                            const shortName = t.target_object.replace(' box', '').replace(' ball', '');
+                            return `${shortName}: ${t.target_pixels}px${sec}`;
+                        }).join(" | ");
+                        semEl.innerText = summary;
+                        semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                        semEl.title = sem.reason || "";
+                    } else if (sem && sem.target_object) {
+                        const pass = !sem.is_failed;
+                        const secInfo = sem.sector ? ` [${sem.sector}]` : "";
+                        semEl.innerText = `${sem.target_object}: ${sem.target_pixels.toLocaleString()} px${secInfo}`;
+                        semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                        semEl.title = sem.reason || "";
+                    } else if (sem && sem.target_color) {
+                        const pass = !sem.is_failed;
+                        semEl.innerText = `${sem.target_color}: ${sem.target_pixels.toLocaleString()} px`;
+                        semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                        semEl.title = sem.reason || "";
+                    } else if (sem && sem.reason && sem.reason.includes("Empty")) {
+                        const pass = !sem.is_failed;
+                        semEl.innerText = pass ? "Empty Scene Verified" : "Hallucination Detected";
+                        semEl.style.color = pass ? "var(--accent-green)" : "var(--accent-red)";
+                        semEl.title = sem.reason || "";
+                    } else {
+                        semEl.innerText = "N/A";
+                        semEl.style.color = "var(--text-muted)";
+                    }
+                }
+
+                // 3. Update CC metrics
+                const ccRatioEl = document.getElementById("metric-cc-ratio");
+                if (ccRatioEl && cc.concentration_ratio !== undefined) {
+                    ccRatioEl.innerText = (cc.concentration_ratio * 100).toFixed(1) + "%";
+                    ccRatioEl.style.color = cc.concentration_ratio >= 0.35 ? "var(--accent-green)" : "var(--accent-red)";
+                }
+
+                const ccOccEl = document.getElementById("metric-cc-occupancy");
+                if (ccOccEl && cc.occupancy_ratio !== undefined) {
+                    ccOccEl.innerText = (cc.occupancy_ratio * 100).toFixed(1) + "% of frame";
+                    ccOccEl.style.color = cc.occupancy_ratio <= 0.45 ? "var(--accent-green)" : "var(--accent-red)";
+                }
+
+                const ccBlobsEl = document.getElementById("metric-cc-blobs");
+                if (ccBlobsEl && cc.num_blobs !== undefined) {
+                    ccBlobsEl.innerText = `${cc.num_blobs} blob(s) / ${cc.total_diff_area} px`;
+                }
+
+                const ccThreshEl = document.getElementById("metric-cc-threshold");
+                if (ccThreshEl) {
+                    ccThreshEl.innerText = `${threshold} Δ`;
+                }
+
+                // 4. Update VAE verdict box & badges
+                const vaeBadge = document.getElementById('vae-badge');
+                const topBadge = document.getElementById('vae-status-badge');
+                const verdictBox = document.getElementById('vae-verdict-box');
+                const verdictTitle = document.getElementById('vae-verdict-title');
+                const verdictReason = document.getElementById('vae-verdict-reason');
+
+                if (verdictBox) verdictBox.style.display = 'block';
+                if (vaeBadge) vaeBadge.style.display = 'inline-flex';
+                if (topBadge) topBadge.style.display = 'inline-flex';
+
+                if (cc.is_failed) {
+                    const failComp = cc.failed_component || "CONNECTED_COMPONENT_ANALYSIS";
+                    if (vaeBadge) {
+                        vaeBadge.className = "diag-badge badge-fail";
+                        vaeBadge.innerText = `✗ ${cc.failure_type}`;
+                    }
+                    if (topBadge) {
+                        topBadge.className = "diag-badge badge-fail";
+                        topBadge.innerText = `${failComp} Fail`;
+                    }
+                    if (verdictBox) verdictBox.style.borderLeftColor = "var(--accent-red)";
+                    if (verdictTitle) {
+                        verdictTitle.innerText = `Artifact Error: ${cc.failure_type}`;
+                        verdictTitle.style.color = "var(--accent-red)";
+                    }
+                } else {
+                    if (vaeBadge) {
+                        vaeBadge.className = "diag-badge badge-pass";
+                        vaeBadge.innerText = "✓ VAE PASS: LOCALIZED & SEMANTIC OK";
+                    }
+                    if (topBadge) {
+                        topBadge.className = "diag-badge badge-pass";
+                        topBadge.innerText = "Quality Passed";
+                    }
+                    if (verdictBox) verdictBox.style.borderLeftColor = "var(--accent-green)";
+                    if (verdictTitle) {
+                        verdictTitle.innerText = "VAE Quality Passed (Localized & Semantic OK)";
+                        verdictTitle.style.color = "var(--accent-green)";
+                    }
+                }
+                if (verdictReason) verdictReason.innerText = cc.reason || "";
+
+                if (statusEl) {
+                    const ratioStr = (cc.concentration_ratio * 100).toFixed(1);
+                    statusEl.innerText = `Ratio: ${ratioStr}% (${cc.num_blobs} blobs, ${cc.total_diff_area} px)`;
+                }
+            } catch (e) {
+                if (statusEl) statusEl.innerText = `Error: ${e.message}`;
+            }
+        }
+
 
         // --- Sliders for Imagination View (Testing Smudge by Sliding Latent) ---
         function initImagineSliders(numChannels = 8) {
@@ -1416,6 +1778,7 @@
                     document.getElementById('imagine-placeholder').style.display = 'none';
                     const img = document.getElementById('imagine-input-preview');
                     img.src = ev.target.result;
+                    currentOriginalBase64 = ev.target.result;
                     img.style.display = 'block';
                     zoomLevels['imagine-input'] = 1.0;
                     img.style.transform = 'scale(1.0)';

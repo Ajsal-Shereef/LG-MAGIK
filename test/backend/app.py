@@ -16,6 +16,7 @@ from omegaconf import OmegaConf
 from hydra.utils import instantiate
 import base64
 import uvicorn
+from pydantic import BaseModel
 
 # Add project root to sys.path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -34,8 +35,12 @@ from utils.imagination_diagnostics import (
     evaluate_llm_mapping,
     evaluate_vae_quality,
     compute_grid_differences,
-    compute_latent_difference
+    compute_latent_difference,
+    compute_connected_component_analysis,
+    evaluate_semantic_presence
 )
+
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="LG-MAGIK Lens with Imagination Diagnostics")
 
@@ -46,6 +51,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+results_dir = os.path.join(PROJECT_ROOT, "Results")
+if os.path.exists(results_dir):
+    app.mount("/results", StaticFiles(directory=results_dir), name="results")
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 vision_model = None
@@ -386,6 +396,22 @@ def encode_image_base64(image: Image.Image) -> str:
     return "data:image/png;base64," + base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
 
 
+def sanitize_for_json(obj):
+    if isinstance(obj, np.ndarray):
+        if obj.dtype == np.uint8 and (obj.ndim == 2 or obj.ndim == 3):
+            return encode_image_base64(Image.fromarray(obj))
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items() if k != "binary_mask"}
+    elif isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(v) for v in obj]
+    return obj
+
+
 def create_latent_grid(mean_tensor, ref_tensor=None):
     mean = mean_tensor.squeeze(0)
     ref = ref_tensor.squeeze(0) if ref_tensor is not None else mean
@@ -602,7 +628,8 @@ async def imagine(
     caption: str = Form(...),
     mode: str = Form("imagination"),
     channel_scales: str = Form(None),
-    env_name: str = Form("MiniWorld")
+    env_name: str = Form("MiniWorld"),
+    diff_threshold: float = Form(38.0)
 ):
     global vision_model, current_env_name
     if env_name and env_name != current_env_name:
@@ -683,9 +710,13 @@ async def imagine(
                     original_tensor=state_tensor,
                     imagined_tensor=imagined_tensor,
                     device=model_device,
-                    env_name=env_name
+                    env_name=env_name,
+                    diff_threshold=diff_threshold,
+                    caption=caption
                 )
-                response_data["vae_analysis"] = vae_analysis
+                response_data["vae_analysis"] = sanitize_for_json(vae_analysis)
+                response_data["binary_mask"] = vae_analysis.get("metrics", {}).get("mask_base64")
+                response_data["connected_components"] = sanitize_for_json(vae_analysis.get("metrics", {}).get("connected_components"))
 
         else:
             # --- Standard Imagination Logic with Optional Latent Channel Scaling ---
@@ -699,6 +730,7 @@ async def imagine(
                 else:
                     sampler = vision_model.bottleneck(hidden)
                 mean_original = sampler.mean
+
                 num_latent_channels = mean_original.shape[1]
                 response_data["latent_channels"] = num_latent_channels
 
@@ -757,9 +789,14 @@ async def imagine(
                 original_tensor=state_tensor,
                 imagined_tensor=imagined_tensor,
                 device=model_device,
-                env_name=env_name
+                env_name=env_name,
+                diff_threshold=diff_threshold,
+                caption=caption
             )
-            response_data["vae_analysis"] = vae_analysis
+            response_data["vae_analysis"] = sanitize_for_json(vae_analysis)
+            response_data["binary_mask"] = vae_analysis.get("metrics", {}).get("mask_base64")
+            response_data["connected_components"] = sanitize_for_json(vae_analysis.get("metrics", {}).get("connected_components"))
+            response_data["semantic_presence"] = sanitize_for_json(vae_analysis.get("metrics", {}).get("semantic_presence"))
 
         return JSONResponse(content=response_data)
 
@@ -778,7 +815,9 @@ async def imagine(
 async def diagnostics_vae(
     original_file: UploadFile = File(...),
     imagined_file: UploadFile = File(...),
-    env_name: str = Form("MiniWorld")
+    env_name: str = Form("MiniWorld"),
+    diff_threshold: float = Form(38.0),
+    caption: str = Form("")
 ):
     """
     Evaluates smudge detection, degeneracy, and cycle consistency between two uploaded images.
@@ -810,12 +849,101 @@ async def diagnostics_vae(
             original_tensor=state_tensor,
             imagined_tensor=imagined_tensor,
             device=device,
-            env_name=env_name
+            env_name=env_name,
+            diff_threshold=diff_threshold,
+            caption=caption
         )
-        return JSONResponse(content=analysis)
+        return JSONResponse(content=sanitize_for_json(analysis))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/diagnostics/connected_components")
+async def diagnostics_connected_components(
+    original_file: UploadFile = File(...),
+    imagined_file: UploadFile = File(...),
+    diff_threshold: float = Form(38.0),
+    min_ratio: float = Form(0.35),
+    max_total_occupancy: float = Form(0.65)
+):
+    """
+    Directly evaluates Connected Component Analysis on two uploaded images.
+    Returns localization metrics, concentration ratio, occupancy, and base64 binary mask.
+    """
+    try:
+        orig_bytes = await original_file.read()
+        imag_bytes = await imagined_file.read()
+        orig_img = Image.open(io.BytesIO(orig_bytes)).convert("RGB")
+        imag_img = Image.open(io.BytesIO(imag_bytes)).convert("RGB")
+        orig_np = np.array(orig_img)
+        imag_np = np.array(imag_img)
+
+        cc_res = compute_connected_component_analysis(
+            original_np=orig_np,
+            imagined_np=imag_np,
+            diff_threshold=diff_threshold,
+            min_ratio=min_ratio,
+            max_total_occupancy=max_total_occupancy
+        )
+        return JSONResponse(content=sanitize_for_json(cc_res))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CCAnalysisRequest(BaseModel):
+    original_base64: str
+    imagined_base64: str
+    diff_threshold: float = 38.0
+    min_ratio: float = 0.35
+    max_total_occupancy: float = 0.65
+    caption: Optional[str] = None
+    env_name: Optional[str] = "MiniWorld"
+
+
+@app.post("/diagnostics/connected_components_json")
+async def diagnostics_connected_components_json(payload: CCAnalysisRequest):
+    """
+    Fast JSON-based Connected Component Analysis from base64 strings with optional Semantic Presence.
+    Powers the interactive threshold slider in the frontend test app.
+    """
+    try:
+        def _to_np(b64_str: str) -> np.ndarray:
+            if "," in b64_str:
+                b64_str = b64_str.split(",", 1)[1]
+            img_bytes = base64.b64decode(b64_str)
+            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            return np.array(img)
+
+        orig_np = _to_np(payload.original_base64)
+        imag_np = _to_np(payload.imagined_base64)
+
+        cc_res = compute_connected_component_analysis(
+            original_np=orig_np,
+            imagined_np=imag_np,
+            diff_threshold=payload.diff_threshold,
+            min_ratio=payload.min_ratio,
+            max_total_occupancy=payload.max_total_occupancy
+        )
+
+        if payload.caption:
+            sem_res = evaluate_semantic_presence(
+                imagined_np=imag_np,
+                caption=payload.caption,
+                original_np=orig_np,
+                env_name=payload.env_name or "MiniWorld"
+            )
+            cc_res["semantic_presence"] = sem_res
+            if sem_res.get("is_failed"):
+                cc_res["is_failed"] = True
+                cc_res["failure_type"] = sem_res["failure_type"]
+                cc_res["failed_component"] = "SEMANTIC_PRESENCE"
+                cc_res["reason"] = f"{cc_res['reason']} | {sem_res['reason']}"
+
+        return JSONResponse(content=sanitize_for_json(cc_res))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/metadata/environments")
@@ -850,6 +978,17 @@ def load_env_model(env_name: str = Form(...)):
         "model_path": current_vae_path,
         "latent_channels": latent_channels
     })
+
+
+@app.get("/samples/manifest")
+async def get_samples_manifest():
+    """Returns the inspected samples manifest containing both valid and error samples."""
+    manifest_file = os.path.join(PROJECT_ROOT, "Results/inspected_samples/manifest.json")
+    if os.path.exists(manifest_file):
+        with open(manifest_file, "r") as f:
+            return JSONResponse(content=json.load(f))
+    return JSONResponse(content=[])
+
 
 
 @app.get("/health")

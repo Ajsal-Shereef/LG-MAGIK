@@ -80,8 +80,27 @@ class TextConditionedVAE(nn.Module):
             if self.is_perceptual_loss:
                 from architectures.common_utils import VGGLoss
                 self.vgg_loss = VGGLoss(device)
+
+            # --- SSIM Loss configuration ---
+            self.use_ssim = kwargs.get("use_ssim", False)
+            self.ssim_weight = kwargs.get("ssim_weight", 0.5)
+            if self.use_ssim:
+                from architectures.common_utils import SSIMLoss
+                self.ssim_loss = SSIMLoss(channel=input_dim)
+            else:
+                self.ssim_loss = None
+
+            # --- Random Patch Masking (Inpainting) configuration ---
+            self.use_random_masking = kwargs.get("use_random_masking", False)
+            self.masking_prob = kwargs.get("masking_prob", 0.5)
+            self.mask_min_ratio = kwargs.get("mask_min_ratio", 0.15)
+            self.mask_max_ratio = kwargs.get("mask_max_ratio", 0.35)
+            self.mask_value = kwargs.get("mask_value", 0.0)
         else:
             self.is_perceptual_loss = None
+            self.use_ssim = False
+            self.ssim_loss = None
+            self.use_random_masking = False
             input_dim = kwargs["input_dim"]
             encoder_out_dim = kwargs["encoder_output_dim"]
             hidden_dims = kwargs["encoder_hidden_dims"]
@@ -184,13 +203,51 @@ class TextConditionedVAE(nn.Module):
             lrs["lr_caption_disc"] = self.caption_disc_optim.param_groups[0]["lr"]
         return lrs
     
+    def apply_random_mask(self, images):
+        """
+        Randomly masks a rectangular patch on each image in the batch with probability masking_prob.
+        images: Tensor of shape [B, C, H, W] in range [-1, 1].
+        """
+        if not getattr(self, "use_random_masking", False) or getattr(self, "masking_prob", 0.0) <= 0.0:
+            return images
+
+        B, C, H, W = images.shape
+        masked_images = images.clone()
+        mask_sample = torch.rand(B, device=images.device) < self.masking_prob
+
+        if not mask_sample.any():
+            return masked_images
+
+        min_ratio = getattr(self, "mask_min_ratio", 0.15)
+        max_ratio = getattr(self, "mask_max_ratio", 0.35)
+        mask_val = getattr(self, "mask_value", 0.0)
+
+        for i in torch.where(mask_sample)[0]:
+            h_ratio = float(torch.empty(1, device=images.device).uniform_(min_ratio, max_ratio))
+            w_ratio = float(torch.empty(1, device=images.device).uniform_(min_ratio, max_ratio))
+            mask_h = max(1, min(H, int(H * h_ratio)))
+            mask_w = max(1, min(W, int(W * w_ratio)))
+
+            top = torch.randint(0, max(1, H - mask_h + 1), (1,), device=images.device).item()
+            left = torch.randint(0, max(1, W - mask_w + 1), (1,), device=images.device).item()
+
+            masked_images[i, :, top:top + mask_h, left:left + mask_w] = mask_val
+
+        return masked_images
+
     def forward(self, x):
         """
         x: dict containing pixel_values, input_ids, and attention_mask
         """
         images = x["pixel_values"]
-        
-        hidden = self.encoder(images)
+
+        # Apply random patch masking only during training if enabled
+        if self.training and self.observation_model == "image" and getattr(self, "use_random_masking", False):
+            encoder_input = self.apply_random_mask(images)
+        else:
+            encoder_input = images
+
+        hidden = self.encoder(encoder_input)
         if getattr(self, "latent_type", "spatial") == "vector":
             sampler = self.bottleneck(hidden.flatten(1))
         else:
@@ -203,6 +260,7 @@ class TextConditionedVAE(nn.Module):
 
         return {
                 "x": images,
+                "masked_x": encoder_input,
                 "reconstructed_x": reconstructed_x,
                 "posterior": sampler,
                 "latent": latent,
@@ -220,8 +278,27 @@ class TextConditionedVAE(nn.Module):
 
         recon_loss = F.mse_loss(reconstructed_x, original_x, reduction="none")
 
+        use_ssim = kwargs.get("use_ssim", getattr(self, "use_ssim", False))
         if self.observation_model == "image":
-            recon_loss = recon_loss.sum(dim=[1,2,3]).mean()
+            if use_ssim:
+                pred_01 = (reconstructed_x * 0.5 + 0.5).clamp(0.0, 1.0)
+                orig_01 = (original_x * 0.5 + 0.5).clamp(0.0, 1.0)
+                if getattr(self, "ssim_loss", None) is not None:
+                    ssim_loss, ssim_val = self.ssim_loss(pred_01, orig_01)
+                else:
+                    from architectures.common_utils import compute_ssim
+                    ssim_val = compute_ssim(pred_01, orig_01)
+                    ssim_loss = 1.0 - ssim_val
+
+                ssim_weight = kwargs.get("ssim_weight", getattr(self, "ssim_weight", 0.5))
+                mse_mean = F.mse_loss(reconstructed_x, original_x, reduction="mean")
+                num_pixels = original_x.shape[1] * original_x.shape[2] * original_x.shape[3]
+                recon_loss = ((1.0 - ssim_weight) * mse_mean + ssim_weight * ssim_loss) * num_pixels
+            else:
+                recon_loss = recon_loss.sum(dim=[1,2,3]).mean()
+                ssim_val = torch.tensor(1.0, device=original_x.device)
+                ssim_loss = torch.tensor(0.0, device=original_x.device)
+
             if getattr(self, "latent_type", "spatial") == "vector":
                 kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
             else:
@@ -229,6 +306,8 @@ class TextConditionedVAE(nn.Module):
         else:
             recon_loss = recon_loss.sum(dim=-1).mean()
             kl_loss = -0.5 * torch.sum(1 + posterior.log_variance - posterior.mean.pow(2) - posterior.log_variance.exp(), dim=-1).mean()
+            ssim_val = torch.tensor(1.0, device=original_x.device)
+            ssim_loss = torch.tensor(0.0, device=original_x.device)
 
         if self.is_perceptual_loss:
             perceptual_loss = self.vgg_loss(reconstructed_x * 0.5 + 0.5, original_x * 0.5 + 0.5)
@@ -270,6 +349,8 @@ class TextConditionedVAE(nn.Module):
             "vae_loss": vae_loss,
             "vae_loss_core": vae_loss,
             "recon_loss": recon_loss,
+            "ssim": ssim_val,
+            "ssim_loss": ssim_loss,
             "perceptual_loss" : perceptual_loss,
             "kl_loss": kl_loss,
             "adversarial_loss": disc_loss,

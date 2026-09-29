@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from PIL import Image
 from typing import Dict, Any, Tuple, Optional
 
 
@@ -282,7 +283,484 @@ compute_cycle_consistency = compute_latent_difference
 
 
 # ==============================================================================
-# 3. COMPREHENSIVE VAE ERROR EVALUATOR (GRID & LATENT DIFFERENCE)
+# 2B. CONNECTED COMPONENT DIFFERENCE ANALYSIS (SPATIAL LOCALIZATION)
+# ==============================================================================
+
+def compute_connected_component_analysis(
+    original_np: np.ndarray,
+    imagined_np: np.ndarray,
+    diff_threshold: float = 38.0,
+    min_ratio: float = 0.35,
+    max_total_occupancy: float = 0.65,
+    min_diff_pixels: int = 120
+) -> Dict[str, Any]:
+    """
+    Binarizes the absolute difference between the original and imagined observation.
+    Uses OpenCV connected components with morphological filtering to verify that visual
+    changes are concentrated in a dominant localized object blob (e.g., duckie -> box)
+    rather than scattered noisy artifacts or global scene obliteration.
+
+    Returns:
+      - is_failed (bool): True if changes are scattered noise or room geometry destroyed.
+      - failure_type (str): Specific error code.
+      - reason (str): Human-readable diagnosis.
+      - max_blob_area (int): Area in pixels of the largest connected difference blob.
+      - total_diff_area (int): Total changed pixels exceeding diff_threshold.
+      - concentration_ratio (float): max_blob_area / total_diff_area (healthy: >= 0.35).
+      - occupancy_ratio (float): max_blob_area / total_frame_pixels.
+      - total_occupancy (float): total_diff_area / total_frame_pixels.
+      - num_blobs (int): Number of distinct foreground blobs.
+      - diff_threshold (float): Difference threshold used.
+      - binary_mask (np.ndarray): Cleaned binary difference mask (uint8, 0 or 255).
+    """
+    orig = original_np.copy()
+    imag = imagined_np.copy()
+    if orig.max() <= 1.01 and orig.dtype != np.uint8:
+        orig = (orig * 255.0).clip(0, 255)
+    if imag.max() <= 1.01 and imag.dtype != np.uint8:
+        imag = (imag * 255.0).clip(0, 255)
+    orig = orig.astype(np.uint8)
+    imag = imag.astype(np.uint8)
+
+    target_h = max(orig.shape[0], 200)
+    target_w = max(orig.shape[1], 200)
+    if orig.shape[0] < target_h or orig.shape[1] < target_w:
+        orig_disp = cv2.resize(orig, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+        imag_disp = cv2.resize(imag, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    else:
+        orig_disp = orig
+        imag_disp = imag
+        target_h, target_w = orig.shape[:2]
+
+    diff = np.max(np.abs(orig_disp.astype(np.float32) - imag_disp.astype(np.float32)), axis=2)
+    binary = (diff >= diff_threshold).astype(np.uint8) * 255
+
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    clean_mask = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_open)
+    clean_mask = cv2.morphologyEx(clean_mask, cv2.MORPH_CLOSE, kernel_close)
+
+    total_frame_pixels = target_h * target_w
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(clean_mask, connectivity=8)
+
+    import io, base64
+    from PIL import Image as PILImage
+    mask_pil = PILImage.fromarray(clean_mask)
+    buf = io.BytesIO()
+    mask_pil.save(buf, format="PNG")
+    mask_base64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    if num_labels <= 1:
+        return {
+            "is_failed": False,
+            "failure_type": None,
+            "reason": "No significant differences between original and imagined frames.",
+            "max_blob_area": 0,
+            "total_diff_area": 0,
+            "concentration_ratio": 1.0,
+            "occupancy_ratio": 0.0,
+            "total_occupancy": 0.0,
+            "num_blobs": 0,
+            "diff_threshold": diff_threshold,
+            "binary_mask": clean_mask,
+            "mask_base64": mask_base64
+        }
+
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    max_area = int(np.max(areas))
+    total_diff_area = int(np.sum(areas))
+    concentration_ratio = float(max_area) / float(total_diff_area) if total_diff_area > 0 else 1.0
+    occupancy_ratio = float(max_area) / float(total_frame_pixels)
+    total_occupancy = float(total_diff_area) / float(total_frame_pixels)
+
+    if total_diff_area < min_diff_pixels:
+        is_failed = False
+        failure_type = None
+        reason = f"Minimal differences detected ({total_diff_area} px < {min_diff_pixels} px threshold)."
+    elif total_occupancy > max_total_occupancy:
+        is_failed = True
+        failure_type = "VAE_GLOBAL_DISTORTION_FAILURE"
+        reason = (
+            f"Global distortion failure: {total_occupancy:.1%} of frame altered "
+            f"(threshold <= {max_total_occupancy:.1%}; room geometry collapsed)."
+        )
+    elif concentration_ratio < min_ratio and total_diff_area > (total_frame_pixels * 0.12):
+        is_failed = True
+        failure_type = "VAE_SCATTERED_ARTIFACTS_FAILURE"
+        reason = (
+            f"Scattered artifacts failure: Max connected blob ratio is {concentration_ratio:.2f} "
+            f"(threshold >= {min_ratio:.2f}); {total_diff_area} altered pixels scattered across {len(areas)} blobs."
+        )
+    else:
+        is_failed = False
+        failure_type = None
+        reason = (
+            f"Localized object transformation verified: dominant blob ratio {concentration_ratio:.2f} >= {min_ratio:.2f} "
+            f"covering {occupancy_ratio:.1%} of frame ({len(areas)} blobs total)."
+        )
+
+    return {
+        "is_failed": is_failed,
+        "failure_type": failure_type,
+        "reason": reason,
+        "max_blob_area": max_area,
+        "total_diff_area": total_diff_area,
+        "concentration_ratio": round(concentration_ratio, 4),
+        "occupancy_ratio": round(occupancy_ratio, 4),
+        "total_occupancy": round(total_occupancy, 4),
+        "num_blobs": len(areas),
+        "diff_threshold": diff_threshold,
+        "binary_mask": clean_mask,
+        "mask_base64": mask_base64
+    }
+
+
+# ==============================================================================
+# 2C. SEMANTIC PRESENCE & SOURCE SUPPRESSION VERIFICATION
+# ==============================================================================
+
+def extract_semantic_targets_from_caption(caption: str) -> Dict[str, Any]:
+    """
+    Parses object descriptions, target colors, and spatial sectors from captions.
+    Isolates spatial sectors per object clause so multiple objects in a caption
+    (e.g., green ball to the left, blue box to the right) are correctly attributed.
+    """
+    if not caption:
+        return {"targets": [], "target_object": None, "target_color": None, "is_empty": False, "sector": None}
+
+    cap_lower = caption.lower()
+    is_empty = any(w in cap_lower for w in ["completely empty", "no objects present", "entirely vacant", "no object"])
+    if is_empty:
+        return {"targets": [], "target_object": None, "target_color": None, "is_empty": True, "sector": None}
+
+    color_object_patterns = [
+        ("blue box", "blue"),
+        ("blue cube", "blue"),
+        ("yellow duckie", "yellow"),
+        ("duckie", "yellow"),
+        ("green ball", "green"),
+        ("green sphere", "green"),
+        ("red medkit", "red"),
+        ("red ball", "red"),
+        ("red box", "red"),
+        ("purple box", "purple"),
+        ("blue", "blue"),
+        ("yellow", "yellow"),
+        ("green", "green"),
+        ("red", "red"),
+        ("purple", "purple"),
+    ]
+
+    # Split into clauses/sentences to isolate per-object directions without breaking decimal numbers (e.g. 34.5, 4.3)
+    clauses = re.split(r'(?<!\d)\.+(?!\d)|[\n;]+|\band\b', caption)
+    targets = []
+    seen_objects = set()
+
+    for c in clauses:
+        c_low = c.lower().strip()
+        if not c_low:
+            continue
+        for obj_name, col in color_object_patterns:
+            if obj_name in c_low and obj_name not in seen_objects:
+                seen_objects.add(obj_name)
+                sector = None
+                if "left" in c_low:
+                    sector = "left"
+                elif "right" in c_low:
+                    sector = "right"
+                elif any(k in c_low for k in ["center", "forward", "ahead", "directly"]):
+                    sector = "center"
+                dist_m = re.search(r'distance\s*(?:of|is|:)?\s*([\d\.]+)', c_low)
+                dist = float(dist_m.group(1)) if dist_m else None
+                targets.append({
+                    "target_object": obj_name,
+                    "target_color": col,
+                    "sector": sector,
+                    "distance": dist,
+                    "clause": c_low
+                })
+                break
+
+    # Fallback if clause splitting didn't catch an object
+    if not targets:
+        for obj_name, col in color_object_patterns:
+            if obj_name in cap_lower and obj_name not in seen_objects:
+                seen_objects.add(obj_name)
+                idx = cap_lower.find(obj_name)
+                window = cap_lower[max(0, idx - 40):min(len(cap_lower), idx + len(obj_name) + 60)]
+                sector = None
+                if "left" in window:
+                    sector = "left"
+                elif "right" in window:
+                    sector = "right"
+                elif any(k in window for k in ["center", "forward", "ahead", "directly"]):
+                    sector = "center"
+                dist_m = re.search(r'distance\s*(?:of|is|:)?\s*([\d\.]+)', window)
+                dist = float(dist_m.group(1)) if dist_m else None
+                targets.append({
+                    "target_object": obj_name,
+                    "target_color": col,
+                    "sector": sector,
+                    "distance": dist,
+                    "clause": window
+                })
+                break
+
+    primary_target = targets[0] if targets else {"target_object": None, "target_color": None, "sector": None}
+
+    return {
+        "targets": targets,
+        "target_object": primary_target.get("target_object"),
+        "target_color": primary_target.get("target_color"),
+        "sector": primary_target.get("sector"),
+        "distance": primary_target.get("distance"),
+        "is_empty": is_empty
+    }
+
+
+
+def get_color_pixel_count(
+    img_np: np.ndarray,
+    color_name: str,
+    env_name: str = "MiniWorld",
+    sector: Optional[str] = None
+) -> Tuple[int, float, np.ndarray]:
+    """
+    Returns (pixel_count, sector_fraction, mask).
+    For MiniWorld, blue detection excludes the top 20% sky rows to prevent sky false positives.
+    """
+    if img_np.ndim != 3 or img_np.shape[2] != 3:
+        return 0, 1.0, np.zeros((img_np.shape[0], img_np.shape[1]), dtype=np.uint8)
+
+    hsv = cv2.cvtColor(img_np.astype(np.uint8), cv2.COLOR_RGB2HSV)
+    h, w = img_np.shape[:2]
+
+    if color_name == "blue":
+        # Saturated blue object
+        mask = cv2.inRange(hsv, (95, 60, 50), (135, 255, 255))
+        if "MiniWorld" in env_name:
+            sky_cutoff = int(h * 0.20)
+            mask[:sky_cutoff, :] = 0
+    elif color_name == "yellow":
+        mask = cv2.inRange(hsv, (15, 70, 70), (38, 255, 255))
+    elif color_name == "green":
+        # High saturation green object (distinguishes from grass floor)
+        mask = cv2.inRange(hsv, (40, 100, 80), (85, 255, 255))
+    elif color_name == "red":
+        mask1 = cv2.inRange(hsv, (0, 70, 60), (10, 255, 255))
+        mask2 = cv2.inRange(hsv, (170, 70, 60), (180, 255, 255))
+        mask = cv2.bitwise_or(mask1, mask2)
+    elif color_name == "purple":
+        mask = cv2.inRange(hsv, (125, 50, 50), (165, 255, 255))
+    else:
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+    pixel_count = int(np.sum(mask > 0))
+    sector_fraction = 1.0
+
+    if sector and pixel_count > 0:
+        ys, xs = np.where(mask > 0)
+        if sector == "left":
+            sector_fraction = float(np.sum(xs < int(w * 0.65))) / pixel_count
+        elif sector == "right":
+            sector_fraction = float(np.sum(xs > int(w * 0.35))) / pixel_count
+        elif sector == "center":
+            sector_fraction = float(np.sum((xs >= int(w * 0.20)) & (xs <= int(w * 0.80)))) / pixel_count
+
+    return pixel_count, sector_fraction, mask
+
+
+def evaluate_semantic_presence(
+    imagined_np: np.ndarray,
+    caption: str,
+    original_np: Optional[np.ndarray] = None,
+    env_name: str = "MiniWorld",
+    min_target_pixels: int = 80,
+    max_residual_source_pixels: int = 50,
+    min_sector_fraction: float = 0.50
+) -> Dict[str, Any]:
+    """
+    Verifies semantic fidelity of the VAE generation against the text caption:
+    1. Target presence: If caption specifies an object (e.g. 'blue box'), verifies that
+       sufficient target-colored pixels exist in the imagined image.
+    2. Spatial sector alignment: If caption indicates 'left' / 'right' / 'center', verifies
+       that the target pixels are situated in that sector.
+    3. Source suppression: If source object was in original_np (e.g. yellow duckie), verifies
+       it was removed/painted over.
+    4. Empty scene check: If caption specifies an empty room, verifies no foreground objects exist.
+    """
+    parsed = extract_semantic_targets_from_caption(caption)
+    is_empty = parsed["is_empty"]
+    targets = parsed.get("targets", [])
+    if not targets and parsed.get("target_object"):
+        targets = [{
+            "target_object": parsed["target_object"],
+            "target_color": parsed["target_color"],
+            "sector": parsed["sector"],
+            "distance": parsed.get("distance")
+        }]
+
+    # Source color verification in original observation
+    source_pixels_orig = 0
+    source_pixels_recon = 0
+    source_col = None
+    target_colors = {t["target_color"] for t in targets}
+    if original_np is not None:
+        if "blue" in target_colors and "MiniWorld" in env_name:
+            for candidate_col in ["yellow", "green"]:
+                cnt, _, _ = get_color_pixel_count(original_np, candidate_col, env_name)
+                if cnt > 0:
+                    source_col = candidate_col
+                    source_pixels_orig = cnt
+                    source_pixels_recon, _, _ = get_color_pixel_count(imagined_np, candidate_col, env_name)
+                    break
+        elif "purple" in target_colors and "SimplePickup" in env_name:
+            source_col = "green"
+            source_pixels_orig, _, _ = get_color_pixel_count(original_np, source_col, env_name)
+            source_pixels_recon, _, _ = get_color_pixel_count(imagined_np, source_col, env_name)
+
+    target_evals = []
+    failing_target_eval = None
+
+    for t in targets:
+        t_obj = t["target_object"]
+        t_col = t["target_color"]
+        t_sec = t["sector"]
+        t_dist = t.get("distance")
+        t_pixels, t_sec_frac, _ = get_color_pixel_count(imagined_np, t_col, env_name, t_sec)
+
+        # Compute adaptive minimum pixel threshold based on distance and source object scale
+        eff_min_pixels = min_target_pixels
+
+        # 1. Scale down requirement for distant objects when distance is present in caption
+        if t_dist is not None:
+            if t_dist >= 4.0:
+                eff_min_pixels = min(eff_min_pixels, 20)
+            elif t_dist >= 3.0:
+                eff_min_pixels = min(eff_min_pixels, 35)
+            elif t_dist >= 2.0:
+                eff_min_pixels = min(eff_min_pixels, 55)
+
+        # 2. Scale requirement relative to the source object if source object is present in original image.
+        # If the source object occupied few pixels (due to distance or boundary clipping),
+        # the translated target object will naturally occupy fewer pixels as well.
+        if source_col and original_np is not None and source_pixels_orig < min_target_pixels:
+            if source_pixels_orig > 0:
+                eff_min_pixels = min(eff_min_pixels, max(15, int(source_pixels_orig * 0.6)))
+            elif t_dist is not None and t_dist >= 3.5:
+                eff_min_pixels = min(eff_min_pixels, 15)
+
+        t_res = {
+            "target_object": t_obj,
+            "target_color": t_col,
+            "sector": t_sec,
+            "distance": t_dist,
+            "target_pixels": t_pixels,
+            "min_required_pixels": eff_min_pixels,
+            "sector_fraction": round(t_sec_frac, 3),
+            "is_failed": False,
+            "failure_type": None,
+            "reason": ""
+        }
+
+        if t_pixels < eff_min_pixels:
+            t_res["is_failed"] = True
+            t_res["failure_type"] = "VAE_SEMANTIC_MISSING_OBJECT"
+            sec_spec = f" in '{t_sec}' sector" if t_sec else ""
+            t_res["reason"] = (
+                f"Semantic presence failure: Caption describes '{t_obj}'{sec_spec}, but only {t_pixels} "
+                f"{t_col} pixels found in imagined image (required >= {eff_min_pixels} px, adaptive for distance/scale)."
+            )
+        elif t_sec and t_sec_frac < min_sector_fraction and t_pixels >= eff_min_pixels:
+            t_res["is_failed"] = True
+            t_res["failure_type"] = "VAE_SEMANTIC_SECTOR_MISMATCH"
+            t_res["reason"] = (
+                f"Semantic sector failure: Caption places '{t_obj}' in '{t_sec}' sector, "
+                f"but only {t_sec_frac:.1%} of {t_col} pixels are in that sector (threshold >= {min_sector_fraction:.0%})."
+            )
+        else:
+            sec_str = f" in '{t_sec}' sector ({t_sec_frac:.1%})" if t_sec else ""
+            t_res["reason"] = f"'{t_obj}' confirmed with {t_pixels} px (required >= {eff_min_pixels} px){sec_str}"
+
+        target_evals.append(t_res)
+        if t_res["is_failed"] and failing_target_eval is None:
+            failing_target_eval = t_res
+
+    is_failed = False
+    failure_type = None
+    reason = "Semantic presence verified."
+
+    if failing_target_eval is not None:
+        is_failed = True
+        failure_type = failing_target_eval["failure_type"]
+        reason = failing_target_eval["reason"]
+        primary_target_obj = failing_target_eval["target_object"]
+        primary_target_col = failing_target_eval["target_color"]
+        primary_target_pixels = failing_target_eval["target_pixels"]
+        primary_min_req_pixels = failing_target_eval.get("min_required_pixels", min_target_pixels)
+        primary_sector = failing_target_eval["sector"]
+        primary_sector_frac = failing_target_eval["sector_fraction"]
+    elif source_col and source_pixels_orig >= 100 and source_pixels_recon > max_residual_source_pixels:
+        is_failed = True
+        failure_type = "VAE_SEMANTIC_SOURCE_RESIDUAL"
+        reason = (
+            f"Source suppression failure: Original '{source_col}' object was not replaced; "
+            f"{source_pixels_recon} residual pixels remain in imagined image (threshold <= {max_residual_source_pixels} px)."
+        )
+        primary_target_obj = targets[0]["target_object"] if targets else None
+        primary_target_col = targets[0]["target_color"] if targets else None
+        primary_target_pixels = target_evals[0]["target_pixels"] if target_evals else 0
+        primary_min_req_pixels = target_evals[0].get("min_required_pixels", min_target_pixels) if target_evals else min_target_pixels
+        primary_sector = target_evals[0]["sector"] if target_evals else None
+        primary_sector_frac = target_evals[0]["sector_fraction"] if target_evals else 1.0
+    elif is_empty:
+        # Check all possible foreground objects for hallucinations
+        fg_checks = [("blue", "blue box"), ("yellow", "yellow duckie"), ("red", "red medkit"), ("purple", "purple box")]
+        for fg_col, fg_name in fg_checks:
+            fg_px, _, _ = get_color_pixel_count(imagined_np, fg_col, env_name)
+            if fg_px >= min_target_pixels:
+                is_failed = True
+                failure_type = "VAE_SEMANTIC_HALLUCINATED_OBJECT"
+                reason = f"Empty room hallucination: Caption specifies empty room, but {fg_px} {fg_col} pixels ({fg_name}) are present."
+                primary_target_obj = fg_name
+                primary_target_col = fg_col
+                primary_target_pixels = fg_px
+                primary_min_req_pixels = min_target_pixels
+                primary_sector = None
+                primary_sector_frac = 1.0
+                break
+        if not is_failed:
+            reason = "Semantic verified: Empty scene confirmed."
+            primary_target_obj, primary_target_col, primary_target_pixels, primary_min_req_pixels, primary_sector, primary_sector_frac = None, None, 0, min_target_pixels, None, 1.0
+    elif target_evals:
+        reason = "Semantic verified: " + "; ".join([t["reason"] for t in target_evals])
+        primary_target_obj = target_evals[0]["target_object"]
+        primary_target_col = target_evals[0]["target_color"]
+        primary_target_pixels = target_evals[0]["target_pixels"]
+        primary_min_req_pixels = target_evals[0].get("min_required_pixels", min_target_pixels)
+        primary_sector = target_evals[0]["sector"]
+        primary_sector_frac = target_evals[0]["sector_fraction"]
+    else:
+        primary_target_obj, primary_target_col, primary_target_pixels, primary_min_req_pixels, primary_sector, primary_sector_frac = None, None, 0, min_target_pixels, None, 1.0
+
+    return {
+        "is_failed": is_failed,
+        "failure_type": failure_type,
+        "reason": reason,
+        "target_object": primary_target_obj,
+        "target_color": primary_target_col,
+        "target_pixels": primary_target_pixels,
+        "min_required_pixels": primary_min_req_pixels,
+        "sector": primary_sector,
+        "sector_fraction": round(primary_sector_frac, 3) if primary_sector_frac is not None else 1.0,
+        "source_object_removed": bool(source_pixels_recon <= max_residual_source_pixels) if source_col else True,
+        "residual_source_pixels": source_pixels_recon if source_col else 0,
+        "all_targets": target_evals
+    }
+
+
+# ==============================================================================
+# 3. COMPREHENSIVE VAE ERROR EVALUATOR (DEGENERACY & CONNECTED COMPONENTS)
 # ==============================================================================
 
 def evaluate_vae_quality(
@@ -295,44 +773,84 @@ def evaluate_vae_quality(
     env_name: str = "MiniWorld",
     grid_fail_threshold: Optional[int] = None,
     cell_diff_threshold: float = 15.0,
-    latent_l2_threshold: Optional[float] = None
+    latent_l2_threshold: Optional[float] = None,
+    diff_threshold: float = 38.0,
+    min_ratio: float = 0.35,
+    max_total_occupancy: float = 0.65,
+    caption: str = ""
 ) -> Dict[str, Any]:
     """
     Evaluates VAE generation quality based on:
       1. Numerical sanity (NaN / Inf)
-      2. Mode collapse (Std Dev < 3.0 or dynamic range < 15)
-      3. Environment grid difference:
-         Divides image into grid cells (16px for MiniGridRelational, 8px for SimplePickup, 10px for MiniWorld).
-         If >= fail threshold (10 for MiniWorld, 5 for others) grid cells differ significantly, VAE fails (VAE_GRID_DIFFERENCE_FAILURE).
-      4. Latent difference:
-         Encodes original and imagined images to latent space.
-         If latent L2 distance >= threshold, VAE fails (VAE_LATENT_DIFFERENCE_FAILURE).
+      2. Mode collapse and edge blurriness (Std Dev < 3.0, dynamic range < 15, or Laplacian variance < 20.0)
+      3. Connected component spatial localization (Dominant blob ratio >= min_ratio, total occupancy <= max_total_occupancy)
+      4. Semantic presence & source suppression (Required target color pixels present, source object suppressed)
+      5. Latent difference telemetry
     """
     metrics: Dict[str, Any] = {}
-
-    if grid_fail_threshold is not None:
-        eff_grid_fail_threshold = grid_fail_threshold
-    elif env_name and "MiniWorld" in env_name:
-        eff_grid_fail_threshold = 10
-    else:
-        eff_grid_fail_threshold = 5
 
     # 1. Numerical checks
     if np.isnan(imagined_np).any() or np.isinf(imagined_np).any():
         return {
             "is_valid": False,
             "error_type": "VAE_NAN_INF",
+            "failed_component": "NUMERICAL_SANITY",
             "reason": "Imagined image contains NaN or Inf values.",
             "metrics": metrics
         }
 
-    # 2. Dynamic range and variance (basic sanity)
+    # 2. Dynamic range, variance, and blur checks
     img_std = float(imagined_np.std())
     metrics["imagined_std"] = round(img_std, 2)
     dyn_range = float(imagined_np.max() - imagined_np.min())
     metrics["dynamic_range"] = round(dyn_range, 2)
 
-    # 3. Grid difference analysis
+    if imagined_np.ndim == 3 and imagined_np.shape[2] == 3:
+        imag_gray = cv2.cvtColor(imagined_np.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+    else:
+        imag_gray = imagined_np.astype(np.uint8)
+    blur_var = float(cv2.Laplacian(imag_gray, cv2.CV_64F).var())
+    metrics["blur_var"] = round(blur_var, 2)
+
+    if imagined_np.ndim >= 2 and (img_std < 3.0 or dyn_range < 15.0):
+        return {
+            "is_valid": False,
+            "error_type": "VAE_MODE_COLLAPSE",
+            "failed_component": "IMAGE_DEGENERACY",
+            "reason": f"Mode collapse / washed-out canvas (std={img_std:.2f}, range={dyn_range:.1f}).",
+            "metrics": metrics
+        }
+
+    if blur_var < 20.0 and img_std < 10.0:
+        return {
+            "is_valid": False,
+            "error_type": "VAE_BLUR_COLLAPSE",
+            "failed_component": "IMAGE_DEGENERACY",
+            "reason": f"Severe blur / edge loss (Laplacian variance={blur_var:.1f} < 20.0).",
+            "metrics": metrics
+        }
+
+    # 3. Connected Component Difference Analysis (Spatial localization)
+    cc_res = compute_connected_component_analysis(
+        original_np=original_np,
+        imagined_np=imagined_np,
+        diff_threshold=diff_threshold,
+        min_ratio=min_ratio,
+        max_total_occupancy=max_total_occupancy
+    )
+    metrics["connected_components"] = cc_res
+    metrics["binary_mask"] = cc_res.get("binary_mask")
+    # 4. Semantic Presence & Source Suppression Verification
+    sem_res = evaluate_semantic_presence(
+        imagined_np=imagined_np,
+        caption=caption,
+        original_np=original_np,
+        env_name=env_name
+    )
+    metrics["semantic_presence"] = sem_res
+
+    # 5. Grid difference telemetry (recorded for monitoring, not used for failure blocking)
+    eff_grid_fail_threshold = grid_fail_threshold if grid_fail_threshold is not None else (10 if "MiniWorld" in env_name else 5)
     grid_res = compute_grid_differences(
         original_np=original_np,
         imagined_np=imagined_np,
@@ -344,12 +862,8 @@ def evaluate_vae_quality(
     metrics["differing_grid_count"] = grid_res["differing_grid_count"]
     metrics["grid_fail_threshold"] = grid_res["fail_threshold"]
     metrics["is_grid_failed"] = grid_res["is_grid_failed"]
-    metrics["max_grid_diff"] = grid_res["max_grid_diff"]
-    metrics["mean_grid_diff"] = grid_res["mean_grid_diff"]
-    metrics["grid_shape"] = grid_res["grid_shape"]
-    metrics["cell_size"] = grid_res["cell_size"]
 
-    # 4. Latent difference analysis
+    # 6. Latent difference analysis (recorded for monitoring)
     latent_res = compute_latent_difference(
         vision_model=vision_model,
         original_tensor=original_tensor,
@@ -365,52 +879,35 @@ def evaluate_vae_quality(
     metrics["latent_cosine"] = latent_res.get("latent_cosine")
     metrics["latent_l2_threshold"] = latent_res.get("latent_l2_threshold")
     metrics["is_latent_failed"] = latent_res.get("is_latent_failed", False)
-
-    # Retain cycle aliases for frontend compatibility if needed
     metrics["cycle_l2"] = metrics["latent_l2"]
     metrics["cycle_cosine"] = metrics["latent_cosine"]
     metrics["cycle_l2_threshold"] = metrics["latent_l2_threshold"]
     metrics["is_cycle_consistent"] = not metrics["is_latent_failed"]
 
-    # --- Error Threshold Evaluations (in priority order) ---
-    if imagined_np.ndim >= 2 and (img_std < 3.0 or dyn_range < 15.0):
+    # --- Error Threshold Evaluation ---
+    if sem_res.get("is_failed"):
         return {
             "is_valid": False,
-            "error_type": "VAE_MODE_COLLAPSE",
-            "reason": f"Mode collapse / washed-out canvas (std={img_std:.2f}, range={dyn_range:.1f}).",
+            "error_type": sem_res["failure_type"],
+            "failed_component": "SEMANTIC_PRESENCE",
+            "reason": sem_res["reason"],
             "metrics": metrics
         }
 
-    if grid_res["is_grid_failed"]:
+    if cc_res["is_failed"]:
         return {
             "is_valid": False,
-            "error_type": "VAE_GRID_DIFFERENCE_FAILURE",
-            "reason": (
-                f"Grid difference failure: {grid_res['differing_grid_count']} grid cells significantly differ "
-                f"(failure threshold is >= {eff_grid_fail_threshold} cells; cell MAE threshold is {cell_diff_threshold})."
-            ),
-            "metrics": metrics
-        }
-
-    if latent_res.get("is_latent_failed"):
-        l2_thresh = latent_res.get("latent_l2_threshold", 0.75)
-        return {
-            "is_valid": False,
-            "error_type": "VAE_LATENT_DIFFERENCE_FAILURE",
-            "reason": (
-                f"Latent difference failure: Latent L2 distance is {latent_res['latent_l2']} "
-                f"(threshold >= {l2_thresh})."
-            ),
+            "error_type": cc_res["failure_type"],
+            "failed_component": "CONNECTED_COMPONENT_ANALYSIS",
+            "reason": cc_res["reason"],
             "metrics": metrics
         }
 
     return {
         "is_valid": True,
         "error_type": None,
-        "reason": (
-            f"Imagined observation passed: only {grid_res['differing_grid_count']} grid cells differ "
-            f"(< {eff_grid_fail_threshold}) and latent L2 distance is {latent_res['latent_l2']} (< {latent_res['latent_l2_threshold']})."
-        ),
+        "failed_component": None,
+        "reason": f"{cc_res['reason']} | {sem_res['reason']}",
         "metrics": metrics
     }
 
@@ -883,14 +1380,26 @@ def save_vae_error_sample(
     seed: int,
     episode: int,
     step: int,
+    failed_component: Optional[str] = None,
+    binary_mask: Optional[np.ndarray] = None,
     output_dir: str = "Results/diagnostics/error_samples"
 ) -> str:
     """
-    Saves a labeled side-by-side PNG image showing the original observation,
-    the imagined VAE generation, the caption used, and the error reason.
-    Appends metadata to {output_dir}/vae_errors.jsonl and returns the PNG path.
+    Saves:
+      1. Combined side-by-side PNG (original + imagined) WITHOUT caption text, in output_dir.
+      2. Individual original image, in output_dir/individual/original/.
+      3. Individual reconstructed image, in output_dir/individual/reconstructed/.
+      4. Binary difference mask from connected component analysis, in output_dir/individual/masks/.
+    Logs metadata with failed_component to {output_dir}/vae_errors.jsonl and console.
     """
     os.makedirs(output_dir, exist_ok=True)
+    indiv_dir = os.path.join(output_dir, "individual")
+    orig_dir = os.path.join(indiv_dir, "original")
+    recon_dir = os.path.join(indiv_dir, "reconstructed")
+    mask_dir = os.path.join(indiv_dir, "masks")
+    os.makedirs(orig_dir, exist_ok=True)
+    os.makedirs(recon_dir, exist_ok=True)
+    os.makedirs(mask_dir, exist_ok=True)
 
     orig = original_np.copy()
     imag = imagined_np.copy()
@@ -901,7 +1410,7 @@ def save_vae_error_sample(
     orig = orig.astype(np.uint8)
     imag = imag.astype(np.uint8)
 
-    # Upscale to at least 200px height for clear inspection
+    # Upscale to at least 200px height for clear visual inspection
     target_h = max(orig.shape[0], 200)
     target_w = max(orig.shape[1], 200)
     if orig.shape[0] < target_h or orig.shape[1] < target_w:
@@ -912,44 +1421,52 @@ def save_vae_error_sample(
         imag_disp = imag
         target_h, target_w = orig.shape[:2]
 
-    header_h = 32
-    footer_h = 68
+    # Binary mask extraction
+    if binary_mask is not None:
+        mask_disp = binary_mask.copy()
+        if mask_disp.shape[:2] != (target_h, target_w):
+            mask_disp = cv2.resize(mask_disp, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    else:
+        diff = np.max(np.abs(orig_disp.astype(np.float32) - imag_disp.astype(np.float32)), axis=2)
+        binary = (diff >= 30.0).astype(np.uint8) * 255
+        kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask_disp = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_open)
+        mask_disp = cv2.morphologyEx(mask_disp, cv2.MORPH_CLOSE, kernel_close)
+
+    # 1. Combined image WITHOUT caption text / headers / footers
     divider_w = 8
     total_w = target_w * 2 + divider_w
-    total_h = target_h + header_h + footer_h
+    composite = np.zeros((target_h, total_w, 3), dtype=np.uint8)
+    composite[:, :target_w] = orig_disp
+    composite[:, target_w + divider_w:] = imag_disp
+    composite[:, target_w:target_w + divider_w] = (60, 60, 80)
 
-    composite = np.zeros((total_h, total_w, 3), dtype=np.uint8)
-    composite[:] = (24, 24, 37)  # Dark theme
-
-    # Place observations
-    composite[header_h:header_h + target_h, :target_w] = orig_disp
-    composite[header_h:header_h + target_h, target_w + divider_w:] = imag_disp
-    composite[header_h:header_h + target_h, target_w:target_w + divider_w] = (60, 60, 80)
-
-    from PIL import Image, ImageDraw
-    pil_img = Image.fromarray(composite)
-    draw = ImageDraw.Draw(pil_img)
-
-    # Header labels
-    draw.text((12, 8), "Original Observation", fill=(140, 200, 255))
-    draw.text((target_w + divider_w + 12, 8), "Imagined Observation (VAE)", fill=(255, 180, 180))
-
-    # Footer text
-    foot_y = header_h + target_h + 8
-    draw.text((12, foot_y), f"Env: {env_name} | Target: {task_mode} | Seed: {seed} | Ep: {episode} | Step: {step}", fill=(180, 180, 200))
-    cap_text = f"Caption: \"{caption}\""
-    if len(cap_text) > 100:
-        cap_text = cap_text[:97] + "..."
-    draw.text((12, foot_y + 18), cap_text, fill=(240, 240, 240))
-
-    err_text = f"Error [{error_type}]: {reason}"
-    if len(err_text) > 100:
-        err_text = err_text[:97] + "..."
-    draw.text((12, foot_y + 38), err_text, fill=(255, 110, 110))
-
-    sample_filename = f"vae_{env_name}_{task_mode}_seed_{seed}_ep{episode}_step{step}.png"
+    core_tag = f"{env_name}_{task_mode}_seed_{seed}_ep{episode}_step{step}"
+    sample_filename = f"vae_{core_tag}.png"
     sample_path = os.path.join(output_dir, sample_filename)
-    pil_img.save(sample_path)
+    Image.fromarray(composite).save(sample_path)
+
+    # 2. Individual images
+    orig_path = os.path.join(orig_dir, f"original_{core_tag}.png")
+    recon_path = os.path.join(recon_dir, f"reconstructed_{core_tag}.png")
+    mask_path = os.path.join(mask_dir, f"mask_{core_tag}.png")
+
+    Image.fromarray(orig_disp).save(orig_path)
+    Image.fromarray(imag_disp).save(recon_path)
+    Image.fromarray(mask_disp).save(mask_path)
+
+    # Determine failed component if not explicitly provided
+    if failed_component:
+        eff_component = failed_component
+    elif "COLLAPSE" in error_type or "BLUR" in error_type:
+        eff_component = "IMAGE_DEGENERACY"
+    elif "DISTORTION" in error_type or "ARTIFACT" in error_type or "GRID" in error_type:
+        eff_component = "CONNECTED_COMPONENT_ANALYSIS"
+    elif "NAN" in error_type:
+        eff_component = "NUMERICAL_SANITY"
+    else:
+        eff_component = "VAE_ANALYSIS"
 
     rec = {
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -959,16 +1476,23 @@ def save_vae_error_sample(
         "episode": episode,
         "step": step,
         "caption": caption,
+        "failed_component": eff_component,
         "error_type": error_type,
         "reason": reason,
-        "sample_image": sample_path
+        "sample_image": sample_path,
+        "original_image": orig_path,
+        "reconstructed_image": recon_path,
+        "binary_mask_image": mask_path
     }
     with open(os.path.join(output_dir, "vae_errors.jsonl"), "a") as f:
         f.write(json.dumps(rec) + "\n")
 
     print(f"\n[DIAGNOSTIC VAE ERROR] {env_name} ({task_mode}) seed {seed} ep {episode} step {step}", flush=True)
-    print(f"  Caption: \"{caption}\"", flush=True)
-    print(f"  Error Type: {error_type}", flush=True)
-    print(f"  Error Reason: {reason}", flush=True)
-    print(f"  Sample Saved: {sample_path}\n", flush=True)
+    print(f"  Failed Component:   {eff_component}", flush=True)
+    print(f"  Error Type:         {error_type}", flush=True)
+    print(f"  Error Reason:       {reason}", flush=True)
+    print(f"  Caption:            \"{caption}\"", flush=True)
+    print(f"  Combined (No Text): {sample_path}", flush=True)
+    print(f"  Individual Images:  {orig_path}, {recon_path}", flush=True)
+    print(f"  Binary Mask:        {mask_path}\n", flush=True)
     return sample_path

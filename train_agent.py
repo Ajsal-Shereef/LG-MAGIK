@@ -339,8 +339,13 @@ def main(args: DictConfig) -> None:
     set_random_seed(seed, using_cuda=torch.cuda.is_available())
 
     # Model save dir: model_weights/{env_name}/{agent_name}/seed_{seed}
+    # For fine-tuning, save under: model_weights/{env_name}/finetuned/{task_mode}/{agent_name}/seed_{seed}
     seed_name = f"seed_{seed}" if not str(seed).startswith("seed_") else str(seed)
-    model_save_dir = os.path.join(args.save_model_dir, args.env.name, args.agent_name, seed_name)
+    task_mode = getattr(args.env, "task_mode", "source")
+    if getattr(args, "fine_tune", False):
+        model_save_dir = os.path.join(args.save_model_dir, args.env.name, "finetuned", str(task_mode), args.agent_name, seed_name)
+    else:
+        model_save_dir = os.path.join(args.save_model_dir, args.env.name, args.agent_name, seed_name)
     os.makedirs(model_save_dir, exist_ok=True)
     print("[INFO] Model save directory: ", model_save_dir)
 
@@ -401,9 +406,14 @@ def main(args: DictConfig) -> None:
      
     # Initialize wandb
     if args.use_wandb:
+        task_mode = getattr(args.env, "task_mode", "source")
+        if getattr(args, "fine_tune", False):
+            wandb_run_name = f"finetune_{args.env.name}_{task_mode}_{args.agent_name}_seed_{seed}"
+        else:
+            wandb_run_name = f"{args.agent_name}_{args.env.name}_seed_{seed}"
         wandb.init(
             project="LG-MAGIK",
-            name=f"{args.agent_name}_{args.env.name}",
+            name=wandb_run_name,
             config=OmegaConf.to_container(args, resolve=True)
         )
     
@@ -493,18 +503,36 @@ def main(args: DictConfig) -> None:
         fps=args.env.fps
     )
     
-    # --- ADDED DATA COLLECTION CALLBACK ---
-    data_save_path = os.path.join(args.data_dave_dir, args.env.name, "agent")
-    use_her = getattr(args.env, "use_her", False)
-    data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
-                                                    number_data_to_collect=int(args.number_data_to_collect),  
-                                                    observation_mode=args.env.observation_mode, use_her=use_her, seed=seed, verbose=1)
-    call_backs = [data_collector_callback, checkpoint_callback]
-    # call_backs = []
+    call_backs = [checkpoint_callback]
+
+    # --- STOP TRAINING ON MAX EPISODES ---
+    max_episodes = args.get("max_episodes", None)
+    if max_episodes is not None and int(max_episodes) > 0:
+        from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
+        stop_episodes_cb = StopTrainingOnMaxEpisodes(max_episodes=int(max_episodes), verbose=1)
+        call_backs.append(stop_episodes_cb)
+        print(f"[INFO] Training will stop after {max_episodes} episodes.")
+
+    # --- DATA COLLECTION CALLBACK (conditional) ---
+    if getattr(args, "save_data", False):
+        data_save_path = os.path.join(args.data_dave_dir, args.env.name, "agent")
+        use_her = getattr(args.env, "use_her", False)
+        data_collector_callback = DataCollectorCallback(save_path=data_save_path, saving_func=saving_data_function, 
+                                                        number_data_to_collect=int(args.number_data_to_collect),  
+                                                        observation_mode=args.env.observation_mode, use_her=use_her, seed=seed, verbose=1)
+        call_backs.append(data_collector_callback)
+
     all_callbacks = call_backs + [wandb_callback] if args.use_wandb else call_backs
     
-    model.learn(total_timesteps=int(args.env.total_timestep),
-                callback=all_callbacks)
+    total_timesteps = int(args.env.total_timestep)
+    if max_episodes is not None and int(max_episodes) > 0:
+        max_possible_steps = int(max_episodes) * int(getattr(args.env, "max_steps", 100))
+        if total_timesteps < max_possible_steps:
+            total_timesteps = max_possible_steps
+
+    model.learn(total_timesteps=total_timesteps,
+                callback=all_callbacks,
+                reset_num_timesteps=True)
 
     # --- SAVE ---
     model.save(f"{model_save_dir}/{args.agent_name}")

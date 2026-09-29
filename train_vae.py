@@ -240,21 +240,40 @@ def train(args: DictConfig) -> None:
                         is_image_obs = cfg.model.get("observation_mode", "image") == "image"
 
                         if should_log_media and is_image_obs:
-                            num_images_to_log = min(batch["pixel_values"].shape[0], 8)
-                            
-                            img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
-                            recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                            total_batch_size = batch["pixel_values"].shape[0]
+                            num_images_to_log = min(total_batch_size, 8)
 
                             # Create a single grid for comparison
                             if not cfg.model.get("use_weighted_recon", False):
-                                comparison_tensor = torch.cat([img_to_log, recon_to_log])
+                                is_masked = (
+                                    "masked_x" in output
+                                    and (output["masked_x"] != batch["pixel_values"]).view(total_batch_size, -1).any(dim=-1)
+                                )
+                                if is_masked.any():
+                                    masked_indices = torch.where(is_masked)[0][:num_images_to_log]
+                                    img_to_log = (batch["pixel_values"][masked_indices].detach() * 0.5 + 0.5).clamp(0, 1)
+                                    masked_to_log = (output["masked_x"][masked_indices].detach() * 0.5 + 0.5).clamp(0, 1)
+                                    recon_to_log = (output["reconstructed_x"][masked_indices].detach() * 0.5 + 0.5).clamp(0, 1)
+                                    comparison_tensor = torch.cat([img_to_log, masked_to_log, recon_to_log])
+                                    grid_title = "Original vs. Masked vs. Reconstructed"
+                                    grid_cols = len(masked_indices)
+                                else:
+                                    img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                                    recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                                    comparison_tensor = torch.cat([img_to_log, recon_to_log])
+                                    grid_title = "Original vs. Reconstructed"
+                                    grid_cols = num_images_to_log
                             else:
+                                img_to_log = (batch["pixel_values"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
+                                recon_to_log = (output["reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
                                 text_aligned_to_log = (output["text_aligned_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
                                 text_agnostic_to_log = (output["text_agnostic_reconstructed_x"][:num_images_to_log].detach() * 0.5 + 0.5).clamp(0, 1)
                                 comparison_tensor = torch.cat([img_to_log, recon_to_log, text_aligned_to_log, text_agnostic_to_log])
+                                grid_title = "Original vs. Reconstructed"
+                                grid_cols = num_images_to_log
                                 
-                            comparison_grid = make_grid(comparison_tensor, nrow=num_images_to_log)
-                            media_payload["Original vs. Reconstructed"] = wandb.Image(comparison_grid)
+                            comparison_grid = make_grid(comparison_tensor, nrow=grid_cols)
+                            media_payload[grid_title] = wandb.Image(comparison_grid)
                             
                         # Generate sample images
                         if should_generate:

@@ -608,6 +608,82 @@ class VGGLoss(nn.Module):
         
         return perceptual_loss
 
+
+def _gaussian_1d(window_size, sigma):
+    gauss = torch.tensor([math.exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)], dtype=torch.float32)
+    return gauss / gauss.sum()
+
+
+def create_ssim_window(window_size, channel):
+    _1D_window = _gaussian_1d(window_size, 1.5).unsqueeze(1)
+    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+    return _2D_window.expand(channel, 1, window_size, window_size).contiguous()
+
+
+def compute_ssim(img1, img2, window_size=11, window=None, size_average=True):
+    """
+    Computes SSIM between img1 and img2, expected in range [0, 1].
+    Shape: [B, C, H, W]
+    """
+    (_, channel, _, _) = img1.size()
+    if window is None:
+        window = create_ssim_window(window_size, channel).to(device=img1.device, dtype=img1.dtype)
+    else:
+        if window.device != img1.device or window.dtype != img1.dtype:
+            window = window.to(device=img1.device, dtype=img1.dtype)
+
+    mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
+    mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
+
+    mu1_sq = mu1.pow(2)
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
+    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
+    sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
+
+    sigma1_sq = torch.clamp(sigma1_sq, min=0.0)
+    sigma2_sq = torch.clamp(sigma2_sq, min=0.0)
+
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2) + 1e-8)
+
+    if size_average:
+        return ssim_map.mean()
+    else:
+        return ssim_map.mean(1).mean(1).mean(1)
+
+
+class SSIMLoss(nn.Module):
+    """
+    Differentiable Structural Similarity Index (SSIM) Loss.
+    Computes 1.0 - SSIM(y_pred, y_true).
+    Expects images in range [0, 1].
+    """
+    def __init__(self, window_size=11, size_average=True, channel=3):
+        super(SSIMLoss, self).__init__()
+        self.window_size = window_size
+        self.size_average = size_average
+        self.channel = channel
+        self.register_buffer("window", create_ssim_window(window_size, channel))
+
+    def forward(self, y_pred, y_true):
+        (_, channel, _, _) = y_pred.size()
+        if channel == self.channel and self.window.dtype == y_pred.dtype and self.window.device == y_pred.device:
+            window = self.window
+        else:
+            window = create_ssim_window(self.window_size, channel).to(device=y_pred.device, dtype=y_pred.dtype)
+            self.window = window
+            self.channel = channel
+
+        ssim_val = compute_ssim(y_pred, y_true, window_size=self.window_size, window=window, size_average=self.size_average)
+        ssim_loss = 1.0 - ssim_val
+        return ssim_loss, ssim_val
+
+
 def normalize_01(x, dim=1):
     """
     Normalize the elements in x to [0, 1]
