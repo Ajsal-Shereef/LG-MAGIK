@@ -53,7 +53,7 @@ model:
   mask_wall_ratio: 0.38
   mask_value: 0.0
 training:
-  num_epochs: 350
+  num_epochs: 500
   seed: ${models.seed}
   kl_weight: 1.0
   kl_annealing:

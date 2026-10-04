@@ -117,7 +117,7 @@ def extract_agent_source_mission(env_name: str, config_args=None) -> str:
         dqn_model_dir = getattr(config_args, "dqn_model_dir", None)
         agent_name = getattr(config_args, "agent_name", "DQN")
         if dqn_model_dir:
-            path_str = str(dqn_model_dir).replace("{agent_name}", str(agent_name))
+            path_str = str(dqn_model_dir).replace("{agent_name}", str(agent_name)).replace("{env}", str(env_name))
             if not os.path.isabs(path_str):
                 path_str = os.path.join(PROJECT_ROOT, path_str)
 

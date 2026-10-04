@@ -29,3 +29,5 @@ scripts
 *.log
 Results
 out
+!Results/agent_performance.md
+!Results/agent_performance_cache.json

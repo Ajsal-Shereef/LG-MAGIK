@@ -1,10 +1,10 @@
 defaults:
-  - models: text_conditioned_vae_cnn_MiniWorld
   - env: MiniWorldNoisy
+  - models: text_conditioned_vae_cnn_${env}
 
-agent_name : DQN
-dqn_model_dir : model_weights/{env}/PPO/seed_123/{agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
-vae_model_dir:  model_weights/{env}/VAE_1D_no_text_disc/seed_123/VAE_1D_no_text_disc.tar
+agent_name : PPO
+dqn_model_dir : model_weights/${env.name}/${agent_name}/seed_123/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+vae_model_dir:  model_weights/${env.name}/VAE_1D_no_text_disc/seed_123/VAE_1D_no_text_disc.tar
 result_dir: result
 mode: transfer
 mapping_strategy: "llm" # options: "llm", "retrieval"
@@ -57,12 +57,12 @@ caption_system_prompt: |
 
   ### 6. REFERENCE STYLE EXAMPLES
   Adopt the natural spatial phrasing, diverse sentence openings. A few examples are given below (You are suppose to create diverse caption treat the example below only a few ways of varried captions):
-  - Single Object: "Positioned 1.2 units away and 24.0 degrees to the left, a blue box rests upon a green grass floor, framed by gray walls and a clear blue sky."
-  - Single Object (Varied): "Positioned on a green grass floor beneath a blue sky, a yellow duckie is situated 3.3 units and 29.4 degrees to the left, set against a gray wall."
-  - Multiple Objects: "Within a room featuring gray walls and a green grass floor, a blue box is situated 1.9 units and 12.0 degrees to the left, while a green ball can be seen at 1.0 units and 38.9 degrees to the right."
+  - Single Object: "A blue box is visible at 3.9 units and 1.3 degrees to the right. It is located on a green grass floor surrounded by a gray wall under a blue sky."
+  - Single Object (Varied): "A blue box is visible at 1.4 units and 8.8 degrees to the left, and a green ball is visible at 3.0 units and 31.0 degrees to the left. The scene features a grey wall and a green grass floor, with a blue sky visible in the background."
+  - Multiple Objects: "A blue box is visible at 3.1 units and 5.5 degrees to the left, and a green ball is visible at 2.0 units and 24.5 degrees to the right, both located on a green grass floor surrounded by a grey wall under a blue sky.."
   - Multiple Objects (Varied): "Under a blue sky, a room features gray walls and a floor of green grass. A green ball is positioned 4.5 units away and 0.2 degrees to the left, while further off to the side, a red medkit can be seen at 5.0 units and 27.5 degrees to the left."
-  - Empty Scene: "A green grass floor extends across the foreground, bordered by gray walls that rise up toward a clear blue sky. The space is completely empty, with no objects present."
-  - Empty Scene (Varied): "The room is characterized by a green floor and gray walls, with a blue sky visible above. The space is entirely vacant, with no objects present."
+  - Empty Scene: "The image depicts a simple, empty room with a green grass floor and gray walls. The sky is visible, showing a clear blue color. There are no objects present in the scene."
+  - Empty Scene (Varied): "A green grass floor is visible, surrounded by a gray wall under a blue sky."
 
 # system_prompt: |
 #   You are an imagination reasoning assistant that enables a reinforcement learning (RL) agent to reuse its known skills to solve novel target tasks by hallucinating its observations.

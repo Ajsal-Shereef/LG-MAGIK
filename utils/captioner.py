@@ -8,7 +8,7 @@ import concurrent.futures
 import threading
 from pathlib import Path
 from dotenv import load_dotenv
-from typing import Union, List
+from typing import Union, List, Any
 from omegaconf import DictConfig
 
 # --- 1. Helper: Base64 Encoder ---
@@ -59,20 +59,30 @@ def split_gptoss_analysis_final(content: str):
 
 # --- 3. Query Function ---
 # --- 3. Query Function ---
-def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: str = None, pipeline: str = None, temperature: float = None, alternative_pipe: str = None) -> tuple[str, dict]:
+def query_llm(
+    system: str,
+    prompt: Union[str, List[dict]],
+    api_key: str,
+    mode: str = None,
+    pipeline: str = None,
+    temperature: float = None,
+    alternative_pipe: str = None,
+    cfg: Any = None
+) -> tuple[str, dict]:
     """
     Queries the LLM. 
     Accepts specific args (mode, pipeline, temperature) OR a Hydra cfg object.
     """
     # Fallback to cfg if explicit args are not provided
-    if mode is None and cfg is not None:
-        mode = cfg.model.mode
-    if pipeline is None and cfg is not None:
-        pipeline = cfg.model.name
-    if temperature is None and cfg is not None:
-        temperature = cfg.model.temperature
-    if alternative_pipe is None and cfg is not None:
-        alternative_pipe = cfg.model.get("alternative_vllm")
+    if cfg is not None:
+        if mode is None and hasattr(cfg, "model") and hasattr(cfg.model, "mode"):
+            mode = cfg.model.mode
+        if pipeline is None and hasattr(cfg, "model") and hasattr(cfg.model, "name"):
+            pipeline = cfg.model.name
+        if temperature is None and hasattr(cfg, "model") and hasattr(cfg.model, "temperature"):
+            temperature = cfg.model.temperature
+        if alternative_pipe is None and hasattr(cfg, "model"):
+            alternative_pipe = cfg.model.get("alternative_vllm") if hasattr(cfg.model, "get") else getattr(cfg.model, "alternative_vllm", None)
         
     if mode is None:
         raise ValueError("Mode must be provided either explicitly or via cfg.")
@@ -111,7 +121,7 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: s
             }
         elif mode == "nvidia":
             base_url = "https://integrate.api.nvidia.com/v1"
-            if cfg and hasattr(cfg.model, "base_url") and cfg.model.base_url:
+            if cfg is not None and hasattr(cfg, "model") and hasattr(cfg.model, "base_url") and cfg.model.base_url:
                 base_url = cfg.model.base_url.rstrip("/chat/completions")
             default_headers = None
         else:
@@ -183,12 +193,41 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: s
                 globals()["_HF_VISION_CACHE"] = {}
             if model_id not in globals()["_HF_VISION_CACHE"]:
                 proc = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-                mdl = AutoModelForCausalLM.from_pretrained(
-                    model_id,
-                    device_map="auto",
-                    torch_dtype="auto",
-                    trust_remote_code=True
-                )
+                mdl = None
+                # Try specific model architectures first (supports Gemma-4 multimodal, AutoModelForImageTextToText, and AutoModelForCausalLM)
+                model_classes = []
+                try:
+                    from transformers import Gemma4UnifiedForConditionalGeneration
+                    model_classes.append(Gemma4UnifiedForConditionalGeneration)
+                except ImportError:
+                    pass
+                try:
+                    from transformers import AutoModelForImageTextToText
+                    model_classes.append(AutoModelForImageTextToText)
+                except ImportError:
+                    pass
+                model_classes.append(AutoModelForCausalLM)
+
+                for cls in model_classes:
+                    try:
+                        mdl = cls.from_pretrained(
+                            model_id,
+                            device_map="auto",
+                            torch_dtype="auto",
+                            trust_remote_code=True
+                        )
+                        if mdl is not None:
+                            break
+                    except Exception:
+                        continue
+
+                if mdl is None:
+                    mdl = AutoModelForCausalLM.from_pretrained(
+                        model_id,
+                        device_map="auto",
+                        torch_dtype="auto",
+                        trust_remote_code=True
+                    )
                 mdl.eval()
                 globals()["_HF_VISION_CACHE"][model_id] = (proc, mdl)
             processor, model = globals()["_HF_VISION_CACHE"][model_id]
@@ -258,6 +297,9 @@ def query_llm(system: str, prompt: Union[str, List[dict]], api_key: str, mode: s
 
         input_len = inputs["input_ids"].shape[-1]
         caption = proc.decode(output_ids[0][input_len:], skip_special_tokens=True).strip()
+        # Clean thinking channels if present
+        if "<channel|>" in caption:
+            caption = caption.split("<channel|>")[-1].strip()
         return caption
 
 # --- 4. Main Processing Logic ---

@@ -97,7 +97,7 @@ def main(args: DictConfig) -> None:
     agent_model_dir = args.dqn_model_dir
     if os.path.exists(os.path.dirname(agent_model_dir) + "/config.yaml"):
         agent_model_args =  OmegaConf.load(os.path.dirname(agent_model_dir) + "/config.yaml")
-        args.env = agent_model_args.env
+        args.env.mission = agent_model_args.env.mission
     else:
         raise FileNotFoundError(f"Config file not found in {os.path.dirname(agent_model_dir)}/config.yaml")
     
@@ -194,7 +194,7 @@ def main(args: DictConfig) -> None:
     # Rolling in-memory LLM response cache (LRU bounded to max_cache_size)
     max_cache_size = args.get("max_cache_size", 10000)
     llm_cache = OrderedDict()
-    llm_cache_file = os.path.join("Results", "diagnostics", f"llm_cache_{args.env.name}.json")
+    llm_cache_file = os.path.join("Results", "diagnostics", f"llm_cache_{evaluated_env_name}.json")
     if os.path.exists(llm_cache_file):
         try:
             with open(llm_cache_file, "r") as f:
@@ -214,7 +214,7 @@ def main(args: DictConfig) -> None:
     episode_records_map = {}
     prior_perf = {}
 
-    env_name_str = args.env.name
+    env_name_str = evaluated_env_name
     # Error analysis scopes:
     # 1. SimplePickup, MiniWorld, MiniGridRelational: Both LLM and VAE error analysis
     # 2. PickEnv: Only LLM error analysis
@@ -303,7 +303,7 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                if args.env.name == "MiniWorldNoisy":
+                if evaluated_env_name == "MiniWorldNoisy":
                     # Capture the frame
                     frame = state
                     # Encode the frame
@@ -355,9 +355,9 @@ def main(args: DictConfig) -> None:
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
                             )
-                        # print(f"[INFO] Updated description via LLM: {caption}")
+                        print(f"[INFO] MiniWorldNoisy caption generated via Gemma ({vllm_pipeline}): \"{caption}\"", flush=True)
                     except Exception as e:
-                        print(f"[ERROR] LLM Captioning failed: {e}")
+                        print(f"[ERROR] LLM Captioning failed: {e}", flush=True)
 
                 if mapping_strategy == "retrieval":
                     target_caption = info['description']
@@ -365,7 +365,7 @@ def main(args: DictConfig) -> None:
                     changed_state, imagined_state = vision_model.imagine(state, matched_caption)
                 else:
                     called_model = None
-                    is_target2_bg_transfer = (task_mode == "target2" and args.env.name in ("SimplePickup", "MiniWorld"))
+                    is_target2_bg_transfer = (task_mode == "target2" and evaluated_env_name in ("SimplePickup", "MiniWorld"))
                     is_empty_view = ("No other objects can be seen." in info['description'] or "No objects are visible in the current view." in info['description'])
 
                     if is_empty_view and not is_target2_bg_transfer:
@@ -453,7 +453,7 @@ def main(args: DictConfig) -> None:
                     if is_imagination_step and do_llm_analysis:
                         from utils.imagination_diagnostics import evaluate_llm_mapping
                         llm_eval = evaluate_llm_mapping(
-                            env_name=args.env.name,
+                            env_name=evaluated_env_name,
                             task_mode=task_mode,
                             input_description=info.get('description', ''),
                             llm_reply_json=llm_reply_json,
@@ -464,7 +464,7 @@ def main(args: DictConfig) -> None:
                             ep_llm_errors += 1
                             from utils.imagination_diagnostics import log_llm_error_sample
                             log_llm_error_sample(
-                                env_name=args.env.name,
+                                env_name=evaluated_env_name,
                                 task_mode=task_mode,
                                 seed=base_seed,
                                 episode=episode,
@@ -485,7 +485,7 @@ def main(args: DictConfig) -> None:
                                 original_np=state,
                                 imagined_np=imagined_state,
                                 vision_model=vision_model,
-                                env_name=args.env.name,
+                                env_name=evaluated_env_name,
                                 latent_l2_threshold=getattr(args, "latent_l2_threshold", None),
                                 diff_threshold=float(getattr(args, "vae_diff_threshold", 38.0)),
                                 min_ratio=float(getattr(args, "vae_min_ratio", 0.35)),
@@ -502,7 +502,7 @@ def main(args: DictConfig) -> None:
                                     caption=llm_reply_json.get("description", ""),
                                     reason=vae_res.get("reason", ""),
                                     error_type=vae_res.get("error_type", ""),
-                                    env_name=args.env.name,
+                                    env_name=evaluated_env_name,
                                     task_mode=task_mode,
                                     seed=base_seed,
                                     episode=episode,
@@ -529,9 +529,9 @@ def main(args: DictConfig) -> None:
 
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
-            save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/transfer"
+            save_dir = f"result/{args.agent_name}/{evaluated_env_name}/{env_name}/transfer"
         else:
-            save_dir = f"result/{args.agent_name}/{args.env.name}/{env_name}/source"
+            save_dir = f"result/{args.agent_name}/{evaluated_env_name}/{env_name}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
         total_lookups = cache_hits + cache_misses
@@ -543,12 +543,12 @@ def main(args: DictConfig) -> None:
         ep_perf_delta = compute_performance_delta(env_metric_after_ep, env_metric_before_ep)
         prior_perf = merge_performances(prior_perf, ep_perf_delta)
 
-        if args.env.name == "MiniGridRelational":
+        if evaluated_env_name == "MiniGridRelational":
             if task_mode == "target5":
                 is_success = bool(ep_perf_delta.get("successful_drop", 0) >= 2)
             else:
                 is_success = bool(ep_perf_delta.get("successful_drop", 0) > 0)
-        elif args.env.name.startswith("MiniWorld"):
+        elif evaluated_env_name.startswith("MiniWorld"):
             is_success = (cumulative_reward > 5.0)
         else:
             is_success = (cumulative_reward > 0.0)
