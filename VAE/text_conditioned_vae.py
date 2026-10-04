@@ -1,4 +1,5 @@
 import os
+import re
 import math
 import torch
 import torch.nn as nn
@@ -31,6 +32,9 @@ class TextConditionedVAE(nn.Module):
         self.max_grad_norm = kwargs.get("max_grad_norm", None)
         self.use_text_discriminator = kwargs.get("use_text_discriminator", True)
         self.max_sequence_length = kwargs.get("max_sequence_length", None)
+        self.env_name = kwargs.get("env_name", None)
+        if self.env_name is None and "env" in kwargs:
+            self.env_name = kwargs["env"].name if hasattr(kwargs["env"], "name") else str(kwargs["env"])
 
         # ---- Encoder/Decoder ----
         if self.observation_model == "image":
@@ -90,17 +94,32 @@ class TextConditionedVAE(nn.Module):
             else:
                 self.ssim_loss = None
 
-            # --- Random Patch Masking (Inpainting) configuration ---
+            # --- Targeted Masking (50-30-10-10) configuration ---
             self.use_random_masking = kwargs.get("use_random_masking", False)
-            self.masking_prob = kwargs.get("masking_prob", 0.5)
-            self.mask_min_ratio = kwargs.get("mask_min_ratio", 0.15)
-            self.mask_max_ratio = kwargs.get("mask_max_ratio", 0.35)
+            self.mask_ratio_unmasked = kwargs.get("mask_ratio_unmasked", 0.50)
+            self.mask_ratio_dilated_obj = kwargs.get("mask_ratio_dilated_obj", 0.30)
+            self.mask_ratio_wall_only = kwargs.get("mask_ratio_wall_only", 0.10)
+            self.mask_ratio_half_split = kwargs.get("mask_ratio_half_split", 0.10)
+            self.mask_dilation_padding = kwargs.get("mask_dilation_padding", 0.35)
+            self.mask_wall_ratio = kwargs.get("mask_wall_ratio", 0.38)
             self.mask_value = kwargs.get("mask_value", 0.0)
+            self.masking_prob = kwargs.get("masking_prob", 1.0 - self.mask_ratio_unmasked)
+
+            if self.use_random_masking and (not self.env_name or "miniworld" not in str(self.env_name).lower()):
+                raise NotImplementedError(
+                    f"Targeted image masking is only implemented for MiniWorld environments. "
+                    f"Masking cannot be enabled for environment '{self.env_name}'."
+                )
         else:
             self.is_perceptual_loss = None
             self.use_ssim = False
             self.ssim_loss = None
-            self.use_random_masking = False
+            self.use_random_masking = kwargs.get("use_random_masking", False)
+            if self.use_random_masking:
+                raise NotImplementedError(
+                    f"Targeted image masking is only implemented for MiniWorld environments. "
+                    f"Masking cannot be enabled for non-image observation mode '{self.observation_model}'."
+                )
             input_dim = kwargs["input_dim"]
             encoder_out_dim = kwargs["encoder_output_dim"]
             hidden_dims = kwargs["encoder_hidden_dims"]
@@ -203,35 +222,222 @@ class TextConditionedVAE(nn.Module):
             lrs["lr_caption_disc"] = self.caption_disc_optim.param_groups[0]["lr"]
         return lrs
     
-    def apply_random_mask(self, images):
+    def extract_miniworld_object_boxes(self, caption: str, H: int, W: int) -> list:
         """
-        Randomly masks a rectangular patch on each image in the batch with probability masking_prob.
-        images: Tensor of shape [B, C, H, W] in range [-1, 1].
+        Extracts approximate 2D bounding boxes [(x1, y1, x2, y2), ...] for objects
+        visible in the MiniWorld camera view based on caption angle and distance cues.
+        MiniGrid 2D grid cell parsing is excluded as MiniGrid does not require masking.
         """
-        if not getattr(self, "use_random_masking", False) or getattr(self, "masking_prob", 0.0) <= 0.0:
+        boxes = []
+        if not caption or not isinstance(caption, str):
+            return boxes
+
+        # 1. Empty room checks: if scene is explicitly empty, return no boxes
+        if re.search(r"\b(no objects|empty|no items)\b", caption, re.I):
+            return boxes
+
+        # Normalize tokenizer BPE decoding artifacts that separate digits and dots (e.g. "3 6 . 7" -> "36.7", "1 . 3" -> "1.3")
+        caption = re.sub(r"(?<=[0-9.])\s+(?=[0-9.])", "", caption)
+
+        # 2. MiniWorld entities
+        mw_entities = r"\b(?:box|ball|duckie|key|medkit|object)\b"
+
+        # Split caption into sentences/clauses (without splitting decimal numbers like 36.7)
+        clauses = re.split(r"(?<!\d)\s*\.\s*|\band\s+(?:a|an)\b", caption)
+        for clause in clauses:
+            clause = clause.strip()
+            if not clause or not re.search(mw_entities, clause, re.I):
+                continue
+
+            side = None
+            angle = None
+            dist = None
+
+            # Pattern A: 'to the (left|right) at angle <val>'
+            mA = re.search(r"to\s+the\s+(left|right)\s+at\s+angle\s+([\d\.\-]+)", clause, re.I)
+            if mA:
+                side = mA.group(1).lower()
+                angle = float(mA.group(2))
+
+            # Pattern B: '<val> [deg/degrees] to the (left|right)'
+            if angle is None:
+                mB = re.search(r"([\d\.\-]+)\s*(?:deg|degrees)?\s*(?:to\s+the\s+)?(left|right)", clause, re.I)
+                if mB:
+                    angle = float(mB.group(1))
+                    side = mB.group(2).lower()
+
+            # Pattern C: 'at angle <val>'
+            if angle is None:
+                mC = re.search(r"at\s+angle\s+([\d\.\-]+)", clause, re.I)
+                if mC:
+                    angle = float(mC.group(1))
+                    if "left" in clause.lower():
+                        side = "left"
+                    elif "right" in clause.lower():
+                        side = "right"
+                    else:
+                        side = "center"
+
+            # Pattern D: 'directly ahead' or 'in front'
+            if angle is None and re.search(r"\b(directly ahead|in front|straight ahead)\b", clause, re.I):
+                angle = 0.0
+                side = "center"
+
+            # Distance: 'at a distance of <val> units' or '<val> units away'
+            m_dist = re.search(r"(?:distance\s+of\s+|at\s+)?([\d\.\-]+)\s*units", clause, re.I)
+            if m_dist:
+                dist = float(m_dist.group(1))
+            else:
+                dist = 2.5
+
+            if angle is not None:
+                if side == "left":
+                    signed_ang = -angle
+                elif side == "right":
+                    signed_ang = angle
+                else:
+                    signed_ang = 0.0
+
+                # MiniWorld camera horizontal FOV is ~60 degrees (-30 to +30 deg).
+                # Objects outside +/- 35 deg are in sensor range but outside camera view.
+                if abs(signed_ang) > 35.0:
+                    continue
+
+                norm_x = (signed_ang + 30.0) / 60.0
+                norm_x = max(0.05, min(0.95, norm_x))
+                cx = int(norm_x * W)
+
+                scale = max(0.12, min(0.40, 0.65 / max(dist, 0.8)))
+                box_w = max(int(W * scale), 4)
+                box_h = max(int(H * scale), 4)
+
+                cy = int(H * 0.42 + min(H * 0.40, (H * 0.32) / max(dist, 0.7)))
+                x1 = max(0, cx - box_w // 2)
+                y1 = max(0, cy - box_h // 2)
+                x2 = min(W, cx + box_w // 2)
+                y2 = min(H, cy + box_h // 2)
+
+                if x2 > x1 and y2 > y1:
+                    boxes.append((x1, y1, x2, y2))
+            else:
+                # Qualitative spatial descriptions (e.g. LLM-generated or relative captions)
+                # Only match if explicit spatial direction or depth keywords are present
+                if re.search(r"\b(left|right|foreground|background|center|middle|ahead)\b", clause, re.I):
+                    if "left" in clause.lower():
+                        cx = int(W * 0.25)
+                    elif "right" in clause.lower():
+                        cx = int(W * 0.75)
+                    else:
+                        cx = int(W * 0.50)
+
+                    if "foreground" in clause.lower():
+                        cy = int(H * 0.70)
+                        box_sz = int(W * 0.35)
+                    elif "background" in clause.lower():
+                        cy = int(H * 0.45)
+                        box_sz = int(W * 0.15)
+                    else:
+                        cy = int(H * 0.55)
+                        box_sz = int(W * 0.25)
+
+                    x1 = max(0, cx - box_sz // 2)
+                    y1 = max(0, cy - box_sz // 2)
+                    x2 = min(W, cx + box_sz // 2)
+                    y2 = min(H, cy + box_sz // 2)
+                    if x2 > x1 and y2 > y1:
+                        boxes.append((x1, y1, x2, y2))
+
+        return boxes
+
+    # Maintain alias for compatibility
+    extract_object_boxes_from_caption = extract_miniworld_object_boxes
+
+    def apply_targeted_mask(self, images, captions=None):
+        """
+        Applies structured MiniWorld masking following a 50-30-10-10 distribution:
+        - 50%: Unmasked clean image.
+        - 30%: Dilated object mask (bounding box padded by mask_dilation_padding to completely occlude the object).
+        - 10%: Wall-only (top portion/wall visible, floor and objects completely occluded).
+        - 10%: Half occlusion (the complete left or right half containing the object is occluded).
+        Only applied during training.
+        """
+        if not getattr(self, "use_random_masking", False):
             return images
+
+        if not self.env_name or "miniworld" not in str(self.env_name).lower():
+            raise NotImplementedError(
+                f"Targeted image masking is only implemented for MiniWorld environments. "
+                f"Masking cannot be enabled for environment '{self.env_name}'."
+            )
 
         B, C, H, W = images.shape
         masked_images = images.clone()
-        mask_sample = torch.rand(B, device=images.device) < self.masking_prob
-
-        if not mask_sample.any():
-            return masked_images
-
-        min_ratio = getattr(self, "mask_min_ratio", 0.15)
-        max_ratio = getattr(self, "mask_max_ratio", 0.35)
         mask_val = getattr(self, "mask_value", 0.0)
 
-        for i in torch.where(mask_sample)[0]:
-            h_ratio = float(torch.empty(1, device=images.device).uniform_(min_ratio, max_ratio))
-            w_ratio = float(torch.empty(1, device=images.device).uniform_(min_ratio, max_ratio))
-            mask_h = max(1, min(H, int(H * h_ratio)))
-            mask_w = max(1, min(W, int(W * w_ratio)))
+        ratio_unmasked = getattr(self, "mask_ratio_unmasked", 0.50)
+        ratio_dilated = getattr(self, "mask_ratio_dilated_obj", 0.30)
+        ratio_wall_only = getattr(self, "mask_ratio_wall_only", 0.10)
+        ratio_half = getattr(self, "mask_ratio_half_split", 0.10)
 
-            top = torch.randint(0, max(1, H - mask_h + 1), (1,), device=images.device).item()
-            left = torch.randint(0, max(1, W - mask_w + 1), (1,), device=images.device).item()
+        dilation_pad = getattr(self, "mask_dilation_padding", 0.35)
+        wall_ratio = getattr(self, "mask_wall_ratio", 0.38)
 
-            masked_images[i, :, top:top + mask_h, left:left + mask_w] = mask_val
+        t_dilated = ratio_unmasked + ratio_dilated
+        t_wall = t_dilated + ratio_wall_only
+        t_half = t_wall + ratio_half
+
+        rands = torch.rand(B, device=images.device)
+
+        for i in range(B):
+            r = rands[i].item()
+            if r < ratio_unmasked:
+                # 50%: Unmasked clean image
+                continue
+
+            caption_str = captions[i] if (captions and i < len(captions)) else ""
+            boxes = self.extract_miniworld_object_boxes(caption_str, H, W)
+
+            if r < t_dilated:
+                # 30%: Dilated object masking (completely occludes the object)
+                if len(boxes) > 0:
+                    chosen_idx = int(torch.randint(0, len(boxes), (1,)).item())
+                    x1, y1, x2, y2 = boxes[chosen_idx]
+                    bw = x2 - x1
+                    bh = y2 - y1
+                    pad_w = int(bw * dilation_pad)
+                    pad_h = int(bh * dilation_pad)
+                    x1_pad = max(0, x1 - pad_w)
+                    y1_pad = max(0, y1 - pad_h)
+                    x2_pad = min(W, x2 + pad_w)
+                    y2_pad = min(H, y2 + pad_h)
+                    masked_images[i, :, y1_pad:y2_pad, x1_pad:x2_pad] = mask_val
+
+            elif r < t_wall:
+                # 10%: Top part is shown (Basically the wall), floor and objects occluded
+                wall_h = int(H * wall_ratio)
+                masked_images[i, :, wall_h:, :] = mask_val
+
+            elif r < t_half:
+                # 10%: Complete half wherever the object is (left/right) is occluded
+                side = None
+                if len(boxes) > 0:
+                    chosen_idx = int(torch.randint(0, len(boxes), (1,)).item())
+                    chosen_box = boxes[chosen_idx]
+                    cx = (chosen_box[0] + chosen_box[2]) / 2.0
+                    side = "left" if cx < (W / 2.0) else "right"
+                else:
+                    cap_lower = caption_str.lower()
+                    if "left" in cap_lower and "right" not in cap_lower:
+                        side = "left"
+                    elif "right" in cap_lower and "left" not in cap_lower:
+                        side = "right"
+                    else:
+                        side = "left" if torch.rand(1).item() < 0.5 else "right"
+
+                if side == "left":
+                    masked_images[i, :, :, :W // 2] = mask_val
+                else:
+                    masked_images[i, :, :, W // 2:] = mask_val
 
         return masked_images
 
@@ -241,9 +447,15 @@ class TextConditionedVAE(nn.Module):
         """
         images = x["pixel_values"]
 
-        # Apply random patch masking only during training if enabled
+        # Apply targeted patch masking ONLY during training if enabled (NEVER in eval/test time)
         if self.training and self.observation_model == "image" and getattr(self, "use_random_masking", False):
-            encoder_input = self.apply_random_mask(images)
+            captions = x.get("captions", None)
+            if captions is None and "input_ids" in x and hasattr(self, "decoder") and hasattr(self.decoder, "tokenizer"):
+                try:
+                    captions = self.decoder.tokenizer.batch_decode(x["input_ids"], skip_special_tokens=True)
+                except Exception:
+                    captions = None
+            encoder_input = self.apply_targeted_mask(images, captions=captions)
         else:
             encoder_input = images
 

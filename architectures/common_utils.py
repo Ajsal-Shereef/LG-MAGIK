@@ -452,7 +452,13 @@ def get_dataloader(args: DictConfig) -> DataLoader:
         attention_masks = attention_masks.to(memory_format=torch.contiguous_format).float()
         if cfg.data.caption_column:
             input_ids = torch.stack([example["input_ids"] for example in examples])
-            return {"pixel_values": pixel_values, "input_ids": input_ids, "attention_mask" : attention_masks}
+            captions = [example[cfg.data.caption_column] for example in examples]
+            return {
+                "pixel_values": pixel_values,
+                "input_ids": input_ids,
+                "attention_mask": attention_masks,
+                "captions": captions,
+            }
         return {"pixel_values": pixel_values}
     
     # -------------------------
@@ -1452,13 +1458,120 @@ def _record_nvidia_call():
     except Exception:
         pass
 
-def query_gemini_api(system: str, prompt: str, model_name: str = "gemini-3.8-flash", api_key: str = None, force_google_client: bool = False) -> tuple[str, dict]:
+def query_nvidia_api(system: str, prompt: str, model_name: str = "nvidia/nemotron-3.5-lightning-30b-a3b", api_key: str = None, max_tokens: int = 6000) -> tuple[str, dict]:
+    """
+    Invokes NVIDIA NIM API with pacing, exponential backoff retries, and usage/latency tracking.
+    """
+    from openai import OpenAI
+    nvidia_api_key = api_key or os.getenv("NVIDIA_API")
+    if not nvidia_api_key:
+        try:
+            from dotenv import load_dotenv
+            if os.path.exists("config/.env"):
+                load_dotenv("config/.env")
+            elif os.path.exists(".env"):
+                load_dotenv(".env")
+            nvidia_api_key = os.getenv("NVIDIA_API")
+        except Exception:
+            pass
+
+    if not nvidia_api_key:
+        raise ValueError("NVIDIA API key (NVIDIA_API) is not set in environment or config/.env.")
+
+    client = OpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=nvidia_api_key,
+        max_retries=0
+    )
+
+    clean_model = model_name
+    if clean_model and clean_model.endswith(":free"):
+        clean_model = clean_model[:-5]
+
+    messages = []
+    if system and str(system).strip():
+        messages.append({"role": "system", "content": str(system)})
+    messages.append({"role": "user", "content": str(prompt)})
+
+    total_wait_time = 0.0
+    max_retries = 3
+    for attempt in range(max_retries):
+        wait_dur = _pace_nvidia_call()
+        total_wait_time += wait_dur
+
+        try:
+            t_req_start = time.time()
+            completion = client.chat.completions.create(
+                model=clean_model,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=max_tokens
+            )
+            net_latency = time.time() - t_req_start
+            _record_nvidia_call()
+
+            msg = completion.choices[0].message
+            content = msg.content or ""
+            reasoning = getattr(msg, "reasoning", getattr(msg, "reasoning_content", None))
+            actual_model = getattr(completion, "model", clean_model) or clean_model
+            usage_info = {}
+            if getattr(completion, "usage", None) is not None:
+                u = completion.usage
+                usage_info = {
+                    "prompt_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
+                    "completion_tokens": int(getattr(u, "completion_tokens", 0) or 0),
+                    "total_tokens": int(getattr(u, "total_tokens", 0) or 0),
+                }
+            latency_info = {
+                "net_latency": round(net_latency, 3),
+                "wait_time": round(total_wait_time, 3),
+                "gross_latency": round(net_latency + total_wait_time, 3),
+            }
+            return content, {"reasoning": reasoning, "model": actual_model, "usage": usage_info, "latency": latency_info}
+
+        except Exception as api_err:
+            _record_nvidia_call()
+            err_str = str(api_err).lower()
+            is_rate_limit = ("429" in err_str or "rate limit" in err_str or "too many requests" in err_str)
+            is_server_overload = ("503" in err_str or "504" in err_str or "overloaded" in err_str or "timeout" in err_str or "service unavailable" in err_str or "connection" in err_str or "reset" in err_str)
+            if (is_rate_limit or is_server_overload) and attempt < max_retries - 1:
+                retry_after = None
+                if hasattr(api_err, "response") and api_err.response is not None:
+                    headers = getattr(api_err.response, "headers", {})
+                    retry_after_hdr = headers.get("retry-after") or headers.get("x-ratelimit-reset")
+                    if retry_after_hdr:
+                        try:
+                            retry_after = float(retry_after_hdr) + 2.0
+                        except ValueError:
+                            pass
+                if retry_after is not None and retry_after > 0:
+                    backoff = retry_after
+                elif is_rate_limit:
+                    backoff = [35.0, 45.0, 65.0][attempt]
+                else:
+                    backoff = [10.0, 20.0, 30.0][attempt]
+                err_label = "Rate limit (429)" if is_rate_limit else "Server overload/timeout (503/504)"
+                print(f"[NVIDIA] {err_label} hit. Backing off for {backoff:.1f}s ({attempt + 1}/{max_retries})...", flush=True)
+                total_wait_time += backoff
+                time.sleep(backoff)
+                continue
+            raise api_err
+
+def query_gemini_api(system: str, prompt: str, model_name: str = "gemini-3.1-pro-preview", api_key: str = None, force_google_client: bool = False, max_tokens: int = 6000) -> tuple[str, dict]:
     """
     Invokes Google Gemini API with a resilient 2-tier client strategy:
       1. Prefer using the OpenAI client pointing to Google's OpenAI-compatible endpoint
          (https://generativelanguage.googleapis.com/v1beta/openai/).
       2. If OpenAI client fails, fallback to native google.generativeai client.
     """
+    # Normalize common aliases for Gemini 3.1 Pro to the active Google API model ID
+    if model_name:
+        clean_name = str(model_name).strip().lower().replace("_", "-")
+        if clean_name in ("gemini-3.1-pro", "geminipro3.1", "gemini-pro-3.1", "gemini-3.1-pro-preview", "geminipro-3.1", "gemini-pro3.1"):
+            model_name = "gemini-3.1-pro-preview"
+        elif clean_name in ("gemini-3.8-flash", "geminiflash3.8", "gemini-flash-3.8"):
+            model_name = "gemini-3.8-flash"
+
     google_api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not google_api_key:
         try:
@@ -1494,7 +1607,7 @@ def query_gemini_api(system: str, prompt: str, model_name: str = "gemini-3.8-fla
                 model=model_name,
                 messages=messages,
                 temperature=0.1,
-                max_tokens=2048
+                max_tokens=max_tokens
             )
             net_latency = time.time() - t_req_start
             msg = completion.choices[0].message
@@ -1541,7 +1654,8 @@ Second, provide the final, concise answer within the following tags: <|channel|>
 """
         full_prompt = f"{structured_system_prompt}\n\nUser Question: {prompt}" if system else str(prompt)
         t_req_start = time.time()
-        response = model.generate_content(full_prompt)
+        generation_config = {"max_output_tokens": max_tokens}
+        response = model.generate_content(full_prompt, generation_config=generation_config)
         net_latency = time.time() - t_req_start
         raw_text = response.text or ""
         analysis, final = split_gptoss_analysis_final(raw_text)
@@ -1568,6 +1682,104 @@ Second, provide the final, concise answer within the following tags: <|channel|>
         )
 
 
+def query_openrouter_api(
+    system: str,
+    prompt: str,
+    model_name: str = "openai/gpt-6-luna-pro:batch",
+    api_key: str = None,
+    max_tokens: int = 6000
+) -> tuple[str, dict]:
+    """
+    Invokes OpenRouter API using OpenAI client, tracking reasoning, usage, and latency.
+    Gracefully handles models with :batch suffix for the completions endpoint.
+    """
+    from openai import OpenAI
+    openrouter_api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+    if not openrouter_api_key:
+        try:
+            from dotenv import load_dotenv
+            if os.path.exists("config/.env"):
+                load_dotenv("config/.env")
+            elif os.path.exists(".env"):
+                load_dotenv(".env")
+            openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+        except Exception:
+            pass
+
+    if not openrouter_api_key:
+        raise ValueError("OpenRouter API key (OPENROUTER_API_KEY) is not set in environment or config/.env.")
+
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=openrouter_api_key,
+        default_headers={
+            "HTTP-Referer": "https://localhost:3000",
+            "X-Title": "LG-MAGIK",
+        },
+        max_retries=2
+    )
+
+    clean_model = model_name or "openai/gpt-6-luna-pro:batch"
+    # When sending to standard chat completions endpoint, strip the :batch suffix if present
+    endpoint_model = clean_model[:-6] if clean_model.endswith(":batch") else clean_model
+
+    messages = []
+    if system and str(system).strip():
+        messages.append({"role": "system", "content": str(system)})
+    messages.append({"role": "user", "content": str(prompt)})
+
+    t_req_start = time.time()
+    try:
+        completion = client.chat.completions.create(
+            model=endpoint_model,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=max_tokens
+        )
+    except Exception as api_err:
+        err_msg = str(api_err).lower()
+        if "batch" in clean_model and ("batch" in err_msg or "404" in err_msg):
+            alt_model = clean_model.replace(":batch", "")
+            if alt_model != endpoint_model:
+                completion = client.chat.completions.create(
+                    model=alt_model,
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=max_tokens
+                )
+            else:
+                raise api_err
+        else:
+            raise api_err
+
+    net_latency = time.time() - t_req_start
+    msg = completion.choices[0].message
+    content = msg.content or ""
+    reasoning = getattr(msg, "reasoning", getattr(msg, "reasoning_content", None))
+
+    analysis, final = split_gptoss_analysis_final(content)
+    if final and final.strip():
+        content = final
+        if analysis and not reasoning:
+            reasoning = analysis
+
+    actual_model = getattr(completion, "model", clean_model) or clean_model
+    usage_info = {}
+    if getattr(completion, "usage", None) is not None:
+        u = completion.usage
+        usage_info = {
+            "prompt_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
+            "completion_tokens": int(getattr(u, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(u, "total_tokens", 0) or 0),
+        }
+    latency_info = {
+        "net_latency": round(net_latency, 3),
+        "wait_time": 0.0,
+        "gross_latency": round(net_latency, 3),
+    }
+    return content, {"reasoning": reasoning, "model": actual_model, "provider": "openrouter", "usage": usage_info, "latency": latency_info}
+
+
 def query_llm(
     system: str,
     prompt: str,
@@ -1575,26 +1787,39 @@ def query_llm(
     pipeline: str,
     alternative_pipe: str = None,
     mode: str = "openrouter",
-    secondary_api_model: str = "gemini-3.8-flash",
-    local_pipe = None
+    secondary_api_model: str = "gemini-3.1-pro-preview",
+    local_pipe = None,
+    max_tokens: int = 6000
 ) -> tuple[str, dict]:
     """
-    Query LLM with a 3-tier fallback architecture:
+    Query LLM with a 4-tier fallback architecture:
       Tier 1: Primary API model (OpenRouter, NVIDIA, OpenAI, or Google)
-      Tier 2: Secondary API model via Google API (default: 'gemini-3.8-flash' using OpenAI client, then Google client)
-      Tier 3: Local model (HuggingFace pipeline) - invoked ONLY if both Tier 1 and Tier 2 fail.
+      Tier 2: Intermediate fallback model (NVIDIA)
+      Tier 3: Secondary API model via OpenRouter (default: 'openai/gpt-6-luna-pro:batch') or Google API
+      Tier 4: Local model (HuggingFace pipeline) - invoked ONLY if all API models fail.
     
     :param alternative_pipe: An optional model to try if the primary fails.
-    :param secondary_api_model: Secondary API model name (defaults to 'gemini-3.8-flash').
+    :param secondary_api_model: Secondary API model name (defaults to 'openai/gpt-6-luna-pro:batch').
     :param local_pipe: Local HuggingFace model or pipeline to use as final fallback.
+    :param max_tokens: Maximum completion tokens allowed (defaults to 6000).
     """
-    # Resolve secondary API model and local fallback target
+    # Resolve fallback targets
+    nvidia_fallback_model = os.getenv("NVIDIA_FALLBACK_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b")
     if secondary_api_model is None:
-        secondary_api_model = os.getenv("SECONDARY_API_MODEL", "gemini-3.8-flash")
+        secondary_api_model = os.getenv("SECONDARY_API_MODEL", "gemini-3.1-pro-preview")
 
-    if isinstance(alternative_pipe, str) and alternative_pipe.startswith("gemini"):
-        secondary_api_model = alternative_pipe
-        target_local_pipe = local_pipe
+    if isinstance(alternative_pipe, str):
+        if "nemotron" in alternative_pipe.lower() or alternative_pipe.startswith("nvidia/"):
+            nvidia_fallback_model = alternative_pipe
+            target_local_pipe = local_pipe
+        elif alternative_pipe.startswith("gemini"):
+            secondary_api_model = alternative_pipe
+            target_local_pipe = local_pipe
+        elif "/" in alternative_pipe or "batch" in alternative_pipe.lower():
+            secondary_api_model = alternative_pipe
+            target_local_pipe = local_pipe
+        else:
+            target_local_pipe = local_pipe if local_pipe is not None else alternative_pipe
     else:
         target_local_pipe = local_pipe if local_pipe is not None else alternative_pipe
 
@@ -1613,17 +1838,31 @@ def query_llm(
 
         if not api_key:
             print(f"[{provider_name}] API key for '{mode}' is not provided or set in environment.")
-            # Tier 2: Try Secondary Google API model
+            # Tier 2: Try NVIDIA fallback model
+            nvidia_err = None
+            if nvidia_fallback_model:
+                try:
+                    print(f"[{provider_name}] Attempting intermediate NVIDIA fallback ({nvidia_fallback_model})...")
+                    return query_nvidia_api(system=system, prompt=prompt, model_name=nvidia_fallback_model, max_tokens=max_tokens)
+                except Exception as n_err:
+                    nvidia_err = n_err
+                    print(f"[{provider_name}] NVIDIA fallback model ({nvidia_fallback_model}) failed: {n_err}")
+
+            # Tier 3: Try Secondary API model (OpenRouter / Google)
             sec_err = None
             if secondary_api_model:
                 try:
-                    print(f"[{provider_name}] Attempting secondary API call ({secondary_api_model}) via Google API...")
-                    return query_gemini_api(system=system, prompt=prompt, model_name=secondary_api_model)
+                    if str(secondary_api_model).startswith("gemini"):
+                        print(f"[{provider_name}] Attempting secondary API call ({secondary_api_model}) via Google API...")
+                        return query_gemini_api(system=system, prompt=prompt, model_name=secondary_api_model, max_tokens=max_tokens)
+                    else:
+                        print(f"[{provider_name}] Attempting secondary OpenRouter API call ({secondary_api_model})...")
+                        return query_openrouter_api(system=system, prompt=prompt, model_name=secondary_api_model, max_tokens=max_tokens)
                 except Exception as err:
                     sec_err = err
                     print(f"[{provider_name}] Secondary API model ({secondary_api_model}) failed: {err}")
 
-            # Tier 3: Local HuggingFace model (only if both fail)
+            # Tier 4: Local HuggingFace model (only if all fail)
             if target_local_pipe:
                 print(f"[{provider_name}] Falling back to local HuggingFace model: {target_local_pipe}")
                 return query_llm(
@@ -1632,9 +1871,10 @@ def query_llm(
                     api_key=None,
                     pipeline=target_local_pipe,
                     alternative_pipe=None,
-                    mode="huggingface"
+                    mode="huggingface",
+                    max_tokens=max_tokens
                 )
-            raise ValueError(f"API key for '{mode}' is not provided, secondary Gemini failed ({sec_err}), and no local model was provided.")
+            raise ValueError(f"API key for '{mode}' is not provided, NVIDIA fallback failed ({nvidia_err}), secondary Gemini failed ({sec_err}), and no local model was provided.")
 
         if mode == "openrouter":
             base_url = "https://openrouter.ai/api/v1"
@@ -1679,7 +1919,8 @@ def query_llm(
                     completion = client.chat.completions.create(
                         model=clean_model,
                         messages=messages,
-                        temperature=0.1
+                        temperature=0.1,
+                        max_tokens=max_tokens
                     )
                     net_latency = time.time() - t_req_start
                     if mode == "nvidia":
@@ -1706,7 +1947,9 @@ def query_llm(
                     if mode == "nvidia":
                         _record_nvidia_call()
                     err_str = str(api_err).lower()
-                    if ("429" in err_str or "rate limit" in err_str or "too many requests" in err_str) and attempt < max_retries - 1:
+                    is_rate_limit = ("429" in err_str or "rate limit" in err_str or "too many requests" in err_str)
+                    is_server_overload = ("503" in err_str or "504" in err_str or "overloaded" in err_str or "timeout" in err_str or "service unavailable" in err_str or "connection" in err_str or "reset" in err_str)
+                    if (is_rate_limit or is_server_overload) and attempt < max_retries - 1:
                         retry_after = None
                         if hasattr(api_err, "response") and api_err.response is not None:
                             headers = getattr(api_err.response, "headers", {})
@@ -1718,9 +1961,12 @@ def query_llm(
                                     pass
                         if retry_after is not None and retry_after > 0:
                             backoff = retry_after
-                        else:
+                        elif is_rate_limit:
                             backoff = [35.0, 45.0, 65.0][attempt] if mode == "nvidia" else [5.0, 10.0][attempt]
-                        print(f"[{provider_name}] Rate limit (429) hit. Backing off for {backoff:.1f}s ({attempt + 1}/{max_retries})...", flush=True)
+                        else:
+                            backoff = [10.0, 20.0, 30.0][attempt]
+                        err_label = "Rate limit (429)" if is_rate_limit else "Server overload/timeout (503/504)"
+                        print(f"[{provider_name}] {err_label} hit. Backing off for {backoff:.1f}s ({attempt + 1}/{max_retries})...", flush=True)
                         total_wait_time += backoff
                         time.sleep(backoff)
                         continue
@@ -1732,19 +1978,43 @@ def query_llm(
         except Exception as e:
             print(f"[{provider_name}] Primary API model failure ({pipeline}): {e}")
 
-            # --- Tier 2: Secondary API model (Gemini 3.8 Flash via Google API) ---
+            # --- Tier 2: Intermediate NVIDIA Fallback Model ---
+            # Attempt nvidia/nemotron-3.5-lightning-30b-a3b before falling back to Gemini
+            nvidia_err = None
+            is_same_as_primary = (
+                isinstance(pipeline, str) and (
+                    pipeline == nvidia_fallback_model or
+                    pipeline.endswith("nemotron-3.5-lightning-30b-a3b")
+                )
+            )
+            if nvidia_fallback_model and not is_same_as_primary:
+                print(f"[{provider_name}] Attempting intermediate NVIDIA fallback model ({nvidia_fallback_model})...")
+                try:
+                    if mode == "nvidia":
+                        return execute_openai_query(nvidia_fallback_model, system, prompt)
+                    else:
+                        return query_nvidia_api(system=system, prompt=prompt, model_name=nvidia_fallback_model, max_tokens=max_tokens)
+                except Exception as n_err:
+                    nvidia_err = n_err
+                    print(f"[{provider_name}] NVIDIA fallback model ({nvidia_fallback_model}) failed: {n_err}")
+
+            # --- Tier 3: Secondary OpenRouter Fallback Model (or Google API if gemini) ---
             sec_err = None
             if secondary_api_model:
-                print(f"[{provider_name}] Attempting secondary API model ({secondary_api_model}) via Google API...")
                 try:
-                    return query_gemini_api(system=system, prompt=prompt, model_name=secondary_api_model)
+                    if str(secondary_api_model).startswith("gemini"):
+                        print(f"[{provider_name}] Attempting secondary Gemini API model ({secondary_api_model}) via Google API...")
+                        return query_gemini_api(system=system, prompt=prompt, model_name=secondary_api_model, max_tokens=max_tokens)
+                    else:
+                        print(f"[{provider_name}] Attempting secondary OpenRouter API model ({secondary_api_model})...")
+                        return query_openrouter_api(system=system, prompt=prompt, model_name=secondary_api_model, max_tokens=max_tokens)
                 except Exception as err:
                     sec_err = err
                     print(f"[{provider_name}] Secondary API model ({secondary_api_model}) failed: {err}")
 
-            # --- Tier 3: Local HuggingFace model (only if both Tier 1 and Tier 2 fail) ---
+            # --- Tier 4: Local HuggingFace model (only if both API models fail) ---
             if target_local_pipe:
-                print(f"[{provider_name}] Both API models failed. Gracefully falling back to local HuggingFace model: {target_local_pipe}")
+                print(f"[{provider_name}] All API models failed. Gracefully falling back to local HuggingFace model: {target_local_pipe}")
                 try:
                     return query_llm(
                         system=system,
@@ -1758,17 +2028,17 @@ def query_llm(
                     raise RuntimeError(
                         f"All model invocations failed:\n"
                         f"  • Primary ({provider_name}/{pipeline}) error: {e}\n"
-                        f"  • Secondary Gemini ({secondary_api_model}) error: {sec_err}\n"
+                        f"  • NVIDIA fallback ({nvidia_fallback_model}) error: {nvidia_err}\n"
+                        f"  • Secondary API ({secondary_api_model}) error: {sec_err}\n"
                         f"  • Local HuggingFace ({target_local_pipe}) error: {inner_e}"
                     )
             else:
-                if sec_err:
-                    raise RuntimeError(
-                        f"Both primary ({provider_name}/{pipeline}) and secondary Gemini ({secondary_api_model}) failed, and no local fallback model was provided.\n"
-                        f"  • Primary error: {e}\n"
-                        f"  • Secondary error: {sec_err}"
-                    )
-                raise e
+                raise RuntimeError(
+                    f"All API models failed and no local fallback model was provided.\n"
+                    f"  • Primary ({provider_name}/{pipeline}) error: {e}\n"
+                    f"  • NVIDIA fallback ({nvidia_fallback_model}) error: {nvidia_err}\n"
+                    f"  • Secondary API ({secondary_api_model}) error: {sec_err}"
+                )
     
     elif mode == "huggingface":
         if isinstance(pipeline, (tuple, list)):
@@ -1828,7 +2098,7 @@ def query_llm(
 
         t_req_start = time.time()
         with torch.no_grad():
-            generated = model.generate(**inputs, max_new_tokens=4096, do_sample=False)
+            generated = model.generate(**inputs, max_new_tokens=max_tokens, do_sample=False)
         net_latency = time.time() - t_req_start
         raw_output = tok.decode(generated[0][inputs["input_ids"].shape[-1] :])
         reasoning, final = split_gptoss_analysis_final(raw_output)
@@ -1883,9 +2153,15 @@ Second, provide the final, concise answer within the following tags: <|channel|>
                 }
                 return final_text, {"reasoning": analysis, "model": getattr(pipeline, "_model_name", "google_genai"), "usage": usage_info, "latency": latency_info}
             else:
-                return query_gemini_api(system=system, prompt=prompt, model_name="gemini-3.8-flash", api_key=api_key)
+                return query_gemini_api(system=system, prompt=prompt, model_name="gemini-3.1-pro-preview", api_key=api_key)
         except Exception as e:
             print(f"[GOOGLE] Primary Gemini API call failed: {e}")
+            if nvidia_fallback_model:
+                print(f"[GOOGLE] Attempting intermediate NVIDIA fallback model ({nvidia_fallback_model})...")
+                try:
+                    return query_nvidia_api(system=system, prompt=prompt, model_name=nvidia_fallback_model)
+                except Exception as n_err:
+                    print(f"[GOOGLE] NVIDIA fallback model ({nvidia_fallback_model}) failed: {n_err}")
             if target_local_pipe:
                 print(f"[GOOGLE] Falling back to local HuggingFace model: {target_local_pipe}")
                 return query_llm(

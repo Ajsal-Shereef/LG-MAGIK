@@ -1,6 +1,6 @@
 defaults:
   - models: text_conditioned_vae_cnn_MiniWorld
-  - env: MiniWorld
+  - env: MiniWorldNoisy
 
 agent_name : DQN
 dqn_model_dir : model_weights/{env}/PPO/seed_123/{agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
@@ -10,7 +10,9 @@ mode: transfer
 mapping_strategy: "llm" # options: "llm", "retrieval"
 querry_mode: nvidia # Querry mode for LLM. options openrouter/huggingface
 llm_model: "nvidia/nemotron-3-ultra-550b-a55b"  #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free, model_weights/FineTunedGemma/final, Qwen/Qwen3.8-27B, google/gemma-4-12B-it, nvidia/nemotron-3-ultra-550b-a55b
-alternate_llm_model : Qwen/Qwen3.8-27B
+alternate_llm_model: "nvidia/nemotron-3.5-lightning-30b-a3b"
+secondary_llm_model: "gemini-3.1-pro-preview"
+max_tokens: 6000
 vllm_model: "google/gemma-4-12B-it"
 vllm_mode: "huggingface"
 alternative_vllm : null
@@ -217,10 +219,10 @@ system_prompt: |
   ### ROLE AND PURPOSE
 
   You must:
-  1. Show detailed reasoning — step-by-step interpretation of how imagination occurs.
+  1. Provide structured reasoning explaining how imagination occurs (keep reasoning strictly concise, between 100–150 words and donot loop around).
   2. Output a final, valid JSON object containing the transformed or unchanged scene description.
 
-  You are not just answering, but *solving the target task through reasoning* — explain what changes are needed, why they are needed, and provide the exact JSON result.
+  You are solving the target task through reasoning — explain what changes are needed, why they are needed, and provide the exact JSON result.
 
   ### HOW IMAGINATION WORKS
 
@@ -229,9 +231,9 @@ system_prompt: |
   - Imagination operates entirely in observation space: the physical world remains unchanged, but the agent's perception is mentally altered so that taking its learned source actions solves the target task.
   - If you determine that imagination is necessary, make the transformed description align as closely as possible with the source task distribution while preserving the physical state of the target world.
 
-  1. **Minimal Transformation**
+  1. **Minimal Transformation & Spatial Fidelity**
      - Modify only what is necessary to make the target task solvable with the known skill.
-     - Strictly preserve spatial layout, distances, angles, coordinates, agent heading, and environmental geometry. Never alter or scramble spatial data.
+     - Strictly preserve spatial layout, distances, angles, coordinates, agent heading, and environmental geometry unless task remapping explicitly requires alteration.
 
   2. **Affordance Reasoning**
      - If two objects afford the same physical action (e.g., pick, push, navigate to), they can be substituted.
@@ -246,24 +248,19 @@ system_prompt: |
      - The VAE is trained strictly on source task frames and captions that describe a single task (e.g., "pick gray ball and place in red area"). Decomposing sequential goals ensures the imagined description conforms to the single-task captions the VAE expects.
 
   4. **Strict Grounding (No Fabrication)**
-     - Never add, invent, or hallucinate objects, properties, or coordinates not present in the input scene.
-     - Target objects that have no role in the source task or are not present in the source task should be discarded.
+     - The imagined scene description must describe a valid, plausible scene consisting ONLY of entities, objects, and relationships that exist in the source task. Otherwise, the brittleness of the VAE causes visual artifacts in the imagined frame.
+     - Any target entity, spatial reference landmark, or distractor with no functional role in the source task must be mapped to source or discarded from the imagined description.
 
   5. **Realism and Consistency**
      - Maintain the original tone, structure, style, and spatial vocabulary of the input description. Do not invent extraneous text.
-     - Modify only essential object properties necessary for task remapping.
 
-  ### REASONING STYLE
+  ### REASONING STYLE (STRICTLY 100–150 WORDS)
 
-  Think step-by-step, like a human reasoning through perception:
-  1. **What the agent knows**: Identify the source task and the specific skill/affordance the agent was trained to execute.
-  2. **What the target task is**: Understand the target objective and the role of each relevant object.
-  3. **Differences between target and source**: Enumerate all discrepancies (e.g., object types, colors, textures, goals).
-  4. **Subtask decomposition**: Determine whether the target task requires breaking into sequential subtasks, and focus on the immediate next step.
-  5. **Current observation analysis**: Parse what is visibly present in the scene, noting all objects, measurements, and coordinates.
-  6. **Minimal necessary changes**: Determine which minimal attributes must be altered so the agent's source policy solves the target task.
-  7. **Affordance verification**: Verify that the imagined changes allow the source policy to execute the correct physical action without conflict. Discard any changes that do not advance the current subtask.
-  8. Stop reasoning once the decision is reached.
+  Think step-by-step, but keep reasoning tightly bounded between 100 and 150 words:
+  1. **Differences**: Enumerate key discrepancies between target and source.
+  2. **Active Subtask & Mapping**: Identify the immediate subtask and map visible entities to source equivalents.
+  3. **Verification**: Confirm affordances and coordinates allow the source policy to execute the correct physical action without conflict.
+  4. Stop reasoning once the decision is reached.
 
   ### OUTPUT FORMAT
 
@@ -277,7 +274,7 @@ system_prompt: |
   - "imagine": true → if imagination was applied to alter scene attributes.
   - "imagine": false → if no change was necessary or possible.
   - "description": the final complete and realistic scene description.
-  - Do **not** include extra commentary, code, or markdown after the JSON.
+  - Do not include extra commentary, code, or markdown after the JSON.
 
 
 

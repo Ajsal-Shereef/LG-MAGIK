@@ -194,6 +194,17 @@ def main(args: DictConfig) -> None:
     # Rolling in-memory LLM response cache (LRU bounded to max_cache_size)
     max_cache_size = args.get("max_cache_size", 10000)
     llm_cache = OrderedDict()
+    llm_cache_file = os.path.join("Results", "diagnostics", f"llm_cache_{args.env.name}.json")
+    if os.path.exists(llm_cache_file):
+        try:
+            with open(llm_cache_file, "r") as f:
+                loaded_cache = json.load(f)
+                for k, v in loaded_cache.items():
+                    llm_cache[k] = v
+            print(f"[INFO] Loaded {len(llm_cache)} cached LLM entries from {llm_cache_file}", flush=True)
+        except Exception as e:
+            print(f"[WARNING] Failed to load LLM cache: {e}", flush=True)
+
     cache_hits = 0
     cache_misses = 0
 
@@ -371,7 +382,16 @@ def main(args: DictConfig) -> None:
                     else:
                         cache_misses += 1
                         _t_start = time.time()
-                        llm_reply, reasoning = query_llm(system_prompt, first_user_prompt, api_key, pipe, alternative_pipe, args.querry_mode)
+                        llm_reply, reasoning = query_llm(
+                            system_prompt,
+                            first_user_prompt,
+                            api_key,
+                            pipe,
+                            alternative_pipe,
+                            args.querry_mode,
+                            secondary_api_model=args.get("secondary_llm_model", None),
+                            max_tokens=int(args.get("max_tokens", 6000))
+                        )
                         _llm_dt = time.time() - _t_start
                         ep_llm_times.append(_llm_dt)
 
@@ -399,18 +419,30 @@ def main(args: DictConfig) -> None:
                         ep_completion_tokens += call_comp_tokens
                         ep_total_tokens += call_tot_tokens
 
-                        llm_cache[first_user_prompt] = {
-                            "reply": llm_reply,
-                            "reasoning": reasoning,
-                            "response_time": _llm_dt,
-                            "net_latency": net_dt,
-                            "wait_time": wait_dt,
-                            "model": called_model,
-                            "usage": usage_info
-                        }
-                        llm_cache.move_to_end(first_user_prompt)
-                        if len(llm_cache) > max_cache_size:
-                            llm_cache.popitem(last=False)
+                        llm_reply_json_check = preprocess_llm_output(llm_reply)
+                        is_fallback = (llm_reply_json_check.get("description") == "Agent sees nothing." and "Agent sees nothing" not in llm_reply)
+                        
+                        if not is_fallback:
+                            llm_cache[first_user_prompt] = {
+                                "reply": llm_reply,
+                                "reasoning": reasoning,
+                                "response_time": _llm_dt,
+                                "net_latency": net_dt,
+                                "wait_time": wait_dt,
+                                "model": called_model,
+                                "usage": usage_info
+                            }
+                            llm_cache.move_to_end(first_user_prompt)
+                            if len(llm_cache) > max_cache_size:
+                                llm_cache.popitem(last=False)
+                            
+                            # Save cache to disk
+                            try:
+                                os.makedirs(os.path.dirname(llm_cache_file), exist_ok=True)
+                                with open(llm_cache_file, "w") as f:
+                                    json.dump(llm_cache, f)
+                            except Exception as e:
+                                print(f"[WARNING] Failed to save LLM cache: {e}", flush=True)
 
                     is_imagination_step = (not is_empty_view) or is_target2_bg_transfer
                     if is_imagination_step:
@@ -506,7 +538,21 @@ def main(args: DictConfig) -> None:
         hit_rate = (cache_hits / total_lookups * 100) if total_lookups > 0 else 0.0
         print(f"----------- Episode done:  {episode}/{args.num_episode} | Score: {cumulative_reward} | Running Average Score: {running_average_score:.4f} | LLM Cache: {cache_hits} hits, {cache_misses} misses ({hit_rate:.1f}% hit rate) | Tokens: {ep_total_tokens} (P: {ep_prompt_tokens}, C: {ep_completion_tokens}) ----------------", flush=True)
 
-        is_success = (cumulative_reward > 5.0) if args.env.name.startswith("MiniWorld") else (cumulative_reward > 0.0)
+        env_metric_after_ep = get_current_env_metric()
+        from utils.update_performance_md import compute_performance_delta, merge_performances
+        ep_perf_delta = compute_performance_delta(env_metric_after_ep, env_metric_before_ep)
+        prior_perf = merge_performances(prior_perf, ep_perf_delta)
+
+        if args.env.name == "MiniGridRelational":
+            if task_mode == "target5":
+                is_success = bool(ep_perf_delta.get("successful_drop", 0) >= 2)
+            else:
+                is_success = bool(ep_perf_delta.get("successful_drop", 0) > 0)
+        elif args.env.name.startswith("MiniWorld"):
+            is_success = (cumulative_reward > 5.0)
+        else:
+            is_success = (cumulative_reward > 0.0)
+
         if is_success:
             failure_cause = "SUCCESS"
         else:
@@ -518,11 +564,6 @@ def main(args: DictConfig) -> None:
                 failure_cause = "NOT_EVALUATED"
             else:
                 failure_cause = "DQN_POLICY_FAILURE"
-
-        env_metric_after_ep = get_current_env_metric()
-        from utils.update_performance_md import compute_performance_delta, merge_performances
-        ep_perf_delta = compute_performance_delta(env_metric_after_ep, env_metric_before_ep)
-        prior_perf = merge_performances(prior_perf, ep_perf_delta)
 
         avg_llm_time = round(float(np.mean(ep_llm_times)), 3) if ep_llm_times else 0.0
         avg_llm_net_time = round(float(np.mean(ep_llm_net_times)), 3) if ep_llm_net_times else 0.0

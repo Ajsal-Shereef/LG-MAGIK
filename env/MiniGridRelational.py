@@ -10,17 +10,32 @@ from omegaconf import DictConfig
 from minigrid.core.constants import COLORS
 from minigrid.core.grid import Grid, TILE_PIXELS
 from minigrid.core.mission import MissionSpace
-from minigrid.core.world_object import Ball, WorldObj
+from minigrid.core.world_object import Ball as DefaultBall, WorldObj
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.utils.rendering import (
     fill_coords,
     point_in_rect,
     point_in_triangle,
+    point_in_circle,
     rotate_fn,
     highlight_img,
     downsample,
 )
 from minigrid.wrappers import RGBImgPartialObsWrapper, RGBImgObsWrapper, ImgObsWrapper
+
+class Ball(WorldObj):
+    def __init__(self, color="blue"):
+        super().__init__("ball", color)
+
+    def can_pickup(self):
+        return True
+    
+    def can_overlap(self) -> bool:
+        """Can the agent overlap with this?"""
+        return True
+
+    def render(self, img):
+        fill_coords(img, point_in_circle(0.5, 0.5, 0.31), COLORS[self.color])
 
 class Box(WorldObj):
     def __init__(self, color, contains: WorldObj | None = None):
@@ -184,7 +199,8 @@ class RelationalPickPlaceEnv(MiniGridEnv):
     """
     MiniGrid environment for relational pick-and-place task.
     - task_mode == "source":  Agent picks a blue ball and places it on the green floor target.
-    - task_mode == "target1": Agent picks a red ball and places it *adjacent to* a yellow box.
+    - task_mode == "target1": Agent picks a red ball and places it strictly on a cell immediately
+                              adjacent (Manhattan distance 1: up, down, left, or right) to a yellow box.
     - task_mode == "target2": Agent picks a red ball and places it at the symmetric opposite of
                               a yellow box.
     - task_mode == "target3": Agent picks a red ball and places it on a cell that is exactly
@@ -207,7 +223,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         if self.task_mode == "source":
             return "Pick up the blue ball and drop it on the green target."
         elif self.task_mode == "target1":
-            return "Pick up the red ball and drop it strctly on a cell immediately adjacent to the yellow box."
+            return "Pick up the red ball and drop it strictly on a cell immediately adjacent to the yellow box."
         elif self.task_mode == "target2":
             return "Pick up the red ball and drop it at the symmetric opposite of the yellow box."
         elif self.task_mode == "target3":
@@ -274,6 +290,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             "- The agent has full visibility of the entire grid at all times.\n"
             "- At the start of each episode, the agent, tool objects (balls), and landmarks or target areas are randomly placed within the interior of the room.\n"
             "- The agent can perform the following actions: rotate left, rotate right, move forward one cell, pick up an object in the cell directly ahead, and drop the held object into the cell directly ahead.\n"
+            "- The agent cannot take diagonal movements (for example, the agent cannot move from (2, 3) to (1, 4) directly, it has to go to (1, 3) and then to (1, 4)).\n"
             "- The agent can carry only one object at a time. A picked-up object remains in the agent's inventory until explicitly dropped.\n"
             "- Objects in the environment include: colored balls (portable tools the agent can pick up and drop) and colored boxes.\n"
             "- Colored floor tiles mark target areas that the agent can walk over and drop objects onto.\n"

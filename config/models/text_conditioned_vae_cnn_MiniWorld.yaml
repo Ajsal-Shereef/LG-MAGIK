@@ -13,7 +13,7 @@ data:
   num_workers: 8
   image_column: image
   caption_column: text
-  text_encoder_path: "openai/clip-vit-base-patch32" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14
+  text_encoder_path: "sentence-transformers/all-MiniLM-L6-v2" #openai/clip-vit-base-patch32, zer0int/LongCLIP-GmP-ViT-L-14
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   use_text_discriminator: ${models.use_text_discriminator}
@@ -36,11 +36,22 @@ model:
   - 128
   - 256
   observation_mode : ${env.observation_mode}
+  env_name: ${env.name}
   is_perceptual_loss : true
   use_coord_conv : true
   n_text_attn_layers: 4   # Last N decoder blocks use text cross-attention (first blocks use z-only FiLM)
   max_grad_norm: 1.0
   max_sequence_length: 110
+  use_ssim: true
+  ssim_weight: 0.5
+  use_random_masking: true
+  mask_ratio_unmasked: 0.50
+  mask_ratio_dilated_obj: 0.30
+  mask_ratio_wall_only: 0.10
+  mask_ratio_half_split: 0.10
+  mask_dilation_padding: 0.35
+  mask_wall_ratio: 0.38
+  mask_value: 0.0
 training:
   num_epochs: 350
   seed: ${models.seed}
@@ -64,6 +75,9 @@ training:
   save_weight_freequency : 50
   recon_mix_weight: 0.5
   is_model_fine_tune : false
+  use_ssim: ${models.model.use_ssim}
+  ssim_weight: ${models.model.ssim_weight}
+  use_random_masking: ${models.model.use_random_masking}
 optimizer:
   lr: 0.0002
   betas:

@@ -82,12 +82,12 @@ class PickEnv(gym.Env):
     def env_description(self):
         description = (
             "Environment context:\n"
-            "- The agent need to pick up either a ball or a box. \n"
-            "- Each object can be either light or heavy. \n"
-            "- The agent must learn to apply minimum and required force and navigate near the object to succesfully pick up the object. \n"
-            "- If the object applies force beyond the objects can withstand (Applying heavy force on light object), the object breaks and the episode ends with a penalty. \n"
-            "- The agent is penalised for applying a weak force (force less than required to pick the object) and wasting the timesteps. \n"
-            "- Each episode ends once the Target task is completed or a maximum step limit is reached.")
+            "- The agent needs to pick up either a circle or a square.\n"
+            "- Each object can be either light or heavy.\n"
+            "- The agent must navigate close to the object and apply the required force to successfully pick it up.\n"
+            "- If the agent applies force beyond what the object can withstand (e.g., applying heavy force to a light object), the object breaks and the episode terminates with a penalty.\n"
+            "- The agent is penalized for applying weak force (insufficient force to lift the object), wasting timesteps without completing the pick.\n"
+            "- Each episode terminates once the target task is completed, the object breaks, or the maximum step limit is reached.")
         return description
     
     def _get_mission(self):

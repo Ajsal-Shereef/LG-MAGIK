@@ -17,6 +17,7 @@ data:
 model:
   _target_: VAE.text_conditioned_vae.TextConditionedVAE
   use_text_discriminator: ${models.use_text_discriminator}
+  env_name: ${env.name}
   input_dim: 12
   norm: group
   activ: gelu

@@ -96,7 +96,7 @@ ENV_METADATA = {
         "description": "A relational gridworld pick-and-place environment.",
         "source_mission": "Pick up the blue ball and drop it on the green target.",
         "target_missions": {
-            "target1": "Pick up the red ball and drop it strctly on a cell immediately adjacent to the yellow box.",
+            "target1": "Pick up the red ball and drop it strictly on a cell immediately adjacent (Manhattan distance 1: up, down, left, or right) to the yellow box.",
             "target2": "Pick up the red ball and drop it at the symmetric opposite of the yellow box.",
             "target3": "Pick up the red ball and drop it on a cell that is exactly 2 Manhattan-distance away from the yellow box, choosing the one nearest to the agent not colluding with the agent location (choose only one if multiple).",
             "target4": "Pick up the red ball and drop it at the symmetric opposite of the cell two cells above the yellow box.",

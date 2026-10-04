@@ -60,6 +60,15 @@ def train(args: DictConfig) -> None:
     if not use_text_discriminator:
         cfg.model_name = f"{cfg.model_name}_no_text_disc"
 
+    # Check if masking is enabled in a non-MiniWorld environment
+    use_masking = cfg.model.get("use_random_masking", False)
+    env_name = getattr(args.env, "name", "")
+    if use_masking and "miniworld" not in str(env_name).lower():
+        raise NotImplementedError(
+            f"Targeted image masking is only implemented for MiniWorld environments. "
+            f"Masking cannot be enabled for environment '{env_name}'."
+        )
+
     seed = getattr(args, "seed", None)
     if seed is None and hasattr(cfg, "training") and cfg.training is not None:
         seed = cfg.training.get("seed", None)

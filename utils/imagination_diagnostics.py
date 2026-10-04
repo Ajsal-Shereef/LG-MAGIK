@@ -544,8 +544,12 @@ def get_color_pixel_count(
     elif color_name == "yellow":
         mask = cv2.inRange(hsv, (15, 70, 70), (38, 255, 255))
     elif color_name == "green":
-        # High saturation green object (distinguishes from grass floor)
-        mask = cv2.inRange(hsv, (40, 100, 80), (85, 255, 255))
+        if "MiniWorld" in env_name:
+            # Strict HSV range for pure green entity (OpenGL [0, 1, 0], H~60, S>=185, V>=110)
+            # Distinguishes pure green ball from olive/yellowish grass floor (H~41, S<=180, V<=150)
+            mask = cv2.inRange(hsv, (50, 185, 110), (75, 255, 255))
+        else:
+            mask = cv2.inRange(hsv, (40, 100, 80), (85, 255, 255))
     elif color_name == "red":
         mask1 = cv2.inRange(hsv, (0, 70, 60), (10, 255, 255))
         mask2 = cv2.inRange(hsv, (170, 70, 60), (180, 255, 255))
@@ -777,6 +781,8 @@ def evaluate_vae_quality(
     diff_threshold: float = 38.0,
     min_ratio: float = 0.35,
     max_total_occupancy: float = 0.65,
+    min_laplacian_ratio: float = 0.50,
+    min_orig_blur_var: float = 25.0,
     caption: str = ""
 ) -> Dict[str, Any]:
     """
@@ -798,6 +804,43 @@ def evaluate_vae_quality(
             "reason": "Imagined image contains NaN or Inf values.",
             "metrics": metrics
         }
+
+    # For MiniGrid-based environments (SimplePickup, MiniGrid, MiniGridRelational):
+    # Use Grid Difference Telemetry ONLY, bypassing continuous 3D heuristics
+    is_minigrid_env = any(k in env_name.lower() for k in ["minigrid", "simplepickup"])
+    if is_minigrid_env:
+        eff_grid_fail_threshold = grid_fail_threshold if grid_fail_threshold is not None else 5
+        grid_res = compute_grid_differences(
+            original_np=original_np,
+            imagined_np=imagined_np,
+            env_name=env_name,
+            cell_diff_threshold=cell_diff_threshold,
+            fail_threshold=eff_grid_fail_threshold
+        )
+        metrics["grid_analysis"] = grid_res
+        metrics["differing_grid_count"] = grid_res["differing_grid_count"]
+        metrics["grid_fail_threshold"] = grid_res["fail_threshold"]
+        metrics["is_grid_failed"] = grid_res["is_grid_failed"]
+
+        if grid_res["is_grid_failed"]:
+            return {
+                "is_valid": False,
+                "error_type": "VAE_GRID_DIFFERENCE_FAILURE",
+                "failed_component": "GRID_DIFFERENCE_TELEMETRY",
+                "reason": (
+                    f"Grid difference failure: {grid_res['differing_grid_count']} cells differ "
+                    f"(threshold < {grid_res['fail_threshold']})."
+                ),
+                "metrics": metrics
+            }
+        else:
+            return {
+                "is_valid": True,
+                "error_type": None,
+                "failed_component": None,
+                "reason": f"Grid difference verified: only {grid_res['differing_grid_count']} cells differ (< {grid_res['fail_threshold']}).",
+                "metrics": metrics
+            }
 
     # 2. Dynamic range, variance, and blur checks
     img_std = float(imagined_np.std())
@@ -821,6 +864,30 @@ def evaluate_vae_quality(
             "metrics": metrics
         }
 
+    # Relative Laplacian drop check: compare edge variance against original observation
+    if original_np is not None:
+        if original_np.ndim == 3 and original_np.shape[2] == 3:
+            orig_gray = cv2.cvtColor(original_np.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        else:
+            orig_gray = original_np.astype(np.uint8)
+        orig_blur_var = float(cv2.Laplacian(orig_gray, cv2.CV_64F).var())
+        metrics["orig_blur_var"] = round(orig_blur_var, 2)
+        lap_ratio = blur_var / max(orig_blur_var, 1e-5)
+        metrics["laplacian_ratio"] = round(lap_ratio, 3)
+
+        if orig_blur_var >= min_orig_blur_var and lap_ratio < min_laplacian_ratio:
+            return {
+                "is_valid": False,
+                "error_type": "VAE_BLUR_COLLAPSE",
+                "failed_component": "IMAGE_DEGENERACY",
+                "reason": (
+                    f"Severe edge loss / relative blur drop: Laplacian variance dropped from "
+                    f"{orig_blur_var:.1f} to {blur_var:.1f} (ratio={lap_ratio:.1%} < {min_laplacian_ratio:.0%})."
+                ),
+                "metrics": metrics
+            }
+
+    # Fallback absolute blur check for cases where original is unavailable or degenerate
     if blur_var < 20.0 and img_std < 10.0:
         return {
             "is_valid": False,
@@ -1461,8 +1528,10 @@ def save_vae_error_sample(
         eff_component = failed_component
     elif "COLLAPSE" in error_type or "BLUR" in error_type:
         eff_component = "IMAGE_DEGENERACY"
-    elif "DISTORTION" in error_type or "ARTIFACT" in error_type or "GRID" in error_type:
+    elif "DISTORTION" in error_type or "ARTIFACT" in error_type:
         eff_component = "CONNECTED_COMPONENT_ANALYSIS"
+    elif "GRID" in error_type:
+        eff_component = "GRID_DIFFERENCE_TELEMETRY"
     elif "NAN" in error_type:
         eff_component = "NUMERICAL_SANITY"
     else:
