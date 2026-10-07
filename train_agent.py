@@ -14,7 +14,7 @@ import warnings
 import gymnasium as gym
 from PIL import Image
 from collections import deque
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 from architectures.common_utils import save_gif
 from utils import seed_everything
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
@@ -354,6 +354,10 @@ def main(args: DictConfig) -> None:
         from env.PickEnv import PickEnv
         env = PickEnv(args.env, render_mode="rgb_array")
         mission = env.mission
+    elif args.env.name == "CollisionEnv":
+        from env.CollisionEnv import CollisionEnv
+        env = CollisionEnv(args.env, render_mode="rgb_array")
+        mission = env.mission
     elif args.env.name.startswith("MiniWorld"):
         from env.MiniWorld import PickObjectEnv
         env = PickObjectEnv(args.env)
@@ -386,7 +390,8 @@ def main(args: DictConfig) -> None:
         raise ValueError(f"Unknown environment: {args.env.name}")
     
     # Setting the mission string
-    args.env.mission = mission
+    with open_dict(args.env):
+        args.env.mission = mission
 
     # Seed the environment
     if seed is not None:

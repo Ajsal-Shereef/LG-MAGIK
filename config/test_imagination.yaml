@@ -1,9 +1,9 @@
 defaults:
-  - env: MiniWorld
+  - env: MiniWorldQuantized
   - models: text_conditioned_vae_cnn_${env}
 
 agent_name : PPO
-dqn_model_dir : model_weights/${env.name}/${agent_name}/seed_123/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
+dqn_model_dir : model_weights/${env.name}/${agent_name}/seed_1024/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
 vae_model_dir:  model_weights/${env.name}/VAE_1D/seed_42/VAE_1D.tar
 result_dir: result
 mode: transfer

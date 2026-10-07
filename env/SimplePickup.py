@@ -165,58 +165,20 @@ class SimplePickup(MiniGridEnv):
         )
         self.mission = self.get_mission()
         self.action_space = spaces.Discrete(4)
-        self.env_description = self._get_environment_description()
-        self.llm_actor_env_description = self._get_llm_actor_env_description()
+        self.action_dict = self.get_action_dict()
         self.env_name = self.set_env_name()
         self.reset_metrices()
         
-    def _get_environment_description(self):
+    def get_action_dict(self):
         """
-        Returns a textual description of the environment dynamics, object affordances,
-        agent capabilities, and scene variability.
-        This text will be appended to the LLM prompt for imagination reasoning.
+        Returns a dictionary mapping available action names to their capabilities.
         """
-        description = (
-            "Environment context:\n"
-            "- The agent operates in a partially observable 2D gridworld-like room. The agent sees a portion of the room.\n"
-            "- At the start of each episode, the agent and objects are randomly initialised in the environment.\n"
-            "- The agent can perform the following actions: rotate left, rotate right, move forward, and pick up objects that are in front.\n"
-            "- The environment may contains different objects such are balls, keys, boxes of different color.\n"
-            "- Grid cells occupied by a box or a ball are passable; the agent can step onto and walk through them.\n"
-            "- The agent task is to pick/avoid the objects according to the mission string.\n"
-            "- Since, the observation is partial, the agent can explore the environment by moving around to find the objects to pick.\n"
-            "- Once one object is picked, the object dissapears from the scene and it is added to agent's inventory, which it can hold forever. This doesn't prevent picking another object later.\n"
-            "- The agent can store multiple objects in it's inventory, up to a maximum of two objects.\n"
-            "- Non-interactive elements (walls, floor, background) cannot be acted upon.\n"
-            "- The agent receives a reward upon successfully completing the Target task "
-            "(for example, picking the specified object).\n"
-            "- Each episode ends once the Target task is completed or a maximum step limit is reached."
-        )
-        return description
-
-    def _get_llm_actor_env_description(self):
-        """
-        Returns a textual description tailored for direct LLM agent action selection.
-        Explicitly enumerates valid action names and exact mechanics.
-        """
-        description = (
-            "Environment context:\n"
-            "- The agent operates in a partially observable 2D gridworld-like room. The agent sees a portion of the room.\n"
-            "- At the start of each episode, the agent and objects are randomly initialised in the environment.\n"
-            "- The agent can perform the following available actions:\n"
-            "  * \"turn_left\": Rotate 90 degrees counter-clockwise in place.\n"
-            "  * \"turn_right\": Rotate 90 degrees clockwise in place.\n"
-            "  * \"move_forward\": Move one grid cell forward in the current facing direction.\n"
-            "  * \"pickup\": Pick up the object directly in front of the agent into inventory.\n"
-            "- The environment may contain different objects such as balls, keys, and boxes of different colors.\n"
-            "- Grid cells occupied by a box or a ball are passable; the agent can step onto and walk through cells containing boxes and balls. Outer walls are impassable.\n"
-            "- The agent task is to pick/avoid the objects according to the target mission.\n"
-            "- Since the observation is partial, the agent can explore the environment by moving around to find the objects to pick.\n"
-            "- Once an object is picked, it is added to the agent's inventory (holds up to 2 objects).\n"
-            "- Walls and empty space cannot be picked up.\n"
-            "- The episode ends once the target task is completed or the maximum step limit is reached."
-        )
-        return description
+        return {
+            "turn_left": "Rotate 90 degrees counter-clockwise in place.",
+            "turn_right": "Rotate 90 degrees clockwise in place.",
+            "move_forward": "Move forward one cell in the current facing direction.",
+            "pickup": "Pick up the object directly in front of the agent into inventory.",
+        }
     
     def set_env_name(self):
         self.current_reward_objects = [item for sublist in self.reward_objects for item in sublist]

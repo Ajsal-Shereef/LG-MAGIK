@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 # Ensure project root is in path
 sys.path.insert(0, os.path.abspath("."))
 
-from architectures.common_utils import query_llm, initialize_llm_hf_pipeline
+from architectures.common_utils import query_llm, initialize_llm_hf_pipeline, save_gif
 from utils.update_performance_md import (
     get_completed_episodes_from_cache,
     append_or_update_metric,
@@ -47,15 +47,41 @@ def parse_action_response(llm_reply: str, env_name: str, env_actions=None):
             raw_val = match.group(1).strip().strip('"\'')
             action_val = raw_val
         else:
-            # Search for list pattern like [0.1, 0.5, -1.0]
+            # Search for 3D list pattern like [0.1, 0.5, -1.0]
             list_match = re.search(r'\[\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s*,\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s*,\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*\]', clean_text)
             if list_match:
                 try:
                     action_val = [float(x.strip()) for x in list_match.group(1).split(",")]
                 except Exception:
                     pass
+            else:
+                # Search for 2D list pattern like [0.5, -0.5]
+                list_match_2d = re.search(r'\[\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s*,\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*\]', clean_text)
+                if list_match_2d:
+                    try:
+                        action_val = [float(x.strip()) for x in list_match_2d.group(1).split(",")]
+                    except Exception:
+                        pass
 
     # Environment-specific conversion
+    if env_name == "CollisionEnv":
+        default_collision_action = np.array([0.0, 0.0], dtype=np.float32)
+        if isinstance(action_val, (list, tuple)) and len(action_val) >= 2:
+            try:
+                fx = float(np.clip(float(action_val[0]), -1.0, 1.0))
+                fy = float(np.clip(float(action_val[1]), -1.0, 1.0))
+                return np.array([fx, fy], dtype=np.float32)
+            except Exception:
+                return default_collision_action
+        elif isinstance(action_val, dict):
+            try:
+                fx = float(np.clip(float(action_val.get("force_x", 0.0)), -1.0, 1.0))
+                fy = float(np.clip(float(action_val.get("force_y", 0.0)), -1.0, 1.0))
+                return np.array([fx, fy], dtype=np.float32)
+            except Exception:
+                return default_collision_action
+        return default_collision_action
+
     if env_name == "PickEnv":
         # Continuous action: [steer, distance, force]
         default_pick_action = np.array([0.0, 0.5, -1.0], dtype=np.float32)
@@ -117,27 +143,19 @@ def parse_action_response(llm_reply: str, env_name: str, env_actions=None):
 
     return 0
 
-def get_env_llm_actor_description(env):
+def get_env_action_dict(env):
     """
-    Extracts the dedicated llm_actor_env_description from the environment.
+    Extracts the dictionary of available actions and capabilities from the environment.
     """
     unwrapped = getattr(env, "unwrapped", env)
     for target in (unwrapped, env):
-        if hasattr(target, "llm_actor_env_description"):
-            val = getattr(target, "llm_actor_env_description")
+        if hasattr(target, "action_dict"):
+            val = getattr(target, "action_dict")
             return val() if callable(val) else val
-        if hasattr(target, "_get_llm_actor_env_description"):
-            val = getattr(target, "_get_llm_actor_env_description")
+        if hasattr(target, "get_action_dict"):
+            val = getattr(target, "get_action_dict")
             return val() if callable(val) else val
-    # Fallback to standard env_description
-    for target in (unwrapped, env):
-        if hasattr(target, "env_description"):
-            val = getattr(target, "env_description")
-            return val() if callable(val) else val
-        if hasattr(target, "_get_environment_description"):
-            val = getattr(target, "_get_environment_description")
-            return val() if callable(val) else val
-    return "Complete the assigned mission."
+    return {}
 
 @hydra.main(version_base=None, config_path="../config", config_name="test_imagination")
 def main(args: DictConfig) -> None:
@@ -161,6 +179,10 @@ def main(args: DictConfig) -> None:
         args.env.verbose = True
         from env.PickEnv import PickEnv
         env = PickEnv(args.env)
+    elif args.env.name == "CollisionEnv":
+        args.env.verbose = True
+        from env.CollisionEnv import CollisionEnv
+        env = CollisionEnv(args.env)
     elif args.env.name.startswith("MiniWorld"):
         args.env.verbose = True
         from env.MiniWorld import PickObjectEnv
@@ -219,7 +241,8 @@ def main(args: DictConfig) -> None:
     # Initialize local HuggingFace Gemma pipeline
     pipe = initialize_llm_hf_pipeline(llm_model)
 
-    env_desc = get_env_llm_actor_description(env)
+    action_dict = get_env_action_dict(env)
+    action_dict_str = json.dumps(action_dict, indent=2)
 
     scores = []
     episode_records_map = {}
@@ -260,6 +283,12 @@ def main(args: DictConfig) -> None:
         cumulative_reward = 0.0
         done = False
         episode_step = 0
+        frame_array_full = []
+        if hasattr(env.unwrapped, "get_frame"):
+            try:
+                frame_array_full.append(env.unwrapped.get_frame())
+            except Exception:
+                pass
         ep_prompt_tokens = 0
         ep_completion_tokens = 0
         ep_total_tokens = 0
@@ -274,10 +303,10 @@ def main(args: DictConfig) -> None:
 
             # Unified memoryless prompt across all environments
             prompt_content = (
-                f"Environment description:\n{env_desc}\n\n"
                 f"Target task: {mission}\n"
                 f"Current observation: {obs_desc}\n\n"
-                "Based on the environment description and current observation, choose the single best action to achieve the target task.\n"
+                f"Available actions and agent capabilities:\n{action_dict_str}\n\n"
+                "Based on the available actions and current observation, choose the single best action to achieve the target task.\n"
                 "Output your decision strictly as a JSON object:\n"
                 "{\n"
                 '  "reasoning": "<concise spatial analysis and plan>",\n'
@@ -320,6 +349,11 @@ def main(args: DictConfig) -> None:
 
             cumulative_reward += float(reward)
             done = bool(terminated or truncated)
+            if hasattr(env.unwrapped, "get_frame"):
+                try:
+                    frame_array_full.append(env.unwrapped.get_frame())
+                except Exception:
+                    pass
             reasoning_snippet = ""
             try:
                 raw_json = re.sub(r"<turn\|>|<end_of_turn>|<\|end\|>|<\|return\|>", "", llm_reply.strip()).strip()
@@ -343,6 +377,14 @@ def main(args: DictConfig) -> None:
 
         scores.append(cumulative_reward)
         running_average_score = float(np.mean(scores))
+
+        if frame_array_full:
+            save_dir = f"result/{agent_display_name}/{evaluated_env_name}/{task_mode}"
+            env_fps = getattr(args.env, "fps", 3) if hasattr(args, "env") else 3
+            try:
+                save_gif(frame_array_full, episode, save_dir, fps=env_fps, save_name=" full")
+            except Exception as e:
+                print(f"[WARNING] Failed to save episode GIF: {e}", flush=True)
         
         env_metric_after_ep = get_current_env_metric()
         ep_metric_delta = compute_performance_delta(env_metric_after_ep, env_metric_before_ep)

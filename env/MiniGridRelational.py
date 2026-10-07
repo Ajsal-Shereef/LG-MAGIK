@@ -225,12 +225,12 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         elif self.task_mode == "target1":
             return "Pick up the red ball and drop it strictly on a cell immediately adjacent to the yellow box."
         elif self.task_mode == "target2":
-            return "Pick up the red ball and drop it at the symmetric opposite of the yellow box."
+            return "In an 8x8 grid, pick up the red ball and drop it at the symmetric opposite of the yellow box."
         elif self.task_mode == "target3":
             return "Pick up the red ball and drop it on a cell that is exactly 2 Manhattan-distance away from the yellow box, choosing the one nearest to the agent not colluding with the agent location (choose only one if multiple)."
         elif self.task_mode == "target4":
             return (
-                "Pick up the red ball and drop it at the symmetric opposite "
+                "In an 8x8 grid, pick up the red ball and drop it at the symmetric opposite "
                 "of the cell two cells above the yellow box."
             )
         elif self.task_mode == "target5":
@@ -264,8 +264,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             **kwargs,
         )
         self.env_name = "MiniGridRelational"
-        self.env_description = self._get_environment_description()
-        self.llm_actor_env_description = self._get_llm_actor_env_description()
+        self.action_dict = self.get_action_dict()
         self.reset_metrices()
 
     def reset_metrices(self):
@@ -277,51 +276,17 @@ class RelationalPickPlaceEnv(MiniGridEnv):
     def get_performance_metric(self):
         return self.agent_performance
 
-    def _get_environment_description(self):
+    def get_action_dict(self):
         """
-        Returns a textual description of the environment dynamics, object affordances,
-        agent capabilities, and scene variability.
-        This text will be appended to the LLM prompt for imagination reasoning.
+        Returns a dictionary mapping available action names to their capabilities.
         """
-        description = (
-            "Environment context:\n"
-            "- The agent operates in a fully observable 2D gridworld consisting of an 8×8 grid. "
-            "- The grid is bordered by impassable wall tiles that occupy the entire outermost row and column on all four sides. "
-            "- This leaves a 6×6 interior (columns 1–6, rows 1–6) as the usable play area where the agent, objects, and landmarks can be placed. "
-            "- The agent has full visibility of the entire grid at all times.\n"
-            "- At the start of each episode, the agent, tool objects (balls), and landmarks or target areas are randomly placed within the interior of the room.\n"
-            "- The agent can perform the following actions: rotate left, rotate right, move forward one cell, pick up an object in the cell directly ahead, and drop the held object into the cell directly ahead.\n"
-            "- The agent cannot take diagonal movements (for example, the agent cannot move from (2, 3) to (1, 4) directly, it has to go to (1, 3) and then to (1, 4)).\n"
-            "- Grid cells occupied by a box or a ball are passable; the agent can step onto and walk through them.\n"
-            "- The agent can carry only one object at a time. A picked-up object remains in the agent's inventory until explicitly dropped.\n"
-            "- Objects in the environment include: colored balls (portable tools the agent can pick up and drop) and colored boxes.\n"
-            "- Colored floor tiles mark target areas that the agent can walk over and drop objects onto.\n"
-            "- When a ball is correctly dropped on its matching coloured floor target, both the ball and the floor tile are removed from the grid (the cell becomes empty grid).\n"
-            "- Walls and empty floor cells cannot be interacted with. The agent cannot move through walls, but grid cells occupied by a box or a ball are passable.\n"
-        )
-        return description
-
-    def _get_llm_actor_env_description(self):
-        """
-        Returns a textual description tailored for direct LLM agent action selection.
-        Explicitly enumerates valid action names and exact mechanics.
-        """
-        description = (
-            "Environment context:\n"
-            "- The agent operates in a fully observable 2D gridworld consisting of an 8x8 grid (interior columns 1-6, rows 1-6).\n"
-            "- The agent has full visibility of the entire grid at all times.\n"
-            "- The agent can perform the following available actions:\n"
-            "  * \"turn_left\": Rotate 90 degrees counter-clockwise in place.\n"
-            "  * \"turn_right\": Rotate 90 degrees clockwise in place.\n"
-            "  * \"move_forward\": Move forward one cell in the current facing direction (cannot move diagonally or through walls).\n"
-            "  * \"pickup\": Pick up the ball located in the cell directly ahead (agent can carry only one object at a time).\n"
-            "  * \"drop\": Drop the currently held ball into the cell directly ahead (e.g. onto a target floor tile).\n"
-            "- Objects in the room include portable balls and target landmarks.\n"
-            "- Grid cells occupied by a box or a ball are passable; the agent can step onto and walk through cells containing boxes and balls. Outer walls are impassable.\n"
-            "- The agent task is to achieve the relational target mission.\n"
-            "- Each episode ends once the target task is completed or the maximum step limit is reached."
-        )
-        return description
+        return {
+            "turn_left": "Rotate 90 degrees counter-clockwise in place.",
+            "turn_right": "Rotate 90 degrees clockwise in place.",
+            "move_forward": "Move forward one cell in the current facing direction.",
+            "pickup": "Pick up the ball located in the cell directly ahead.",
+            "drop": "Drop the currently held ball into the cell directly ahead.",
+        }
 
     def _gen_grid(self, width, height):
         self.grid = RelationalGrid(width, height)

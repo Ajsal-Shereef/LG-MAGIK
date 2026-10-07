@@ -1,7 +1,7 @@
 defaults:
-  - env : MiniWorldQuantized
+  - env : CollisionEnv
 seed: 42
-agent_name : PPO
+agent_name : SAC
 save_every : 500000
 use_wandb : true
 log_every : 100

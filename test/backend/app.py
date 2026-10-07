@@ -97,9 +97,9 @@ ENV_METADATA = {
         "source_mission": "Pick up the blue ball and drop it on the green target.",
         "target_missions": {
             "target1": "Pick up the red ball and drop it strictly on a cell immediately adjacent (Manhattan distance 1: up, down, left, or right) to the yellow box.",
-            "target2": "Pick up the red ball and drop it at the symmetric opposite of the yellow box.",
+            "target2": "In an 8x8 grid, pick up the red ball and drop it at the symmetric opposite of the yellow box.",
             "target3": "Pick up the red ball and drop it on a cell that is exactly 2 Manhattan-distance away from the yellow box, choosing the one nearest to the agent not colluding with the agent location (choose only one if multiple).",
-            "target4": "Pick up the red ball and drop it at the symmetric opposite of the cell two cells above the yellow box.",
+            "target4": "In an 8x8 grid, pick up the red ball and drop it at the symmetric opposite of the cell two cells above the yellow box.",
             "target5": "Pick up the red ball and drop it on the yellow target and pick up the purple ball and drop it on the grey target. The two pairs may be completed in any order."
         },
         "default_caption": "Agent is at (3, 4) facing right. The red ball is at (2, 2). The yellow box is at (4, 4)."
@@ -496,9 +496,8 @@ async def remap_caption(
     # Dynamically extract target task mission and environment description from env
     target_mission, env_description = get_target_env_info(env_name, task_mode)
 
-    # Exact replication of test_imagination.py:L219-L224:
+    # Exact replication of test_imagination.py:
     user_prompt = (
-        f"Environment description : {env_description}\n"
         f"Target task : {target_mission}\n"
         f"What agent knows : {clean_source_mission}.\n"
         f"Input description: {caption.strip()}"

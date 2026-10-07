@@ -40,21 +40,24 @@ def main(args: DictConfig) -> None:
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         env_name = env.unwrapped.env_name
-        env_description = env.unwrapped.env_description
     elif args.env.name ==  "PickEnv":
         if args.mode == "transfer":
             args.env.verbose = True
         from env.PickEnv import PickEnv
         env = PickEnv(args.env)
         env_name = "PickEnv"
-        env_description = env.env_description
+    elif args.env.name == "CollisionEnv":
+        if args.mode == "transfer":
+            args.env.verbose = True
+        from env.CollisionEnv import CollisionEnv
+        env = CollisionEnv(args.env)
+        env_name = "CollisionEnv"
     elif args.env.name.startswith("MiniWorld"):
         if args.mode == "transfer":
             args.env.verbose = True
         from env.MiniWorld import PickObjectEnv
         env = PickObjectEnv(args.env)
         env_name = env.env_name
-        env_description = env.env_description
     elif args.env.name == "MiniGridRelational":
         if args.mode == "transfer":
             args.env.verbose = True
@@ -65,7 +68,6 @@ def main(args: DictConfig) -> None:
         from minigrid.wrappers import ImgObsWrapper
         env = ImgObsWrapper(env)
         env_name = env.unwrapped.env_name
-        env_description = env.unwrapped.env_description
     else:
         raise NotImplementedError("The environment is not implemented yet")
     
@@ -228,6 +230,7 @@ def main(args: DictConfig) -> None:
         do_vae_analysis = False
 
     performance_md_file = args.get("performance_md_file", "Results/agent_performance.md")
+    cache_file = args.get("cache_file", None)
     completed_episodes = {}
     if performance_md_file:
         from utils.update_performance_md import (
@@ -241,7 +244,8 @@ def main(args: DictConfig) -> None:
             env_name=evaluated_env_name,
             task_mode=task_mode,
             seed=base_seed,
-            agent_name=args.agent_name
+            agent_name=args.agent_name,
+            cache_file_path=cache_file
         )
 
     # If all requested episodes are already done, skip running
@@ -298,7 +302,6 @@ def main(args: DictConfig) -> None:
         while not done:
             if args.mode == "transfer":
                 first_user_prompt = (
-                                f"Environment description : {env_description}\n"
                                 f"Target task : {mission}\n"
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
@@ -350,7 +353,6 @@ def main(args: DictConfig) -> None:
                         info['description'] = caption
                         # Reconstruct user prompt with new description
                         first_user_prompt = (
-                                f"Environment description : {env_description}\n"
                                 f"Target task : {mission}\n"
                                 f"What agent knows : {args.env.mission}.\n"
                                 f"Input description: {info['description']}"
@@ -529,9 +531,9 @@ def main(args: DictConfig) -> None:
 
         # write_video(frame_array, episode, dump_dir, frameSize=(env.unwrapped.get_frame().shape[1], env.unwrapped.get_frame().shape[0]))
         if args.mode == "transfer":
-            save_dir = f"result/{args.agent_name}/{evaluated_env_name}/{env_name}/transfer"
+            save_dir = f"result/{args.agent_name}/{evaluated_env_name}/{task_mode}/transfer"
         else:
-            save_dir = f"result/{args.agent_name}/{evaluated_env_name}/{env_name}/source"
+            save_dir = f"result/{args.agent_name}/{evaluated_env_name}/{task_mode}/source"
         save_gif(frame_array_partial, episode, save_dir, fps=args.env.fps, save_name= " partial")
         save_gif(frame_array_full, episode, save_dir, fps=args.env.fps, save_name= " full")
         total_lookups = cache_hits + cache_misses
@@ -661,7 +663,8 @@ def main(args: DictConfig) -> None:
                     performance=running_perf,
                     engine_name=args.get("llm_model", "google/gemma-4-12B-it"),
                     num_episodes=args.num_episode,
-                    episode_records=episode_records_map
+                    episode_records=episode_records_map,
+                    cache_file_path=cache_file
                 )
             except Exception as e:
                 print(f"[WARNING] Failed to update episode progress in cache: {e}")

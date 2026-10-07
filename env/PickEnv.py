@@ -78,40 +78,18 @@ class PickEnv(gym.Env):
         self.num_picked = 0
         self.num_broken = 0
         self.mission = self._get_mission()
+        self.action_dict = self.get_action_dict()
         
-    def env_description(self):
-        description = (
-            "Environment context:\n"
-            "- The agent needs to pick up either a circle or a square.\n"
-            "- Each object can be either light or heavy.\n"
-            "- The agent must navigate close to the object and apply the required force to successfully pick it up.\n"
-            "- If the agent applies force beyond what the object can withstand (e.g., applying heavy force to a light object), the object breaks and the episode terminates with a penalty.\n"
-            "- The agent is penalized for applying weak force (insufficient force to lift the object), wasting timesteps without completing the pick.\n"
-            "- Each episode terminates once the target task is completed, the object breaks, or the maximum step limit is reached.")
-        return description
-
-    def llm_actor_env_description(self):
+    def get_action_dict(self):
         """
-        Returns a textual description tailored for direct LLM agent action selection.
-        Explicitly specifies the continuous control array [steer, distance, force].
+        Returns a dictionary mapping available continuous action components to their capabilities.
         """
-        light_thresh = self.light_weight_threshold
-        heavy_thresh = self.heavy_weight_threshold
-
-        description = (
-            "Environment context:\n"
-            "- The agent operates in a 2D tabletop space to navigate to and pick up objects (circles or squares).\n"
-            "- Available action format:\n"
-            "  A continuous 3D control array [steer, distance, force] with values in [-1.0, 1.0]:\n"
-            "  * steer (index 0, range [-1.0, 1.0]): Steering angle command relative to object bearing. -1.0=hard left, 0.0=straight ahead towards 0 deg, +1.0=hard right.\n"
-            "  * distance (index 1, range [-1.0, 1.0]): Forward movement step scale. -1.0=stand still, +1.0=full forward movement towards the object.\n"
-            "  * force (index 2, range [-1.0, 1.0]): Applied lifting force, where mapped physical force = 5.0 * (force + 1.0) in [0.0, 10.0].\n"
-            "    - There is a force penalty per step.\n"
-            "    - When contacting the object, apply sufficient lifting force to pick it up without exceeding its breaking threshold.\n"
-            "- The agent task is defined by the target mission string.\n"
-            "- Each episode terminates once the target object is successfully picked, the object breaks, or the maximum step limit is reached."
-        )
-        return description
+        return {
+            "action_format": "Continuous 3D control array [steer, distance, force] with values in [-1.0, 1.0].",
+            "steer": "Steering angle command relative to object bearing in [-1.0, 1.0] (-1.0=hard left, 0.0=straight ahead towards 0 deg, +1.0=hard right).",
+            "distance": "Forward movement step scale in [-1.0, 1.0] (-1.0=stand still, +1.0=full forward movement).",
+            "force": "Applied lifting force in [-1.0, 1.0] to pick up the object.",
+        }
     
     def _get_mission(self):
         if self.task_mode == "source":
