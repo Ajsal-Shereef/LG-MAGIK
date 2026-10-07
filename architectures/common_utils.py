@@ -1408,7 +1408,7 @@ def split_gptoss_analysis_final(text: str):
     """
     # Extract analysis section
     analysis_match = re.search(
-        r"<\|channel\|>analysis<\|message\|>(.*?)<\|end\|>",
+        r"</?\|channel\|>analysis</?\|message\|>(.*?)(?:</?\|end\|>|</?\|channel\|>final|$)",
         text,
         re.DOTALL
     )
@@ -1416,11 +1416,22 @@ def split_gptoss_analysis_final(text: str):
 
     # Extract final section
     final_match = re.search(
-        r"<\|channel\|>final<\|message\|>(.*?)<\|return\|>",
+        r"</?\|channel\|>final</?\|message\|>(.*?)(?:</?\|return\|>|$)",
         text,
         re.DOTALL
     )
     final_output = final_match.group(1).strip() if final_match else None
+
+    # If final_output was not cleanly extracted but channel tags or think tags exist, clean them out
+    if final_output is None and ("|channel|>" in text or "<think>" in text):
+        cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        cleaned = re.sub(r"</?\|channel\|>analysis</?\|message\|>.*?</?\|end\|>", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"</?\|channel\|>analysis.*?</?\|channel\|>final", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"</?\|channel\|>.*?<turn\|>", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"</?\|channel\|>.*", "", cleaned, flags=re.DOTALL)
+        cleaned = cleaned.strip()
+        if cleaned:
+            final_output = cleaned
 
     return analysis, final_output
     
@@ -2057,12 +2068,7 @@ def query_llm(
         else:
             raise ValueError(f"For mode 'huggingface', pipeline must be a (tokenizer, model) tuple or model_id string, got {type(pipeline)}")
 
-        structured_system_prompt = f"""{system}
-        
-        Structure your response in two parts.
-        First, provide your step-by-step reasoning within the following tags: <|channel|>analysis<|message|> ... <|end|>
-        Second, provide the final, concise answer within the following tags: <|channel|>final<|message|> ... <|return|>
-        """
+        structured_system_prompt = system
         messages = [
             {"role": "system", "content": structured_system_prompt},
             {"role": "user", "content": prompt},
@@ -2105,7 +2111,12 @@ def query_llm(
         if final is None:
             final = raw_output
         model_name = pipeline if isinstance(pipeline, str) else getattr(model, "name_or_path", "huggingface_model")
-        p_tokens = int(inputs["input_ids"].shape[-1]) if (isinstance(inputs, dict) and "input_ids" in inputs) else (int(inputs.shape[-1]) if hasattr(inputs, "shape") else 0)
+        if "input_ids" in inputs and hasattr(inputs["input_ids"], "shape"):
+            p_tokens = int(inputs["input_ids"].shape[-1])
+        elif hasattr(inputs, "shape"):
+            p_tokens = int(inputs.shape[-1])
+        else:
+            p_tokens = 0
         tot_tokens = int(generated.shape[-1]) if hasattr(generated, "shape") else 0
         c_tokens = max(0, tot_tokens - p_tokens)
         usage_info = {

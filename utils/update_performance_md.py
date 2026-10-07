@@ -104,13 +104,23 @@ def get_completed_episodes_from_cache(
     env_name: str,
     task_mode: str,
     seed: int,
-    agent_name: str
+    agent_name: str,
+    cache_file_path: str = None
 ) -> dict:
     """
     Returns a dict mapping episode_idx (int) -> episode_data (dict)
     for already recorded episodes in the cache file.
     """
-    cache_file = os.path.splitext(md_file_path)[0] + "_cache.json"
+    if cache_file_path:
+        cache_file = cache_file_path
+    else:
+        default_cache = os.path.splitext(md_file_path)[0] + "_cache.json"
+        alt_cache = os.path.join(os.path.dirname(md_file_path), "llm_actor_cache_gemma.json")
+        if not os.path.exists(default_cache) and os.path.exists(alt_cache) and "gemma" in md_file_path:
+            cache_file = alt_cache
+        else:
+            cache_file = default_cache
+
     if not os.path.exists(cache_file):
         return {}
     try:
@@ -145,7 +155,8 @@ def append_or_update_metric(
     performance: dict,
     engine_name: str = "google/gemma-4-12B-it",
     num_episodes: int = 10,
-    episode_records: dict = None
+    episode_records: dict = None,
+    cache_file_path: str = None
 ):
     """
     Appends or updates a record in the markdown report and its companion cache.
@@ -153,7 +164,15 @@ def append_or_update_metric(
     Re-renders the markdown file with clean tables.
     """
     os.makedirs(os.path.dirname(os.path.abspath(md_file_path)), exist_ok=True)
-    cache_file = os.path.splitext(md_file_path)[0] + "_cache.json"
+    if cache_file_path:
+        cache_file = cache_file_path
+    else:
+        default_cache = os.path.splitext(md_file_path)[0] + "_cache.json"
+        alt_cache = os.path.join(os.path.dirname(md_file_path), "llm_actor_cache_gemma.json")
+        if not os.path.exists(default_cache) and os.path.exists(alt_cache) and "gemma" in md_file_path:
+            cache_file = alt_cache
+        else:
+            cache_file = default_cache
 
     # Load cache
     records = []
@@ -297,7 +316,7 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
             mean_tok = np.mean(tok_vals) if any(v > 0 for v in tok_vals) else None
             mean_tok_str = format_token_count(mean_tok)
 
-            lat_vals = [r["performance"].get("avg_llm_net_latency", r["performance"].get("avg_llm_response_time", 0.0)) for r in t_recs]
+            lat_vals = [r["performance"].get("avg_llm_net_latency", r["performance"].get("avg_llm_response_time", r["performance"].get("mean_net_latency", 0.0))) for r in t_recs]
             lat_vals_clean = [v for v in lat_vals if isinstance(v, (int, float)) and v > 0]
             mean_lat = np.mean(lat_vals_clean) if lat_vals_clean else None
             mean_lat_str = format_latency(mean_lat)
@@ -329,7 +348,7 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
                 non_rew = format_metric_value(perf.get("non_rewarding_objects", {}))
                 score = perf.get("running_average_score", 0.0)
                 tok_str = format_token_count(perf.get("total_tokens"))
-                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time"))
+                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time") or perf.get("mean_net_latency"))
                 if env_k == "MiniWorldNoisy":
                     llm_err = "-"
                     vae_err = "-"
@@ -350,7 +369,7 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
                 broken = perf.get("brocken", 0)
                 score = perf.get("running_average_score", 0.0)
                 tok_str = format_token_count(perf.get("total_tokens"))
-                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time"))
+                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time") or perf.get("mean_net_latency"))
                 llm_err = format_err_pct(perf.get("llm_error_rate_pct"))
                 vae_err = "-"
                 fb_str = format_failure_breakdown(perf.get("failure_breakdown"), env_name="PickEnv")
@@ -366,7 +385,7 @@ def render_markdown_report(md_file_path: str, records: list, engine_name: str, n
                 drop = perf.get("successful_drop", 0)
                 score = perf.get("running_average_score", 0.0)
                 tok_str = format_token_count(perf.get("total_tokens"))
-                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time"))
+                lat_str = format_latency(perf.get("avg_llm_net_latency") or perf.get("avg_llm_response_time") or perf.get("mean_net_latency"))
                 llm_err = format_err_pct(perf.get("llm_error_rate_pct"))
                 vae_err = format_err_pct(perf.get("vae_error_rate_pct"))
                 fb_str = format_failure_breakdown(perf.get("failure_breakdown"), env_name="MiniGridRelational")

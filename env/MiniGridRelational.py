@@ -265,6 +265,7 @@ class RelationalPickPlaceEnv(MiniGridEnv):
         )
         self.env_name = "MiniGridRelational"
         self.env_description = self._get_environment_description()
+        self.llm_actor_env_description = self._get_llm_actor_env_description()
         self.reset_metrices()
 
     def reset_metrices(self):
@@ -291,11 +292,34 @@ class RelationalPickPlaceEnv(MiniGridEnv):
             "- At the start of each episode, the agent, tool objects (balls), and landmarks or target areas are randomly placed within the interior of the room.\n"
             "- The agent can perform the following actions: rotate left, rotate right, move forward one cell, pick up an object in the cell directly ahead, and drop the held object into the cell directly ahead.\n"
             "- The agent cannot take diagonal movements (for example, the agent cannot move from (2, 3) to (1, 4) directly, it has to go to (1, 3) and then to (1, 4)).\n"
+            "- Grid cells occupied by a box or a ball are passable; the agent can step onto and walk through them.\n"
             "- The agent can carry only one object at a time. A picked-up object remains in the agent's inventory until explicitly dropped.\n"
             "- Objects in the environment include: colored balls (portable tools the agent can pick up and drop) and colored boxes.\n"
             "- Colored floor tiles mark target areas that the agent can walk over and drop objects onto.\n"
             "- When a ball is correctly dropped on its matching coloured floor target, both the ball and the floor tile are removed from the grid (the cell becomes empty grid).\n"
-            "- Walls and empty floor cells cannot be interacted with. The agent cannot move through walls or occupied cells.\n"
+            "- Walls and empty floor cells cannot be interacted with. The agent cannot move through walls, but grid cells occupied by a box or a ball are passable.\n"
+        )
+        return description
+
+    def _get_llm_actor_env_description(self):
+        """
+        Returns a textual description tailored for direct LLM agent action selection.
+        Explicitly enumerates valid action names and exact mechanics.
+        """
+        description = (
+            "Environment context:\n"
+            "- The agent operates in a fully observable 2D gridworld consisting of an 8x8 grid (interior columns 1-6, rows 1-6).\n"
+            "- The agent has full visibility of the entire grid at all times.\n"
+            "- The agent can perform the following available actions:\n"
+            "  * \"turn_left\": Rotate 90 degrees counter-clockwise in place.\n"
+            "  * \"turn_right\": Rotate 90 degrees clockwise in place.\n"
+            "  * \"move_forward\": Move forward one cell in the current facing direction (cannot move diagonally or through walls).\n"
+            "  * \"pickup\": Pick up the ball located in the cell directly ahead (agent can carry only one object at a time).\n"
+            "  * \"drop\": Drop the currently held ball into the cell directly ahead (e.g. onto a target floor tile).\n"
+            "- Objects in the room include portable balls and target landmarks.\n"
+            "- Grid cells occupied by a box or a ball are passable; the agent can step onto and walk through cells containing boxes and balls. Outer walls are impassable.\n"
+            "- The agent task is to achieve the relational target mission.\n"
+            "- Each episode ends once the target task is completed or the maximum step limit is reached."
         )
         return description
 

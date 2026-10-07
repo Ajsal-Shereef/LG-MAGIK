@@ -1,9 +1,9 @@
 # Agent Performance Evaluation Summary
 
-**Last Updated:** 2026-10-05 09:46:38
-- **Reasoning Engine:** `nvidia/nemotron-3-ultra-550b-a55b`
+**Last Updated:** 2026-10-07 06:43:28
+- **Reasoning Engine:** `google/gemma-4-12B-it`
 - **Episodes per Scenario:** `10`
-- **Total Completed Runs:** `61`
+- **Total Completed Runs:** `75`
 
 ---
 
@@ -17,7 +17,9 @@
 | MiniWorld | `target1` | 42, 123, 456, 789, 1024 | **11.4159 ± 0.7653** | 9.40 (Reward Objects Picked) | 0.0% | 7.7% | 0 / 4 / 2 | 688,552 | 31.26s |
 | MiniWorld | `target2` | 42, 123, 456, 789, 1024 | **11.7906 ± 0.6431** | 9.80 (Reward Objects Picked) | 0.1% | - | 2 / 0 / 3 | 804,581 | 52.24s |
 | MiniWorld | `target3` | 42, 123, 456, 789, 1024 | **9.9300 ± 1.3879** | 8.40 (Reward Objects Picked) | 0.4% | 11.9% | 3 / 3 / 6 | 529,201 | 31.39s |
-| MiniWorldNoisy | `target1` | 42 | **9.9420 ± 0.0000** | 6.00 (Reward Objects Picked) | - | - | - | 406,782 | 10.69s |
+| MiniWorldNoisy | `target1` | 42, 123, 456, 789, 1024 | **11.8127 ± 0.8108** | 9.40 (Reward Objects Picked) | - | - | - | 553,651 | 24.14s |
+| MiniWorldNoisy | `target2` | 42, 123, 456, 789, 1024 | **12.0188 ± 0.5049** | 9.40 (Reward Objects Picked) | - | - | - | 614,366 | 30.43s |
+| MiniWorldNoisy | `target3` | 42, 123, 456, 789, 1024 | **8.2736 ± 2.3235** | 6.80 (Reward Objects Picked) | - | - | - | 502,998 | 25.04s |
 | PickEnv | `target` | 42, 123, 456, 789, 1024 | **48.1763 ± 6.6770** | 10.00 (Picked) | 0.8% | - | 0 / - / 0 | 339,681 | 76.97s |
 | MiniGridRelational | `target1` | 42, 123, 456, 789, 1024 | **10.1800 ± 0.7547** | 9.20 (Successful Drop) | 14.9% | 1.2% | 4 / 0 / 0 | 562,613 | 129.33s |
 | MiniGridRelational | `target2` | 42, 123, 456, 789, 1024 | **9.8000 ± 0.7483** | 8.80 (Successful Drop) | 10.8% | 2.5% | 5 / 0 / 1 | 376,059 | 65.89s |
@@ -71,7 +73,21 @@
 
 | Target | Seed | Agent | Rewarding Picked | Non-Rewarding Picked | Running Avg Score | Step LLM Err % | Step VAE Err % | Failures (LLM/VAE/Policy) | Total Tokens | Net Latency | Completed At |
 |--------|------|-------|------------------|----------------------|-------------------|----------------|----------------|---------------------------|--------------|-------------|--------------|
-| `target1` | 42 | PPO | duckie: 6 | ball: 0 | **9.9420** | - | - | - | 406,782 | 10.69s | 2026-10-05 09:46:38 |
+| `target1` | 42 | PPO | duckie: 10 | ball: 0 | **12.5917** | - | - | - | 538,736 | 13.52s | 2026-10-05 12:33:26 |
+| `target1` | 123 | PPO | duckie: 9 | ball: 0 | **11.7749** | - | - | - | 530,592 | 15.02s | 2026-10-05 14:42:19 |
+| `target1` | 456 | PPO | duckie: 9 | ball: 1 | **10.3120** | - | - | - | 540,461 | 19.52s | 2026-10-05 17:09:30 |
+| `target1` | 789 | PPO | duckie: 9 | ball: 0 | **11.9292** | - | - | - | 619,665 | 31.30s | 2026-10-05 20:55:22 |
+| `target1` | 1024 | PPO | duckie: 10 | ball: 0 | **12.4557** | - | - | - | 538,803 | 41.33s | 2026-10-06 00:22:04 |
+| `target2` | 42 | PPO | duckie: 10 | ball: 0 | **12.6684** | - | - | - | 635,285 | 38.84s | 2026-10-06 04:07:58 |
+| `target2` | 123 | PPO | duckie: 9 | ball: 0 | **11.7869** | - | - | - | 685,567 | 37.20s | 2026-10-06 08:37:31 |
+| `target2` | 456 | PPO | duckie: 9 | ball: 0 | **11.2383** | - | - | - | 641,739 | 17.73s | 2026-10-06 11:22:40 |
+| `target2` | 789 | PPO | duckie: 9 | ball: 0 | **11.9509** | - | - | - | 583,237 | 24.30s | 2026-10-06 14:37:38 |
+| `target2` | 1024 | PPO | duckie: 10 | ball: 0 | **12.4492** | - | - | - | 526,003 | 34.05s | 2026-10-06 17:46:19 |
+| `target3` | 42 | PPO | ball: 9 | box: 2 | **9.3310** | - | - | - | 549,625 | 28.01s | 2026-10-06 20:37:40 |
+| `target3` | 123 | PPO | ball: 8 | box: 0 | **10.3674** | - | - | - | 478,577 | 26.47s | 2026-10-06 23:10:54 |
+| `target3` | 456 | PPO | ball: 7 | box: 2 | **6.6953** | - | - | - | 471,679 | 26.48s | 2026-10-07 01:50:20 |
+| `target3` | 789 | PPO | ball: 2 | box: 0 | **4.5070** | - | - | - | 509,397 | 23.30s | 2026-10-07 04:32:49 |
+| `target3` | 1024 | PPO | ball: 8 | box: 0 | **10.4673** | - | - | - | 505,716 | 20.96s | 2026-10-07 06:43:28 |
 
 ## 4. PickEnv
 

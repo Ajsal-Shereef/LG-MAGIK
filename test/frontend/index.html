@@ -464,7 +464,13 @@
 
                 <div style="flex: 5; display: flex; flex-direction: column;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <label id="sliders-label" style="color: var(--text-muted); font-size: 0.78rem;">Slide Channels to Test Smudging ([-10, 10])</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label id="sliders-label" style="color: var(--text-muted); font-size: 0.78rem;">Slide Channels to Test Smudging ([-10, 10])</label>
+                            <label style="font-size: 0.70rem; color: #a5b4fc; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                <input type="checkbox" id="latent-single-channel-mode" checked onchange="toggleSingleChannelMode('latent')">
+                                Single Channel Only
+                            </label>
+                        </div>
                         <button class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px;" onclick="resetSliders()">Reset Scales</button>
                     </div>
                     <div id="sliders-container" style="overflow-y: auto; flex: 1; padding-right: 6px;"></div>
@@ -530,7 +536,7 @@
                     <img id="imagine-result-img" src="" style="display: none;">
                 </div>
 
-                <div class="section-header">Reconstructed Latent Mean Map</div>
+                <div class="section-header" id="imagine-recon-header">Reconstructed Latent Mean Map</div>
                 <div class="image-container">
                     <img id="imagine-recon-latent" src="" style="display: none;">
                 </div>
@@ -698,7 +704,13 @@
                         <!-- Interactive Latent Channel Slider in Imagination Mode -->
                         <div style="background: #111420; border: 1px solid #232738; border-radius: 6px; padding: 8px; margin-top: 4px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                <span style="font-size: 0.76rem; font-weight: 600; color: var(--secondary-color);">Slide Latent Channels (Live Perturbation):</span>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 0.76rem; font-weight: 600; color: var(--secondary-color);">Slide Latent Channels (Live Perturbation):</span>
+                                    <label style="font-size: 0.70rem; color: #a5b4fc; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                        <input type="checkbox" id="imagine-single-channel-mode" checked onchange="toggleSingleChannelMode('imagine')">
+                                        Single Channel Only
+                                    </label>
+                                </div>
                                 <button class="btn-secondary" style="font-size: 0.70rem; padding: 2px 8px;" onclick="resetImagineSliders()">Reset Channels</button>
                             </div>
                             <div id="imagine-sliders-container" style="max-height: 80px; overflow-y: auto; padding-right: 4px;"></div>
@@ -1197,6 +1209,17 @@
                     const img = document.getElementById('imagine-recon-latent');
                     img.src = data.reconstructed_latent;
                     img.style.display = 'block';
+
+                    const reconHeader = document.getElementById('imagine-recon-header');
+                    if (reconHeader) {
+                        const isModified = imagineScales.some(s => Math.abs(s - 1.0) > 1e-4);
+                        if (isModified) {
+                            const modIdx = imagineScales.findIndex(s => Math.abs(s - 1.0) > 1e-4);
+                            reconHeader.innerText = `Perturbed Latent Mean Map (Z${modIdx} = ${imagineScales[modIdx].toFixed(1)})`;
+                        } else {
+                            reconHeader.innerText = "Reconstructed Latent Mean Map";
+                        }
+                    }
                 }
 
                 // Render VAE Quality (Grid & Latent Diagnostics)
@@ -1582,6 +1605,16 @@
         }
 
 
+        let singleChannelMode = {
+            imagine: true,
+            latent: true
+        };
+
+        function toggleSingleChannelMode(view) {
+            const el = document.getElementById(`${view}-single-channel-mode`);
+            if (el) singleChannelMode[view] = el.checked;
+        }
+
         // --- Sliders for Imagination View (Testing Smudge by Sliding Latent) ---
         function initImagineSliders(numChannels = 8) {
             imagineScales = Array(numChannels).fill(1.0);
@@ -1593,7 +1626,7 @@
                 row.className = 'slider-row';
                 row.innerHTML = `
                     <span style="width: 28px; text-align: right; color: var(--text-muted);">Z${i}</span>
-                    <input type="range" min="-10" max="10" step="0.1" value="1.0"
+                    <input type="range" min="-10" max="10" step="0.1" value="1.0" data-channel="${i}"
                         oninput="updateImagineScale(${i}, this.value); debouncedImagineSliders()">
                     <span id="imagine-val-${i}" style="width: 38px; text-align: right; color: var(--text-color);">1.0</span>
                 `;
@@ -1603,14 +1636,30 @@
         initImagineSliders(8);
 
         function updateImagineScale(idx, val) {
+            const isSingle = singleChannelMode.imagine;
+            if (isSingle) {
+                // In single channel mode, reset all other channels to 1.0
+                for (let i = 0; i < imagineScales.length; i++) {
+                    if (i !== idx) {
+                        imagineScales[i] = 1.0;
+                        const otherInp = document.querySelector(`#imagine-sliders-container input[data-channel="${i}"]`);
+                        if (otherInp) otherInp.value = 1.0;
+                        const otherSp = document.getElementById(`imagine-val-${i}`);
+                        if (otherSp) otherSp.innerText = '1.0';
+                    }
+                }
+            }
             imagineScales[idx] = parseFloat(val);
-            document.getElementById(`imagine-val-${idx}`).innerText = val;
+            const sp = document.getElementById(`imagine-val-${idx}`);
+            if (sp) sp.innerText = val;
         }
 
         function resetImagineSliders() {
             imagineScales.fill(1.0);
             document.querySelectorAll('#imagine-sliders-container input').forEach(inp => inp.value = 1.0);
             document.querySelectorAll('#imagine-sliders-container span[id^="imagine-val-"]').forEach(sp => sp.innerText = '1.0');
+            const reconHeader = document.getElementById('imagine-recon-header');
+            if (reconHeader) reconHeader.innerText = "Reconstructed Latent Mean Map";
             generateImagine(true);
         }
 
@@ -1629,7 +1678,7 @@
                 row.className = 'slider-row';
                 row.innerHTML = `
                     <span style="width: 28px; text-align: right; color: var(--text-muted);">Ch${i}</span>
-                    <input type="range" min="-10" max="10" step="0.1" value="1.0" 
+                    <input type="range" min="-10" max="10" step="0.1" value="1.0" data-channel="${i}"
                         oninput="updateScale(${i}, this.value); debouncedGenerateLatent()">
                     <span id="val-${i}" style="width: 38px; text-align: right; color: var(--text-color);">1.0</span>
                 `;
@@ -1639,8 +1688,22 @@
         initSliders(8);
 
         function updateScale(idx, val) {
+            const isSingle = singleChannelMode.latent;
+            if (isSingle) {
+                // In single channel mode, reset all other channels to 1.0
+                for (let i = 0; i < scales.length; i++) {
+                    if (i !== idx) {
+                        scales[i] = 1.0;
+                        const otherInp = document.querySelector(`#sliders-container input[data-channel="${i}"]`);
+                        if (otherInp) otherInp.value = 1.0;
+                        const otherSp = document.getElementById(`val-${i}`);
+                        if (otherSp) otherSp.innerText = '1.0';
+                    }
+                }
+            }
             scales[idx] = parseFloat(val);
-            document.getElementById(`val-${idx}`).innerText = val;
+            const sp = document.getElementById(`val-${idx}`);
+            if (sp) sp.innerText = val;
         }
 
         function resetSliders() {

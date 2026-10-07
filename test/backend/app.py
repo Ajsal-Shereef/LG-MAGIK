@@ -774,12 +774,19 @@ async def imagine(
                 else:
                     sampler_recon = vision_model.bottleneck(hidden_recon)
                 mean_recon = sampler_recon.mean
-
                 grid_original = create_latent_grid(mean_original)
-                grid_recon = create_latent_grid(mean_recon, ref_tensor=mean_original)
+                is_slider_modified = channel_scales and any(abs(float(s) - 1.0) > 1e-4 for s in scales)
+                if is_slider_modified:
+                    # When sliding channels, display the perturbed latent so only the modified channel changes
+                    grid_recon = create_latent_grid(target_mean, ref_tensor=mean_original)
+                else:
+                    # When no channels are modified, display standard cycle reconstruction
+                    grid_recon = create_latent_grid(mean_recon, ref_tensor=mean_original)
 
                 response_data["original_latent"] = encode_image_base64(grid_original)
                 response_data["reconstructed_latent"] = encode_image_base64(grid_recon)
+                response_data["cycle_latent"] = encode_image_base64(create_latent_grid(mean_recon, ref_tensor=mean_original))
+                response_data["target_latent"] = encode_image_base64(create_latent_grid(target_mean, ref_tensor=mean_original))
 
             # Evaluate VAE quality (Smudge & Cycle Consistency)
             vae_analysis = evaluate_vae_quality(

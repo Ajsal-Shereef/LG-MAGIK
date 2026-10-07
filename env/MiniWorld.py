@@ -265,6 +265,7 @@ class PickObjectEnv(MiniWorldEnv):
         super().__init__(max_episode_steps=self.max_steps, **kwargs)
         self.action_space = spaces.Discrete(self.actions.pickup + 1)
         self.env_description = self._get_environment_description()
+        self.llm_actor_env_description = self._get_llm_actor_env_description()
         self.env_name = self.set_env_name()
         self.reset_metrices()
         self.mission = self._gen_mission()
@@ -297,6 +298,29 @@ class PickObjectEnv(MiniWorldEnv):
             "- The agent receives a reward upon successfully completing the Target task "
             "(for example, picking the specified object from specified room).\n"
             "- Each episode ends once the Target task is completed or a maximum step limit is reached."
+        )
+        return description
+
+    def _get_llm_actor_env_description(self):
+        """
+        Returns a textual description tailored for direct LLM agent action selection.
+        Explicitly enumerates valid action names and exact mechanics.
+        """
+        description = (
+            "Environment context:\n"
+            "- The agent operates in a partially observable 3D room. The agent sees a portion of the room.\n"
+            "- At the start of each episode, the agent and objects are randomly initialised in the room.\n"
+            "- The agent can perform the following available actions:\n"
+            "  * \"turn_left\": Rotate counter-clockwise in place (by ~15 degrees).\n"
+            "  * \"turn_right\": Rotate clockwise in place (by ~15 degrees).\n"
+            "  * \"move_forward\": Step forward in the current facing direction.\n"
+            "  * \"pickup\": Pick up the target object directly in front when within close interaction distance.\n"
+            "- The environment may contain different objects of different colors.\n"
+            "- The agent task is to pick/avoid the objects according to the target mission.\n"
+            "- Since the observation is partial, explore the environment by rotating or moving forward if no target object is currently visible.\n"
+            "- Once an object is picked, it is added to the agent's inventory.\n"
+            "- Non-interactive elements (walls, floor, sky) cannot be picked.\n"
+            "- Each episode ends once the target task is completed or a maximum step limit is reached."
         )
         return description
     

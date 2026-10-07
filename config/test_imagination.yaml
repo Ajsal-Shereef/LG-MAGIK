@@ -1,15 +1,15 @@
 defaults:
-  - env: MiniWorldNoisy
+  - env: MiniWorld
   - models: text_conditioned_vae_cnn_${env}
 
 agent_name : PPO
 dqn_model_dir : model_weights/${env.name}/${agent_name}/seed_123/${agent_name}.zip #"model_weights/DQN/2025-12-12_19-08-44_7FLPAL/DQN.zip"
-vae_model_dir:  model_weights/${env.name}/VAE_1D_no_text_disc/seed_123/VAE_1D_no_text_disc.tar
+vae_model_dir:  model_weights/${env.name}/VAE_1D/seed_42/VAE_1D.tar
 result_dir: result
 mode: transfer
 mapping_strategy: "llm" # options: "llm", "retrieval"
-querry_mode: nvidia # Querry mode for LLM. options openrouter/huggingface
-llm_model: "nvidia/nemotron-3-ultra-550b-a55b"  #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free, model_weights/FineTunedGemma/final, Qwen/Qwen3.8-27B, google/gemma-4-12B-it, nvidia/nemotron-3-ultra-550b-a55b
+querry_mode: huggingface # Querry mode for LLM. options openrouter/huggingface
+llm_model: "google/gemma-4-12B-it"  #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free, model_weights/FineTunedGemma/final, Qwen/Qwen3.8-27B, google/gemma-4-12B-it, nvidia/nemotron-3-ultra-550b-a55b
 alternate_llm_model: "nvidia/nemotron-3.5-lightning-30b-a3b"
 secondary_llm_model: "gemini-3.1-pro-preview"
 max_tokens: 6000
@@ -19,6 +19,7 @@ alternative_vllm : null
 seed: 0
 num_episode: 10
 performance_md_file: "Results/agent_performance.md"
+cache_file: null
 max_cache_size: 10000
 latent_l2_threshold: 0.75
 vae_diff_threshold: 38.0 # Difference threshold for connected component spatial localization (sweet spot 35-50 isolates object without horizon/grass margins)
