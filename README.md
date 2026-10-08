@@ -105,18 +105,20 @@ The project includes a web application for exploring the VAE latent space and im
 
 ### Features
 
-#### Latent Visualization
-![Latent View](test/Latent_view.png)
-In the latent view, the left shows the input image and its corresponding latent, in the right, it shows the readjustable latent (each dimension) and the generated image of the adjusted latent.
+![Imagination & Diagnostic Interface](test/test_view.png)
 
-#### Imagination Mode
-![Imagination View](test/Imagiantion_view.png)
-The Imagination Mode tests how the latent representation changes when a new image is generated using a text prompt.
+The main landing page serves as the **Imagination & Diagnostic Studio**, providing an interactive interface to inspect LLM-based imagination mapping and evaluate Text-Conditioned VAE generation:
 
-*   **Left Panel:** Displays the original image and its corresponding latent visualization.
-*   **Right Panel:** Displays the newly generated image (based on the provided text prompt) and its latent visualization.
-
-Upon inspecting the two latents, the first two rows remain the same. This indicates that these positions encode common features shared between the images. The remaining positions encode aspects that differ from the original image, such as the object itself, orientation, size, color, etc.
+* **Observation & Latent Feature Panels (Top Grid):**
+  * **Target Observation Image (Input - Left):** Displays the uploaded or sampled input observation (supports drag-and-drop/file upload with zoom controls) along with its **Original Latent Mean Map** produced by the VAE encoder.
+  * **Imagined Observation (Source Space - Right):** Displays the synthesized observation reconstructed by the VAE alongside its **Reconstructed Latent Mean Map**. Comparing the two latent maps allows verification of shared invariant features (such as walls and ground surfaces across upper rows) versus manipulated object attributes. A toggle button is also available to switch to the Latent Manipulation View.
+* **Environment & Model Control Bar (Middle):**
+  * Select the active **Environment** (e.g., MiniWorld, SimplePickup, PickEnv, MiniGridRelational) and **Target Mode**.
+  * Configure the LLM backend via **Query Mode** (`huggingface`, `nvidia`, `openrouter`, `google`) and set the **Model Name**.
+  * Use **Load Default Sample** to load representative environment test samples and preset task captions.
+* **Diagnostic & Execution Console (Bottom Panel):**
+  * **1. LLM Imagination Mapping (Left Column):** Compares the agent's domain knowledge (*What Agent Knows*) against the target specification (*Target Task Spec*). Clicking **Remap Caption with LLM** queries the LLM to translate input scene descriptions into the agent's source concept space.
+  * **2. VAE Quality & Artifact Analysis (Right Column):** Accepts the conditioning caption to **Generate Imagined Observation** through the VAE. Includes interactive **Latent Channel Sliders** ($Z_0, Z_1, \dots$ live perturbation with single-channel isolation and reset) to analyze decoder robustness and artifact sensitivity.
 
 ## Results
 Below are the episode rollout of the agent with imagination module in different environements and tasks. For MiiWorld and MiniGrid the full view is the top-down view of the environment and the partial view is the first-person view of the agent.
