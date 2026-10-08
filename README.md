@@ -1,4 +1,4 @@
-# PRISM (Policy Reuse via Imagined SemanticMappings)
+# PRISM (PRISM: Policy Reuse via Inferred Semantics and Modular Grounding)
 
 PRISM is a framework for training agents to solve target tasks by leveraging knowledge from analogous source tasks. The core idea is to use a text-conditioned VAE to transform observations from a target task into analogous source task observations, allowing an agent trained on the source task to operate in the target environment.
 
