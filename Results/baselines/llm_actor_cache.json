@@ -1,0 +1,2282 @@
+[
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 5
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 0.5,
+      "total_tokens": 271189,
+      "mean_net_latency": 86.42,
+      "avg_llm_net_latency": 86.42,
+      "avg_llm_response_time": 86.42
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 01:59:11",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5306,
+        "completion_tokens": 52396,
+        "total_tokens": 57702
+      },
+      "latency": 93.16756412506103
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5050,
+        "completion_tokens": 20331,
+        "total_tokens": 25381
+      },
+      "latency": 56.54275448799133
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 1.0,
+      "timesteps": 1,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 233,
+        "completion_tokens": 1061,
+        "total_tokens": 1294
+      },
+      "latency": 51.56239104270935
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 1.0,
+      "timesteps": 11,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 2267,
+        "completion_tokens": 11420,
+        "total_tokens": 13687
+      },
+      "latency": 53.953581224788316
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5245,
+        "completion_tokens": 52244,
+        "total_tokens": 57489
+      },
+      "latency": 92.25978131294251
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5164,
+        "completion_tokens": 30742,
+        "total_tokens": 35906
+      },
+      "latency": 86.98145987510681
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5035,
+        "completion_tokens": 18094,
+        "total_tokens": 23129
+      },
+      "latency": 55.93205840110779
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 1.0,
+      "timesteps": 10,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 2144,
+        "completion_tokens": 24300,
+        "total_tokens": 26444
+      },
+      "latency": 140.82202179431914
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 1.0,
+      "timesteps": 14,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 3047,
+        "completion_tokens": 26396,
+        "total_tokens": 29443
+      },
+      "latency": 205.09247132710047
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 1,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 212,
+        "completion_tokens": 502,
+        "total_tokens": 714
+      },
+      "latency": 27.912039518356323
+    }
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target2",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 4
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 0.4,
+      "total_tokens": 365479,
+      "mean_net_latency": 84.16,
+      "avg_llm_net_latency": 84.16,
+      "avg_llm_response_time": 84.16
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 06:58:57",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5352,
+        "completion_tokens": 59883,
+        "total_tokens": 65235
+      },
+      "latency": 172.010110578537
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5041,
+        "completion_tokens": 22271,
+        "total_tokens": 27312
+      },
+      "latency": 61.522146186828614
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 1.0,
+      "timesteps": 1,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 233,
+        "completion_tokens": 425,
+        "total_tokens": 658
+      },
+      "latency": 53.4504816532135
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 1.0,
+      "timesteps": 11,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 2267,
+        "completion_tokens": 9007,
+        "total_tokens": 11274
+      },
+      "latency": 64.20702962441878
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5350,
+        "completion_tokens": 73893,
+        "total_tokens": 79243
+      },
+      "latency": 127.72484866142273
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 4990,
+        "completion_tokens": 13653,
+        "total_tokens": 18643
+      },
+      "latency": 42.55187155723572
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 1.0,
+      "timesteps": 18,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 3858,
+        "completion_tokens": 27648,
+        "total_tokens": 31506
+      },
+      "latency": 81.89301345083449
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5263,
+        "completion_tokens": 49697,
+        "total_tokens": 54960
+      },
+      "latency": 112.83703197479248
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5399,
+        "completion_tokens": 70559,
+        "total_tokens": 75958
+      },
+      "latency": 111.99092315673828
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 1,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 212,
+        "completion_tokens": 478,
+        "total_tokens": 690
+      },
+      "latency": 13.430836915969849
+    }
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "green ball": 5
+      },
+      "non_rewarding_objects": {
+        "red ball": 0
+      },
+      "running_average_score": 0.5,
+      "total_tokens": 412572,
+      "mean_net_latency": 66.75,
+      "avg_llm_net_latency": 66.75,
+      "avg_llm_response_time": 66.75
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 10:38:30",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5623,
+        "completion_tokens": 92241,
+        "total_tokens": 97864
+      },
+      "latency": 154.98213008880614
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 1.0,
+      "timesteps": 9,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 1
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 1961,
+        "completion_tokens": 11266,
+        "total_tokens": 13227
+      },
+      "latency": 41.17868163850572
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 1.0,
+      "timesteps": 1,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 1
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 233,
+        "completion_tokens": 1393,
+        "total_tokens": 1626
+      },
+      "latency": 49.686076164245605
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 1.0,
+      "timesteps": 20,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 1
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 4197,
+        "completion_tokens": 20808,
+        "total_tokens": 25005
+      },
+      "latency": 40.18579798936844
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5350,
+        "completion_tokens": 69287,
+        "total_tokens": 74637
+      },
+      "latency": 102.34935043334961
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5294,
+        "completion_tokens": 47980,
+        "total_tokens": 53274
+      },
+      "latency": 60.235635328292844
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5089,
+        "completion_tokens": 19753,
+        "total_tokens": 24842
+      },
+      "latency": 33.81823644638062
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5264,
+        "completion_tokens": 59095,
+        "total_tokens": 64359
+      },
+      "latency": 69.84139581680297
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 1.0,
+      "timesteps": 15,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 1
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 3383,
+        "completion_tokens": 53701,
+        "total_tokens": 57084
+      },
+      "latency": 91.41335260073343
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 1,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 1
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 212,
+        "completion_tokens": 442,
+        "total_tokens": 654
+      },
+      "latency": 23.802078008651733
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "duckie": 0
+      },
+      "non_rewarding_objects": {
+        "ball": 0
+      },
+      "running_average_score": 0.14992451337728432,
+      "total_tokens": 461628,
+      "mean_net_latency": 37.66,
+      "avg_llm_net_latency": 37.66,
+      "avg_llm_response_time": 37.66
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 15:52:54",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11364,
+        "completion_tokens": 37160,
+        "total_tokens": 48524
+      },
+      "latency": 22.781439747810364
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.29999951094684674,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11516,
+        "completion_tokens": 58829,
+        "total_tokens": 70345
+      },
+      "latency": 47.728009176254275
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 10954,
+        "completion_tokens": 22360,
+        "total_tokens": 33314
+      },
+      "latency": 35.37500648975372
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11050,
+        "completion_tokens": 24437,
+        "total_tokens": 35487
+      },
+      "latency": 40.04092186927795
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11451,
+        "completion_tokens": 34703,
+        "total_tokens": 46154
+      },
+      "latency": 40.67951715946197
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11415,
+        "completion_tokens": 38456,
+        "total_tokens": 49871
+      },
+      "latency": 40.65570045471191
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11525,
+        "completion_tokens": 42332,
+        "total_tokens": 53857
+      },
+      "latency": 42.380975193977356
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11018,
+        "completion_tokens": 21747,
+        "total_tokens": 32765
+      },
+      "latency": 31.447599568367004
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 1.1992456228259964,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11596,
+        "completion_tokens": 50320,
+        "total_tokens": 61916
+      },
+      "latency": 44.13377646446228
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11330,
+        "completion_tokens": 18065,
+        "total_tokens": 29395
+      },
+      "latency": 31.40264199733734
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target2",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "duckie": 0
+      },
+      "non_rewarding_objects": {
+        "ball": 0
+      },
+      "running_average_score": 0.16481128260577452,
+      "total_tokens": 599691,
+      "mean_net_latency": 56.45,
+      "avg_llm_net_latency": 56.45,
+      "avg_llm_response_time": 56.45
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 23:44:01",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.14931827688613009,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11547,
+        "completion_tokens": 30869,
+        "total_tokens": 42416
+      },
+      "latency": 30.279480395317076
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.14999976444771246,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11715,
+        "completion_tokens": 42347,
+        "total_tokens": 54062
+      },
+      "latency": 43.1801183795929
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12074,
+        "completion_tokens": 124804,
+        "total_tokens": 136878
+      },
+      "latency": 97.77558092594147
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11250,
+        "completion_tokens": 21305,
+        "total_tokens": 32555
+      },
+      "latency": 34.60990535259247
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11651,
+        "completion_tokens": 40658,
+        "total_tokens": 52309
+      },
+      "latency": 53.05742733478546
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11557,
+        "completion_tokens": 43102,
+        "total_tokens": 54659
+      },
+      "latency": 56.75280912399292
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.14954916189790612,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11725,
+        "completion_tokens": 53188,
+        "total_tokens": 64913
+      },
+      "latency": 64.31327896595002
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11166,
+        "completion_tokens": 22748,
+        "total_tokens": 33914
+      },
+      "latency": 49.149937987327576
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 1.1992456228259964,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11837,
+        "completion_tokens": 78779,
+        "total_tokens": 90616
+      },
+      "latency": 78.58193438529969
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11496,
+        "completion_tokens": 25873,
+        "total_tokens": 37369
+      },
+      "latency": 56.80902614593506
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 0
+      },
+      "non_rewarding_objects": {
+        "box": 0
+      },
+      "running_average_score": 0.1646776666421582,
+      "total_tokens": 567684,
+      "mean_net_latency": 64.3,
+      "avg_llm_net_latency": 64.3,
+      "avg_llm_response_time": 64.3
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-09 08:40:25",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11224,
+        "completion_tokens": 36255,
+        "total_tokens": 47479
+      },
+      "latency": 44.918291854858396
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.14999976470331067,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11420,
+        "completion_tokens": 38795,
+        "total_tokens": 50215
+      },
+      "latency": 76.98617835998535
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.14999245472953637,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12089,
+        "completion_tokens": 136636,
+        "total_tokens": 148725
+      },
+      "latency": 192.47242948532104
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 10984,
+        "completion_tokens": 37567,
+        "total_tokens": 48551
+      },
+      "latency": 67.36738420009613
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 10968,
+        "completion_tokens": 27702,
+        "total_tokens": 38670
+      },
+      "latency": 43.29720802307129
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.2974118015974354,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11320,
+        "completion_tokens": 51358,
+        "total_tokens": 62678
+      },
+      "latency": 59.32555862903595
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11400,
+        "completion_tokens": 35802,
+        "total_tokens": 47202
+      },
+      "latency": 43.759228920936586
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 10968,
+        "completion_tokens": 23171,
+        "total_tokens": 34139
+      },
+      "latency": 38.09949038028717
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 1.0493726453912995,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11476,
+        "completion_tokens": 43246,
+        "total_tokens": 54722
+      },
+      "latency": 48.061725096702574
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11016,
+        "completion_tokens": 24287,
+        "total_tokens": 35303
+      },
+      "latency": 28.76018138885498
+    }
+  },
+  {
+    "env_name": "PickEnv",
+    "task_mode": "target",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "brocken": 4,
+      "picked": 6,
+      "running_average_score": 21.217476712346087,
+      "total_tokens": 445884,
+      "mean_net_latency": 70.95,
+      "avg_llm_net_latency": 70.95,
+      "avg_llm_response_time": 70.95
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-09 12:29:39",
+    "episode_0": {
+      "episode": 0,
+      "score": 20.780691719055177,
+      "timesteps": 8,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 2298,
+        "completion_tokens": 13333,
+        "total_tokens": 15631
+      },
+      "latency": 52.457920879125595
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 34.73009567260742,
+      "timesteps": 9,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 2587,
+        "completion_tokens": 15674,
+        "total_tokens": 18261
+      },
+      "latency": 66.08004400465224
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 53.47226884841918,
+      "timesteps": 4,
+      "performance": {
+        "brocken": 0,
+        "picked": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 1146,
+        "completion_tokens": 6893,
+        "total_tokens": 8039
+      },
+      "latency": 91.33501118421555
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 27.58903131484985,
+      "timesteps": 3,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 860,
+        "completion_tokens": 5485,
+        "total_tokens": 6345
+      },
+      "latency": 74.64011232058208
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": -35.43064643859851,
+      "timesteps": 95,
+      "performance": {
+        "brocken": 0,
+        "picked": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 27319,
+        "completion_tokens": 186744,
+        "total_tokens": 214063
+      },
+      "latency": 61.344044670305756
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 29.404904012680053,
+      "timesteps": 2,
+      "performance": {
+        "brocken": 0,
+        "picked": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 573,
+        "completion_tokens": 2476,
+        "total_tokens": 3049
+      },
+      "latency": 44.95600986480713
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 29.575018501281736,
+      "timesteps": 3,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 861,
+        "completion_tokens": 6123,
+        "total_tokens": 6984
+      },
+      "latency": 72.42945011456807
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 24.14085109710692,
+      "timesteps": 28,
+      "performance": {
+        "brocken": 0,
+        "picked": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 8050,
+        "completion_tokens": 67743,
+        "total_tokens": 75793
+      },
+      "latency": 107.88759188141141
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 8.062342511415494,
+      "timesteps": 28,
+      "performance": {
+        "brocken": 0,
+        "picked": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 8055,
+        "completion_tokens": 69990,
+        "total_tokens": 78045
+      },
+      "latency": 85.41985256331307
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 19.850209884643547,
+      "timesteps": 11,
+      "performance": {
+        "brocken": 0,
+        "picked": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 3163,
+        "completion_tokens": 16511,
+        "total_tokens": 19674
+      },
+      "latency": 52.97969321771102
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 4,
+      "successful_drop": 1,
+      "running_average_score": 1.4,
+      "total_tokens": 473565,
+      "mean_net_latency": 57.06,
+      "avg_llm_net_latency": 57.06,
+      "avg_llm_response_time": 57.06
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-09 16:46:15",
+    "episode_0": {
+      "episode": 0,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 6940,
+        "completion_tokens": 49361,
+        "total_tokens": 56301
+      },
+      "latency": 61.604913115501404
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7020,
+        "completion_tokens": 58492,
+        "total_tokens": 65512
+      },
+      "latency": 71.820609887441
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 11.0,
+      "timesteps": 11,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 2566,
+        "completion_tokens": 28051,
+        "total_tokens": 30617
+      },
+      "latency": 91.94418918002735
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 6920,
+        "completion_tokens": 46029,
+        "total_tokens": 52949
+      },
+      "latency": 68.89939082463583
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7020,
+        "completion_tokens": 47643,
+        "total_tokens": 54663
+      },
+      "latency": 51.89967669645945
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7020,
+        "completion_tokens": 39309,
+        "total_tokens": 46329
+      },
+      "latency": 44.96639155546824
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7020,
+        "completion_tokens": 32485,
+        "total_tokens": 39505
+      },
+      "latency": 43.49040002822876
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 6912,
+        "completion_tokens": 59334,
+        "total_tokens": 66246
+      },
+      "latency": 61.756975817680356
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7020,
+        "completion_tokens": 14564,
+        "total_tokens": 21584
+      },
+      "latency": 29.995290104548136
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7020,
+        "completion_tokens": 32839,
+        "total_tokens": 39859
+      },
+      "latency": 44.2340567111969
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target2",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 4,
+      "successful_drop": 1,
+      "running_average_score": 1.4,
+      "total_tokens": 588410,
+      "mean_net_latency": 90.1,
+      "avg_llm_net_latency": 90.1,
+      "avg_llm_response_time": 90.1
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-09 23:34:37",
+    "episode_0": {
+      "episode": 0,
+      "score": 11.0,
+      "timesteps": 23,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 5464,
+        "completion_tokens": 39220,
+        "total_tokens": 44684
+      },
+      "latency": 65.5910815363345
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7200,
+        "completion_tokens": 62004,
+        "total_tokens": 69204
+      },
+      "latency": 86.92682514985403
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 1.0,
+      "timesteps": 8,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 1892,
+        "completion_tokens": 18694,
+        "total_tokens": 20586
+      },
+      "latency": 95.07260182499886
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7200,
+        "completion_tokens": 31677,
+        "total_tokens": 38877
+      },
+      "latency": 51.05063211123149
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7200,
+        "completion_tokens": 42843,
+        "total_tokens": 50043
+      },
+      "latency": 67.3250637213389
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7200,
+        "completion_tokens": 76062,
+        "total_tokens": 83262
+      },
+      "latency": 122.30922742684682
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7200,
+        "completion_tokens": 81835,
+        "total_tokens": 89035
+      },
+      "latency": 144.0834994475047
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7092,
+        "completion_tokens": 53684,
+        "total_tokens": 60776
+      },
+      "latency": 78.87063824335733
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7200,
+        "completion_tokens": 50133,
+        "total_tokens": 57333
+      },
+      "latency": 75.872789311409
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7180,
+        "completion_tokens": 67430,
+        "total_tokens": 74610
+      },
+      "latency": 113.8498906691869
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 3,
+      "successful_drop": 2,
+      "running_average_score": 2.3,
+      "total_tokens": 756002,
+      "mean_net_latency": 121.74,
+      "avg_llm_net_latency": 121.74,
+      "avg_llm_response_time": 121.74
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-10 08:20:22",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7800,
+        "completion_tokens": 88743,
+        "total_tokens": 96543
+      },
+      "latency": 150.75965086619058
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7804,
+        "completion_tokens": 58894,
+        "total_tokens": 66698
+      },
+      "latency": 130.2019092321396
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 11.0,
+      "timesteps": 6,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 1548,
+        "completion_tokens": 18460,
+        "total_tokens": 20008
+      },
+      "latency": 126.09520856539409
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7800,
+        "completion_tokens": 71879,
+        "total_tokens": 79679
+      },
+      "latency": 132.8250609000524
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7800,
+        "completion_tokens": 79166,
+        "total_tokens": 86966
+      },
+      "latency": 116.85201213359832
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7800,
+        "completion_tokens": 74950,
+        "total_tokens": 82750
+      },
+      "latency": 124.08503377437592
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7800,
+        "completion_tokens": 76203,
+        "total_tokens": 84003
+      },
+      "latency": 101.94998849232992
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 11.0,
+      "timesteps": 13,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 3340,
+        "completion_tokens": 41756,
+        "total_tokens": 45096
+      },
+      "latency": 116.18327393898598
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7800,
+        "completion_tokens": 99794,
+        "total_tokens": 107594
+      },
+      "latency": 131.54683633645377
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7788,
+        "completion_tokens": 78877,
+        "total_tokens": 86665
+      },
+      "latency": 86.92657436529795
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target4",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 5,
+      "successful_drop": 4,
+      "running_average_score": 4.5,
+      "total_tokens": 615723,
+      "mean_net_latency": 69.68,
+      "avg_llm_net_latency": 69.68,
+      "avg_llm_response_time": 69.68
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-10 12:42:57",
+    "episode_0": {
+      "episode": 0,
+      "score": 1.0,
+      "timesteps": 19,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 4623,
+        "completion_tokens": 46445,
+        "total_tokens": 51068
+      },
+      "latency": 71.45735275117974
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 11.0,
+      "timesteps": 21,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 5113,
+        "completion_tokens": 71947,
+        "total_tokens": 77060
+      },
+      "latency": 107.46625476791745
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 11.0,
+      "timesteps": 10,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 2438,
+        "completion_tokens": 18241,
+        "total_tokens": 20679
+      },
+      "latency": 61.97620432376861
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 11.0,
+      "timesteps": 16,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 3876,
+        "completion_tokens": 29320,
+        "total_tokens": 33196
+      },
+      "latency": 54.48993797600269
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7350,
+        "completion_tokens": 59409,
+        "total_tokens": 66759
+      },
+      "latency": 56.871271332105
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7350,
+        "completion_tokens": 81193,
+        "total_tokens": 88543
+      },
+      "latency": 70.75208844343821
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7350,
+        "completion_tokens": 74536,
+        "total_tokens": 81886
+      },
+      "latency": 71.94579136371613
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 11.0,
+      "timesteps": 11,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 2663,
+        "completion_tokens": 28527,
+        "total_tokens": 31190
+      },
+      "latency": 74.5143565047871
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7350,
+        "completion_tokens": 32962,
+        "total_tokens": 40312
+      },
+      "latency": 31.341403166453045
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7350,
+        "completion_tokens": 117680,
+        "total_tokens": 125030
+      },
+      "latency": 95.96017210483551
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target5",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 4,
+      "successful_drop": 1,
+      "running_average_score": 1.4,
+      "total_tokens": 456128,
+      "mean_net_latency": 40.0,
+      "avg_llm_net_latency": 40.0,
+      "avg_llm_response_time": 40.0
+    },
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "num_episodes": 10,
+    "timestamp": "2026-10-10 15:51:05",
+    "episode_0": {
+      "episode": 0,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8090,
+        "completion_tokens": 34819,
+        "total_tokens": 42909
+      },
+      "latency": 35.09879721800486
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8190,
+        "completion_tokens": 37260,
+        "total_tokens": 45450
+      },
+      "latency": 40.01300769646962
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 11.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 7686,
+        "completion_tokens": 33104,
+        "total_tokens": 40790
+      },
+      "latency": 33.108003656069435
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 1.0,
+      "timesteps": 12,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 3252,
+        "completion_tokens": 16920,
+        "total_tokens": 20172
+      },
+      "latency": 40.93609994649887
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8190,
+        "completion_tokens": 41374,
+        "total_tokens": 49564
+      },
+      "latency": 46.04767557779948
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8190,
+        "completion_tokens": 61285,
+        "total_tokens": 69475
+      },
+      "latency": 48.26659892400106
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8190,
+        "completion_tokens": 45110,
+        "total_tokens": 53300
+      },
+      "latency": 45.991372172037764
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8190,
+        "completion_tokens": 19891,
+        "total_tokens": 28081
+      },
+      "latency": 27.25036424001058
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8190,
+        "completion_tokens": 37808,
+        "total_tokens": 45998
+      },
+      "latency": 35.68698663711548
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8086,
+        "completion_tokens": 52303,
+        "total_tokens": 60389
+      },
+      "latency": 47.627397910753885
+    }
+  }
+]

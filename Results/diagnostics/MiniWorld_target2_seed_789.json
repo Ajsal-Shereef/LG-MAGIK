@@ -1,0 +1,329 @@
+{
+  "env_name": "MiniWorld",
+  "task_mode": "target2",
+  "seed": 789,
+  "agent_name": "PPO",
+  "total_episodes": 10,
+  "success_count": 9,
+  "fail_count": 1,
+  "analysis_scope": {
+    "do_llm_analysis": true,
+    "do_vae_analysis": false
+  },
+  "timestep_metrics": {
+    "total_imagination_steps": 378,
+    "llm_error_steps": 1,
+    "llm_error_rate_pct": 0.26,
+    "vae_error_steps": null,
+    "vae_error_rate_pct": null
+  },
+  "failure_breakdown": {
+    "LLM_FAILURE": 1,
+    "VAE_FAILURE": 0,
+    "DQN_POLICY_FAILURE": 0
+  },
+  "token_usage": {
+    "prompt_tokens": 407271,
+    "completion_tokens": 409999,
+    "total_tokens": 818937,
+    "cached_tokens_saved": 444020,
+    "avg_tokens_per_episode": 81893.7
+  },
+  "latency_metrics": {
+    "avg_llm_net_latency": 42.951,
+    "avg_llm_response_time": 51.271,
+    "avg_llm_wait_time": 4.891
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "seed": 789,
+      "score": 11.769216843726781,
+      "running_average_score": 11.769216843726781,
+      "is_success": true,
+      "total_steps": 27,
+      "imagination_steps": 26,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 63.814,
+      "avg_llm_net_latency": 61.495,
+      "avg_llm_wait_time": 2.256,
+      "token_usage": {
+        "prompt_tokens": 25806,
+        "completion_tokens": 26576,
+        "total_tokens": 52382,
+        "cached_tokens": 38480
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 1,
+      "seed": 790,
+      "score": 13.253590589526489,
+      "running_average_score": 12.511403716626635,
+      "is_success": true,
+      "total_steps": 27,
+      "imagination_steps": 26,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 42.966,
+      "avg_llm_net_latency": 39.108,
+      "avg_llm_wait_time": 3.832,
+      "token_usage": {
+        "prompt_tokens": 40350,
+        "completion_tokens": 38288,
+        "total_tokens": 78638,
+        "cached_tokens": 3848
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 2,
+      "seed": 791,
+      "score": 1.9425939362858529,
+      "running_average_score": 12.078960516762843,
+      "is_success": false,
+      "total_steps": 37,
+      "imagination_steps": 36,
+      "llm_errors": 1,
+      "vae_errors": 0,
+      "avg_llm_response_time": 29.222,
+      "avg_llm_net_latency": 15.113,
+      "avg_llm_wait_time": 10.668,
+      "token_usage": {
+        "prompt_tokens": 27762,
+        "completion_tokens": 13481,
+        "total_tokens": 41243,
+        "cached_tokens": 35208
+      },
+      "failure_cause": "LLM_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 1
+        }
+      }
+    },
+    {
+      "episode": 3,
+      "seed": 792,
+      "score": 12.7974596555767,
+      "running_average_score": 9.52662059834664,
+      "is_success": true,
+      "total_steps": 42,
+      "imagination_steps": 41,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 43.486,
+      "avg_llm_net_latency": 39.782,
+      "avg_llm_wait_time": 3.68,
+      "token_usage": {
+        "prompt_tokens": 43568,
+        "completion_tokens": 47193,
+        "total_tokens": 90761,
+        "cached_tokens": 53443
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 4,
+      "seed": 793,
+      "score": 14.262167444585774,
+      "running_average_score": 10.473729967594466,
+      "is_success": true,
+      "total_steps": 36,
+      "imagination_steps": 35,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 55.832,
+      "avg_llm_net_latency": 40.389,
+      "avg_llm_wait_time": 6.405,
+      "token_usage": {
+        "prompt_tokens": 54904,
+        "completion_tokens": 55892,
+        "total_tokens": 111342,
+        "cached_tokens": 2803
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 5,
+      "seed": 794,
+      "score": 12.189940869748362,
+      "running_average_score": 10.75976511795345,
+      "is_success": true,
+      "total_steps": 23,
+      "imagination_steps": 22,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 75.052,
+      "avg_llm_net_latency": 52.476,
+      "avg_llm_wait_time": 2.238,
+      "token_usage": {
+        "prompt_tokens": 24243,
+        "completion_tokens": 23320,
+        "total_tokens": 48093,
+        "cached_tokens": 25935
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 6,
+      "seed": 795,
+      "score": 14.42391982308224,
+      "running_average_score": 11.283215790114706,
+      "is_success": true,
+      "total_steps": 34,
+      "imagination_steps": 33,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 59.425,
+      "avg_llm_net_latency": 52.79,
+      "avg_llm_wait_time": 5.407,
+      "token_usage": {
+        "prompt_tokens": 53293,
+        "completion_tokens": 50812,
+        "total_tokens": 104696,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 7,
+      "seed": 796,
+      "score": 13.34559569972972,
+      "running_average_score": 11.541013278816582,
+      "is_success": true,
+      "total_steps": 44,
+      "imagination_steps": 43,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 49.463,
+      "avg_llm_net_latency": 44.201,
+      "avg_llm_wait_time": 5.216,
+      "token_usage": {
+        "prompt_tokens": 40343,
+        "completion_tokens": 41328,
+        "total_tokens": 81671,
+        "cached_tokens": 68815
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 8,
+      "seed": 797,
+      "score": 13.413870957942207,
+      "running_average_score": 11.749108576497207,
+      "is_success": true,
+      "total_steps": 79,
+      "imagination_steps": 78,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 52.605,
+      "avg_llm_net_latency": 47.142,
+      "avg_llm_wait_time": 5.412,
+      "token_usage": {
+        "prompt_tokens": 56659,
+        "completion_tokens": 68036,
+        "total_tokens": 124695,
+        "cached_tokens": 165464
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    },
+    {
+      "episode": 9,
+      "seed": 798,
+      "score": 13.391249347424282,
+      "running_average_score": 11.913322653589914,
+      "is_success": true,
+      "total_steps": 39,
+      "imagination_steps": 38,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 40.842,
+      "avg_llm_net_latency": 37.015,
+      "avg_llm_wait_time": 3.801,
+      "token_usage": {
+        "prompt_tokens": 40343,
+        "completion_tokens": 45073,
+        "total_tokens": 85416,
+        "cached_tokens": 50024
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 1
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      }
+    }
+  ]
+}

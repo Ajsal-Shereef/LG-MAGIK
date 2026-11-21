@@ -1,0 +1,289 @@
+{
+  "env_name": "MiniGridRelational",
+  "task_mode": "target1",
+  "seed": 123,
+  "agent_name": "DQN",
+  "total_episodes": 10,
+  "success_count": 9,
+  "fail_count": 1,
+  "analysis_scope": {
+    "do_llm_analysis": true,
+    "do_vae_analysis": true
+  },
+  "timestep_metrics": {
+    "total_imagination_steps": 130,
+    "llm_error_steps": 12,
+    "llm_error_rate_pct": 9.23,
+    "vae_error_steps": 0,
+    "vae_error_rate_pct": 0.0
+  },
+  "failure_breakdown": {
+    "LLM_FAILURE": 1,
+    "VAE_FAILURE": 0,
+    "DQN_POLICY_FAILURE": 0
+  },
+  "token_usage": {
+    "prompt_tokens": 178256,
+    "completion_tokens": 590201,
+    "total_tokens": 778282,
+    "cached_tokens_saved": 105514,
+    "avg_tokens_per_episode": 77828.2
+  },
+  "latency_metrics": {
+    "avg_llm_net_latency": 139.788,
+    "avg_llm_response_time": 244.043,
+    "avg_llm_wait_time": 3.845
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "seed": 123,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 15,
+      "imagination_steps": 14,
+      "llm_errors": 2,
+      "vae_errors": 0,
+      "avg_llm_response_time": 321.903,
+      "avg_llm_net_latency": 175.098,
+      "avg_llm_wait_time": 4.724,
+      "token_usage": {
+        "prompt_tokens": 23606,
+        "completion_tokens": 74900,
+        "total_tokens": 100469,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 1,
+      "seed": 124,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 15,
+      "imagination_steps": 14,
+      "llm_errors": 3,
+      "vae_errors": 0,
+      "avg_llm_response_time": 284.109,
+      "avg_llm_net_latency": 124.519,
+      "avg_llm_wait_time": 6.008,
+      "token_usage": {
+        "prompt_tokens": 23572,
+        "completion_tokens": 87669,
+        "total_tokens": 111241,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 2,
+      "seed": 125,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 11,
+      "imagination_steps": 10,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 133.643,
+      "avg_llm_net_latency": 131.199,
+      "avg_llm_wait_time": 2.439,
+      "token_usage": {
+        "prompt_tokens": 16848,
+        "completion_tokens": 70466,
+        "total_tokens": 87314,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 3,
+      "seed": 126,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 10,
+      "imagination_steps": 9,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 189.44,
+      "avg_llm_net_latency": 117.54,
+      "avg_llm_wait_time": 4.662,
+      "token_usage": {
+        "prompt_tokens": 15162,
+        "completion_tokens": 46309,
+        "total_tokens": 61471,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 4,
+      "seed": 127,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 9,
+      "imagination_steps": 8,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 160.828,
+      "avg_llm_net_latency": 158.384,
+      "avg_llm_wait_time": 2.439,
+      "token_usage": {
+        "prompt_tokens": 13480,
+        "completion_tokens": 50264,
+        "total_tokens": 63744,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 5,
+      "seed": 128,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 9,
+      "imagination_steps": 8,
+      "llm_errors": 1,
+      "vae_errors": 0,
+      "avg_llm_response_time": 201.667,
+      "avg_llm_net_latency": 158.808,
+      "avg_llm_wait_time": 4.937,
+      "token_usage": {
+        "prompt_tokens": 13476,
+        "completion_tokens": 44773,
+        "total_tokens": 58249,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 6,
+      "seed": 129,
+      "score": 11.0,
+      "running_average_score": 11.0,
+      "is_success": true,
+      "total_steps": 16,
+      "imagination_steps": 15,
+      "llm_errors": 1,
+      "vae_errors": 0,
+      "avg_llm_response_time": 388.94,
+      "avg_llm_net_latency": 162.544,
+      "avg_llm_wait_time": 5.664,
+      "token_usage": {
+        "prompt_tokens": 23606,
+        "completion_tokens": 78253,
+        "total_tokens": 103824,
+        "cached_tokens": 10038
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 7,
+      "seed": 130,
+      "score": 0.0,
+      "running_average_score": 9.9,
+      "is_success": false,
+      "total_steps": 31,
+      "imagination_steps": 30,
+      "llm_errors": 1,
+      "vae_errors": 0,
+      "avg_llm_response_time": 77.287,
+      "avg_llm_net_latency": 75.188,
+      "avg_llm_wait_time": 2.022,
+      "token_usage": {
+        "prompt_tokens": 13096,
+        "completion_tokens": 23734,
+        "total_tokens": 36830,
+        "cached_tokens": 87395
+      },
+      "failure_cause": "LLM_FAILURE",
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      }
+    },
+    {
+      "episode": 8,
+      "seed": 131,
+      "score": 11.0,
+      "running_average_score": 9.777777777777779,
+      "is_success": true,
+      "total_steps": 10,
+      "imagination_steps": 9,
+      "llm_errors": 2,
+      "vae_errors": 0,
+      "avg_llm_response_time": 306.604,
+      "avg_llm_net_latency": 129.388,
+      "avg_llm_wait_time": 1.853,
+      "token_usage": {
+        "prompt_tokens": 15192,
+        "completion_tokens": 51951,
+        "total_tokens": 71076,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    },
+    {
+      "episode": 9,
+      "seed": 132,
+      "score": 11.0,
+      "running_average_score": 9.9,
+      "is_success": true,
+      "total_steps": 14,
+      "imagination_steps": 13,
+      "llm_errors": 2,
+      "vae_errors": 0,
+      "avg_llm_response_time": 376.008,
+      "avg_llm_net_latency": 165.212,
+      "avg_llm_wait_time": 3.699,
+      "token_usage": {
+        "prompt_tokens": 20218,
+        "completion_tokens": 61882,
+        "total_tokens": 84064,
+        "cached_tokens": 8081
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      }
+    }
+  ]
+}
