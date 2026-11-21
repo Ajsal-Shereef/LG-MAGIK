@@ -1,0 +1,2282 @@
+[
+  {
+    "env_name": "PickEnv",
+    "task_mode": "target",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "brocken": 8,
+      "picked": 0,
+      "running_average_score": -9.03150872096414,
+      "total_tokens": 130540,
+      "mean_net_latency": 9.37,
+      "avg_llm_net_latency": 9.37,
+      "avg_llm_response_time": 9.37
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-07 22:36:29",
+    "episode_0": {
+      "episode": 0,
+      "score": -81.6189357712863,
+      "timesteps": 100,
+      "performance": {
+        "brocken": 0,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 30400,
+        "completion_tokens": 10920,
+        "total_tokens": 41320
+      },
+      "latency": 8.697593069076538
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 40.066170181334016,
+      "timesteps": 9,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 2730,
+        "completion_tokens": 1023,
+        "total_tokens": 3753
+      },
+      "latency": 9.084381447898018
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 34.4047468483448,
+      "timesteps": 4,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 1211,
+        "completion_tokens": 464,
+        "total_tokens": 1675
+      },
+      "latency": 9.205042243003845
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 27.14677341878414,
+      "timesteps": 3,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 908,
+        "completion_tokens": 341,
+        "total_tokens": 1249
+      },
+      "latency": 9.037920077641806
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": -12.603313016891459,
+      "timesteps": 16,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 4857,
+        "completion_tokens": 1867,
+        "total_tokens": 6724
+      },
+      "latency": 9.28153920173645
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 5.237113010883331,
+      "timesteps": 1,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 302,
+        "completion_tokens": 109,
+        "total_tokens": 411
+      },
+      "latency": 8.589644193649292
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 28.300764147937297,
+      "timesteps": 6,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 1818,
+        "completion_tokens": 808,
+        "total_tokens": 2626
+      },
+      "latency": 10.727574825286865
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": -13.752434527873913,
+      "timesteps": 37,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 11237,
+        "completion_tokens": 4543,
+        "total_tokens": 15780
+      },
+      "latency": 9.79173004949415
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": -99.87195914983731,
+      "timesteps": 100,
+      "performance": {
+        "brocken": 0,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 30365,
+        "completion_tokens": 11625,
+        "total_tokens": 41990
+      },
+      "latency": 9.272586901187896
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": -17.624012351035994,
+      "timesteps": 35,
+      "performance": {
+        "brocken": 1,
+        "picked": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 10627,
+        "completion_tokens": 4385,
+        "total_tokens": 15012
+      },
+      "latency": 9.983696331296649
+    }
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 0
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 0.0,
+      "total_tokens": 71165,
+      "mean_net_latency": 5.46,
+      "avg_llm_net_latency": 5.46,
+      "avg_llm_response_time": 5.46
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-07 22:59:57",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5451,
+        "completion_tokens": 1645,
+        "total_tokens": 7096
+      },
+      "latency": 5.46779616355896
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 5.090964460372925
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5477,
+        "completion_tokens": 1675,
+        "total_tokens": 7152
+      },
+      "latency": 5.528451547622681
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 5.09620192527771
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5775,
+        "completion_tokens": 2341,
+        "total_tokens": 8116
+      },
+      "latency": 7.668971481323243
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 5.081729431152343
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 5.095291662216186
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 5.105786476135254
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5451,
+        "completion_tokens": 1619,
+        "total_tokens": 7070
+      },
+      "latency": 5.303305816650391
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5413,
+        "completion_tokens": 1568,
+        "total_tokens": 6981
+      },
+      "latency": 5.156870622634887
+    }
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target2",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "purple box": 0
+      },
+      "non_rewarding_objects": {
+        "green ball": 0
+      },
+      "running_average_score": 0.0,
+      "total_tokens": 71355,
+      "mean_net_latency": 5.35,
+      "avg_llm_net_latency": 5.35,
+      "avg_llm_response_time": 5.35
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-07 23:23:00",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5451,
+        "completion_tokens": 1649,
+        "total_tokens": 7100
+      },
+      "latency": 5.300937728881836
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 4.926517057418823
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5477,
+        "completion_tokens": 1676,
+        "total_tokens": 7153
+      },
+      "latency": 5.343224067687988
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 4.940806331634522
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5775,
+        "completion_tokens": 2524,
+        "total_tokens": 8299
+      },
+      "latency": 8.012199115753173
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 4.931494493484497
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 4.961790418624878
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1550,
+        "total_tokens": 6950
+      },
+      "latency": 4.918094186782837
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5451,
+        "completion_tokens": 1623,
+        "total_tokens": 7074
+      },
+      "latency": 5.181065950393677
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5413,
+        "completion_tokens": 1566,
+        "total_tokens": 6979
+      },
+      "latency": 5.003372974395752
+    }
+  },
+  {
+    "env_name": "SimplePickup",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "green ball": 0
+      },
+      "non_rewarding_objects": {
+        "red ball": 0
+      },
+      "running_average_score": 0.0,
+      "total_tokens": 73620,
+      "mean_net_latency": 6.12,
+      "avg_llm_net_latency": 6.12,
+      "avg_llm_response_time": 6.12
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-07 23:49:09",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5451,
+        "completion_tokens": 1873,
+        "total_tokens": 7324
+      },
+      "latency": 6.067118806838989
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1800,
+        "total_tokens": 7200
+      },
+      "latency": 5.784348230361939
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5449,
+        "completion_tokens": 1828,
+        "total_tokens": 7277
+      },
+      "latency": 5.87777871131897
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1800,
+        "total_tokens": 7200
+      },
+      "latency": 5.772727584838867
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5775,
+        "completion_tokens": 2710,
+        "total_tokens": 8485
+      },
+      "latency": 8.683131628036499
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1800,
+        "total_tokens": 7200
+      },
+      "latency": 5.787588958740234
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1800,
+        "total_tokens": 7200
+      },
+      "latency": 5.767510480880738
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 1800,
+        "total_tokens": 7200
+      },
+      "latency": 5.754930191040039
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5451,
+        "completion_tokens": 1861,
+        "total_tokens": 7312
+      },
+      "latency": 5.951439027786255
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 25,
+      "performance": {
+        "rewarding_objects": {
+          "green ball": 0
+        },
+        "non_rewarding_objects": {
+          "red ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 5413,
+        "completion_tokens": 1809,
+        "total_tokens": 7222
+      },
+      "latency": 5.7798475074768065
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "duckie": 0
+      },
+      "non_rewarding_objects": {
+        "ball": 0
+      },
+      "running_average_score": 0.0,
+      "total_tokens": 168496,
+      "mean_net_latency": 7.02,
+      "avg_llm_net_latency": 7.02,
+      "avg_llm_response_time": 7.02
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 00:48:23",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12284,
+        "completion_tokens": 4138,
+        "total_tokens": 16422
+      },
+      "latency": 6.517395839691162
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12284,
+        "completion_tokens": 5017,
+        "total_tokens": 17301
+      },
+      "latency": 7.833221492767334
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12204,
+        "completion_tokens": 4210,
+        "total_tokens": 16414
+      },
+      "latency": 6.574349884986877
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12248,
+        "completion_tokens": 4104,
+        "total_tokens": 16352
+      },
+      "latency": 6.403154611587524
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12301,
+        "completion_tokens": 4349,
+        "total_tokens": 16650
+      },
+      "latency": 6.783020753860473
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12204,
+        "completion_tokens": 4210,
+        "total_tokens": 16414
+      },
+      "latency": 6.572820854187012
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12350,
+        "completion_tokens": 4396,
+        "total_tokens": 16746
+      },
+      "latency": 6.857936520576477
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12197,
+        "completion_tokens": 4065,
+        "total_tokens": 16262
+      },
+      "latency": 6.337275261878967
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 13296,
+        "completion_tokens": 5563,
+        "total_tokens": 18859
+      },
+      "latency": 8.66871099472046
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12236,
+        "completion_tokens": 4840,
+        "total_tokens": 17076
+      },
+      "latency": 7.61047899723053
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target2",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "duckie": 0
+      },
+      "non_rewarding_objects": {
+        "ball": 0
+      },
+      "running_average_score": 0.0,
+      "total_tokens": 154492,
+      "mean_net_latency": 5.56,
+      "avg_llm_net_latency": 5.56,
+      "avg_llm_response_time": 5.56
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 01:35:28",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.225604038238526
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.217529573440552
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.205567851066589
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.198815498352051
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12501,
+        "completion_tokens": 4621,
+        "total_tokens": 17122
+      },
+      "latency": 7.170646624565125
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.211311764717102
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12550,
+        "completion_tokens": 4420,
+        "total_tokens": 16970
+      },
+      "latency": 6.828413610458374
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.178873543739319
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.18527015209198
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "duckie": 0
+        },
+        "non_rewarding_objects": {
+          "ball": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11700,
+        "completion_tokens": 3350,
+        "total_tokens": 15050
+      },
+      "latency": 5.186270742416382
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 0
+      },
+      "non_rewarding_objects": {
+        "box": 0
+      },
+      "running_average_score": 0.0,
+      "total_tokens": 160358,
+      "mean_net_latency": 6.24,
+      "avg_llm_net_latency": 6.24,
+      "avg_llm_response_time": 6.24
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 02:28:17",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11866,
+        "completion_tokens": 3559,
+        "total_tokens": 15425
+      },
+      "latency": 5.535280170440674
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11850,
+        "completion_tokens": 4075,
+        "total_tokens": 15925
+      },
+      "latency": 6.3406250858306885
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11802,
+        "completion_tokens": 3610,
+        "total_tokens": 15412
+      },
+      "latency": 5.610878510475159
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12154,
+        "completion_tokens": 4050,
+        "total_tokens": 16204
+      },
+      "latency": 6.282223954200744
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12186,
+        "completion_tokens": 4455,
+        "total_tokens": 16641
+      },
+      "latency": 6.921635484695434
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12154,
+        "completion_tokens": 4336,
+        "total_tokens": 16490
+      },
+      "latency": 6.739767498970032
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12250,
+        "completion_tokens": 4150,
+        "total_tokens": 16400
+      },
+      "latency": 6.474165139198303
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12106,
+        "completion_tokens": 4095,
+        "total_tokens": 16201
+      },
+      "latency": 6.368000431060791
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 11802,
+        "completion_tokens": 3940,
+        "total_tokens": 15742
+      },
+      "latency": 6.122012867927551
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 50,
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      },
+      "token_usage": {
+        "prompt_tokens": 12026,
+        "completion_tokens": 3892,
+        "total_tokens": 15918
+      },
+      "latency": 6.045319366455078
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target1",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 0,
+      "successful_drop": 0,
+      "running_average_score": 0.0,
+      "total_tokens": 123134,
+      "mean_net_latency": 12.6,
+      "avg_llm_net_latency": 12.6,
+      "avg_llm_response_time": 12.6
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 03:32:14",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 4866,
+        "total_tokens": 12456
+      },
+      "latency": 12.972884901364644
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 5023,
+        "total_tokens": 12613
+      },
+      "latency": 13.389505616823833
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 5881,
+        "total_tokens": 13471
+      },
+      "latency": 15.679925163586935
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 3915,
+        "total_tokens": 11505
+      },
+      "latency": 10.44208901723226
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 5985,
+        "total_tokens": 13575
+      },
+      "latency": 15.92980925242106
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 4160,
+        "total_tokens": 11750
+      },
+      "latency": 11.066670322418213
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 3850,
+        "total_tokens": 11440
+      },
+      "latency": 10.292576654752095
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 4953,
+        "total_tokens": 12543
+      },
+      "latency": 13.254963835080465
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 5554,
+        "total_tokens": 13144
+      },
+      "latency": 14.815155323346456
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7590,
+        "completion_tokens": 3047,
+        "total_tokens": 10637
+      },
+      "latency": 8.11458178361257
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target2",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 0,
+      "successful_drop": 0,
+      "running_average_score": 0.0,
+      "total_tokens": 131312,
+      "mean_net_latency": 14.38,
+      "avg_llm_net_latency": 14.38,
+      "avg_llm_response_time": 14.38
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 04:45:08",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 5368,
+        "total_tokens": 13138
+      },
+      "latency": 14.375518377621969
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 4196,
+        "total_tokens": 11966
+      },
+      "latency": 11.24909561475118
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 12081,
+        "total_tokens": 19851
+      },
+      "latency": 32.52342117627462
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 3480,
+        "total_tokens": 11250
+      },
+      "latency": 9.35951172510783
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 3685,
+        "total_tokens": 11455
+      },
+      "latency": 9.903821762402853
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 5259,
+        "total_tokens": 13029
+      },
+      "latency": 14.093767730395
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 5415,
+        "total_tokens": 13185
+      },
+      "latency": 14.496321646372477
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 5041,
+        "total_tokens": 12811
+      },
+      "latency": 13.487436032295227
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 3162,
+        "total_tokens": 10932
+      },
+      "latency": 8.47798981666565
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7770,
+        "completion_tokens": 5925,
+        "total_tokens": 13695
+      },
+      "latency": 15.8771612962087
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 0,
+      "successful_drop": 0,
+      "running_average_score": 0.0,
+      "total_tokens": 152062,
+      "mean_net_latency": 18.16,
+      "avg_llm_net_latency": 18.16,
+      "avg_llm_response_time": 18.16
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 06:16:55",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 8606,
+        "total_tokens": 17006
+      },
+      "latency": 23.09434818426768
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 7000,
+        "total_tokens": 15400
+      },
+      "latency": 18.680323791503906
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 6083,
+        "total_tokens": 14483
+      },
+      "latency": 16.24335632324219
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 6900,
+        "total_tokens": 15300
+      },
+      "latency": 18.40597781340281
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 6794,
+        "total_tokens": 15194
+      },
+      "latency": 18.111532632509867
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 4771,
+        "total_tokens": 13171
+      },
+      "latency": 12.739105947812398
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 6660,
+        "total_tokens": 15060
+      },
+      "latency": 17.77819794813792
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 6308,
+        "total_tokens": 14708
+      },
+      "latency": 16.82740582625071
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 8040,
+        "total_tokens": 16440
+      },
+      "latency": 21.40850149790446
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8400,
+        "completion_tokens": 6900,
+        "total_tokens": 15300
+      },
+      "latency": 18.356657163302103
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target4",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 0,
+      "successful_drop": 0,
+      "running_average_score": 0.0,
+      "total_tokens": 146201,
+      "mean_net_latency": 17.77,
+      "avg_llm_net_latency": 17.77,
+      "avg_llm_response_time": 17.77
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 07:46:44",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 7555,
+        "total_tokens": 15475
+      },
+      "latency": 20.13574009736379
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 7576,
+        "total_tokens": 15496
+      },
+      "latency": 20.140798703829446
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 4950,
+        "total_tokens": 12870
+      },
+      "latency": 13.138307531674704
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 4113,
+        "total_tokens": 12033
+      },
+      "latency": 10.905145700772604
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 4848,
+        "total_tokens": 12768
+      },
+      "latency": 12.847208388646443
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 6427,
+        "total_tokens": 14347
+      },
+      "latency": 16.988576904932657
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 5205,
+        "total_tokens": 13125
+      },
+      "latency": 13.812068430582682
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 9532,
+        "total_tokens": 17452
+      },
+      "latency": 25.327597904205323
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 6401,
+        "total_tokens": 14321
+      },
+      "latency": 17.019290971755982
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 7920,
+        "completion_tokens": 10394,
+        "total_tokens": 18314
+      },
+      "latency": 27.40687952041626
+    }
+  },
+  {
+    "env_name": "MiniGridRelational",
+    "task_mode": "target5",
+    "seed": 789,
+    "agent_name": "LLM_Actor_PPO",
+    "performance": {
+      "successful_pick": 2,
+      "successful_drop": 1,
+      "running_average_score": 1.2,
+      "total_tokens": 144875,
+      "mean_net_latency": 15.6,
+      "avg_llm_net_latency": 15.6,
+      "avg_llm_response_time": 15.6
+    },
+    "engine_name": "google/gemma-4-12B-it",
+    "num_episodes": 10,
+    "timestamp": "2026-10-08 09:05:44",
+    "episode_0": {
+      "episode": 0,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 13887,
+        "total_tokens": 22647
+      },
+      "latency": 36.95178405443827
+    },
+    "episode_1": {
+      "episode": 1,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 3464,
+        "total_tokens": 12224
+      },
+      "latency": 9.25909005800883
+    },
+    "episode_2": {
+      "episode": 2,
+      "score": 11.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 1
+      },
+      "token_usage": {
+        "prompt_tokens": 8290,
+        "completion_tokens": 9829,
+        "total_tokens": 18119
+      },
+      "latency": 26.28494610786438
+    },
+    "episode_3": {
+      "episode": 3,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 4727,
+        "total_tokens": 13487
+      },
+      "latency": 12.723201783498128
+    },
+    "episode_4": {
+      "episode": 4,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 7854,
+        "total_tokens": 16614
+      },
+      "latency": 21.80617384115855
+    },
+    "episode_5": {
+      "episode": 5,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 4205,
+        "total_tokens": 12965
+      },
+      "latency": 11.619797587394714
+    },
+    "episode_6": {
+      "episode": 6,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 4215,
+        "total_tokens": 12975
+      },
+      "latency": 11.486976790428162
+    },
+    "episode_7": {
+      "episode": 7,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 2451,
+        "total_tokens": 11211
+      },
+      "latency": 6.563735683759053
+    },
+    "episode_8": {
+      "episode": 8,
+      "score": 0.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 0,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8760,
+        "completion_tokens": 4016,
+        "total_tokens": 12776
+      },
+      "latency": 10.75772438844045
+    },
+    "episode_9": {
+      "episode": 9,
+      "score": 1.0,
+      "timesteps": 30,
+      "performance": {
+        "successful_pick": 1,
+        "successful_drop": 0
+      },
+      "token_usage": {
+        "prompt_tokens": 8656,
+        "completion_tokens": 3201,
+        "total_tokens": 11857
+      },
+      "latency": 8.575876967112224
+    }
+  }
+]

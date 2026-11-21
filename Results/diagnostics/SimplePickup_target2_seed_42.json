@@ -1,0 +1,329 @@
+{
+  "env_name": "SimplePickup",
+  "task_mode": "target2",
+  "seed": 42,
+  "agent_name": "DQN",
+  "total_episodes": 10,
+  "success_count": 10,
+  "fail_count": 0,
+  "analysis_scope": {
+    "do_llm_analysis": true,
+    "do_vae_analysis": false
+  },
+  "timestep_metrics": {
+    "total_imagination_steps": 80,
+    "llm_error_steps": 0,
+    "llm_error_rate_pct": 0.0,
+    "vae_error_steps": null,
+    "vae_error_rate_pct": null
+  },
+  "failure_breakdown": {
+    "LLM_FAILURE": 0,
+    "VAE_FAILURE": 0,
+    "DQN_POLICY_FAILURE": 0
+  },
+  "token_usage": {
+    "prompt_tokens": 91541,
+    "completion_tokens": 74472,
+    "total_tokens": 166013,
+    "cached_tokens_saved": 63685,
+    "avg_tokens_per_episode": 16601.3
+  },
+  "latency_metrics": {
+    "avg_llm_net_latency": 23.209,
+    "avg_llm_response_time": 32.896,
+    "avg_llm_wait_time": 9.563
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "seed": 42,
+      "score": 1.0,
+      "running_average_score": 1.0,
+      "is_success": true,
+      "total_steps": 6,
+      "imagination_steps": 5,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 39.375,
+      "avg_llm_net_latency": 21.203,
+      "avg_llm_wait_time": 17.826,
+      "token_usage": {
+        "prompt_tokens": 8088,
+        "completion_tokens": 7014,
+        "total_tokens": 15102,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 1,
+      "seed": 43,
+      "score": 1.0,
+      "running_average_score": 1.0,
+      "is_success": true,
+      "total_steps": 17,
+      "imagination_steps": 16,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 25.736,
+      "avg_llm_net_latency": 23.691,
+      "avg_llm_wait_time": 1.959,
+      "token_usage": {
+        "prompt_tokens": 10708,
+        "completion_tokens": 2717,
+        "total_tokens": 13425,
+        "cached_tokens": 18983
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 2,
+      "seed": 44,
+      "score": 1.0,
+      "running_average_score": 0.6666666666666666,
+      "is_success": true,
+      "total_steps": 12,
+      "imagination_steps": 11,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 28.413,
+      "avg_llm_net_latency": 25.999,
+      "avg_llm_wait_time": 2.409,
+      "token_usage": {
+        "prompt_tokens": 16195,
+        "completion_tokens": 13583,
+        "total_tokens": 29778,
+        "cached_tokens": 3312
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 3,
+      "seed": 45,
+      "score": 1.0,
+      "running_average_score": 0.75,
+      "is_success": true,
+      "total_steps": 4,
+      "imagination_steps": 3,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 42.274,
+      "avg_llm_net_latency": 12.839,
+      "avg_llm_wait_time": 29.08,
+      "token_usage": {
+        "prompt_tokens": 4868,
+        "completion_tokens": 3042,
+        "total_tokens": 7910,
+        "cached_tokens": 0
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 4,
+      "seed": 46,
+      "score": 1.0,
+      "running_average_score": 0.8,
+      "is_success": true,
+      "total_steps": 4,
+      "imagination_steps": 3,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 15.153,
+      "avg_llm_net_latency": 12.726,
+      "avg_llm_wait_time": 2.423,
+      "token_usage": {
+        "prompt_tokens": 3220,
+        "completion_tokens": 2537,
+        "total_tokens": 5757,
+        "cached_tokens": 2852
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 5,
+      "seed": 47,
+      "score": 1.0,
+      "running_average_score": 0.8333333333333334,
+      "is_success": true,
+      "total_steps": 8,
+      "imagination_steps": 7,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 29.748,
+      "avg_llm_net_latency": 27.311,
+      "avg_llm_wait_time": 2.432,
+      "token_usage": {
+        "prompt_tokens": 6434,
+        "completion_tokens": 7073,
+        "total_tokens": 13507,
+        "cached_tokens": 9974
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 6,
+      "seed": 48,
+      "score": 1.0,
+      "running_average_score": 0.8571428571428571,
+      "is_success": true,
+      "total_steps": 11,
+      "imagination_steps": 10,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 41.889,
+      "avg_llm_net_latency": 26.135,
+      "avg_llm_wait_time": 15.566,
+      "token_usage": {
+        "prompt_tokens": 12968,
+        "completion_tokens": 11477,
+        "total_tokens": 24445,
+        "cached_tokens": 6419
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 7,
+      "seed": 49,
+      "score": 1.0,
+      "running_average_score": 0.875,
+      "is_success": true,
+      "total_steps": 9,
+      "imagination_steps": 8,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 39.578,
+      "avg_llm_net_latency": 37.166,
+      "avg_llm_wait_time": 2.408,
+      "token_usage": {
+        "prompt_tokens": 9698,
+        "completion_tokens": 10357,
+        "total_tokens": 20055,
+        "cached_tokens": 6059
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 8,
+      "seed": 50,
+      "score": 1.0,
+      "running_average_score": 0.8888888888888888,
+      "is_success": true,
+      "total_steps": 11,
+      "imagination_steps": 10,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 40.855,
+      "avg_llm_net_latency": 21.502,
+      "avg_llm_wait_time": 19.112,
+      "token_usage": {
+        "prompt_tokens": 14532,
+        "completion_tokens": 12172,
+        "total_tokens": 26704,
+        "cached_tokens": 3642
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    },
+    {
+      "episode": 9,
+      "seed": 51,
+      "score": 1.0,
+      "running_average_score": 0.9,
+      "is_success": true,
+      "total_steps": 8,
+      "imagination_steps": 7,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 25.939,
+      "avg_llm_net_latency": 23.52,
+      "avg_llm_wait_time": 2.415,
+      "token_usage": {
+        "prompt_tokens": 4830,
+        "completion_tokens": 4500,
+        "total_tokens": 9330,
+        "cached_tokens": 12444
+      },
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 1
+        },
+        "non_rewarding_objects": {
+          "green ball": 0
+        }
+      }
+    }
+  ]
+}

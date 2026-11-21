@@ -1,0 +1,68 @@
+{
+  "env_name": "SimplePickup",
+  "task_mode": "target1",
+  "seed": 0,
+  "agent_name": "DQN",
+  "total_episodes": 1,
+  "success_count": 0,
+  "fail_count": 1,
+  "analysis_scope": {
+    "do_llm_analysis": true,
+    "do_vae_analysis": true
+  },
+  "timestep_metrics": {
+    "total_imagination_steps": 0,
+    "llm_error_steps": 0,
+    "llm_error_rate_pct": 0.0,
+    "vae_error_steps": 0,
+    "vae_error_rate_pct": 0.0
+  },
+  "failure_breakdown": {
+    "LLM_FAILURE": 0,
+    "VAE_FAILURE": 0,
+    "DQN_POLICY_FAILURE": 1
+  },
+  "token_usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "cached_tokens_saved": 0,
+    "avg_tokens_per_episode": 0.0
+  },
+  "latency_metrics": {
+    "avg_llm_net_latency": 0.0,
+    "avg_llm_response_time": 0.0,
+    "avg_llm_wait_time": 0.0
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "seed": 0,
+      "score": -1.0,
+      "running_average_score": -1.0,
+      "is_success": false,
+      "total_steps": 2,
+      "imagination_steps": 0,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "avg_llm_response_time": 0.0,
+      "avg_llm_net_latency": 0.0,
+      "avg_llm_wait_time": 0.0,
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0
+      },
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "purple box": 0
+        },
+        "non_rewarding_objects": {
+          "green ball": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,254 @@
+[
+  {
+    "env": "SimplePickup",
+    "target": "target1",
+    "tok_mean": 1936.4416099158611,
+    "tok_std": 445.5127866117186,
+    "prompt_mean": 1060.8911877786725,
+    "comp_mean": 875.5504221371884,
+    "lat_mean": 27.8556,
+    "lat_std": 1.6084906714059612,
+    "cache_hit_rate_mean": 51.6,
+    "cache_hit_rate_std": 23.008259386576814,
+    "cache_hits_mean": 16.2,
+    "cached_tokens_saved_mean": 76082.2,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "SimplePickup",
+    "target": "target2",
+    "tok_mean": 1760.1678027360988,
+    "tok_std": 572.3669063139005,
+    "prompt_mean": 932.2126288614297,
+    "comp_mean": 827.9551738746692,
+    "lat_mean": 24.8792,
+    "lat_std": 3.6022799669098453,
+    "cache_hit_rate_mean": 59.06,
+    "cache_hit_rate_std": 30.495481632530414,
+    "cache_hits_mean": 26.6,
+    "cached_tokens_saved_mean": 102760.0,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "SimplePickup",
+    "target": "target3",
+    "tok_mean": 1918.35941298572,
+    "tok_std": 392.476271094085,
+    "prompt_mean": 1089.5198778635752,
+    "comp_mean": 825.2001908598497,
+    "lat_mean": 24.7072,
+    "lat_std": 3.4366525224409865,
+    "cache_hit_rate_mean": 51.5,
+    "cache_hit_rate_std": 22.963187931992366,
+    "cache_hits_mean": 15.2,
+    "cached_tokens_saved_mean": 59834.0,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniWorld",
+    "target": "target1",
+    "tok_mean": 2397.543674292406,
+    "tok_std": 356.1377844468511,
+    "prompt_mean": 1346.3291903678885,
+    "comp_mean": 1049.4296075868438,
+    "lat_mean": 31.261799999999994,
+    "lat_std": 8.572988613080039,
+    "cache_hit_rate_mean": 40.92,
+    "cache_hit_rate_std": 38.39309312884285,
+    "cache_hits_mean": 41.2,
+    "cached_tokens_saved_mean": 119656.6,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniWorld",
+    "target": "target2",
+    "tok_mean": 1991.231573784332,
+    "tok_std": 212.55313935948936,
+    "prompt_mean": 1023.1273723485456,
+    "comp_mean": 953.462751893652,
+    "lat_mean": 52.2364,
+    "lat_std": 6.3477453194027875,
+    "cache_hit_rate_mean": 58.480000000000004,
+    "cache_hit_rate_std": 19.31407776726603,
+    "cache_hits_mean": 51.2,
+    "cached_tokens_saved_mean": 448580.0,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniWorld",
+    "target": "target3",
+    "tok_mean": 1537.0183502114553,
+    "tok_std": 715.2183194136746,
+    "prompt_mean": 968.7925371830783,
+    "comp_mean": 563.5886588781793,
+    "lat_mean": 31.3928,
+    "lat_std": 16.12450812149009,
+    "cache_hit_rate_mean": 38.0,
+    "cache_hit_rate_std": 17.29566419655516,
+    "cache_hits_mean": 164.0,
+    "cached_tokens_saved_mean": 386863.6,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "PickEnv",
+    "target": "target",
+    "tok_mean": 3271.6622553981106,
+    "tok_std": 155.31301482277254,
+    "prompt_mean": 1381.2355055679493,
+    "comp_mean": 1610.0805026875798,
+    "lat_mean": 76.9658,
+    "lat_std": 7.661637067885685,
+    "cache_hit_rate_mean": 0.52,
+    "cache_hit_rate_std": 0.664529909033446,
+    "cache_hits_mean": 0.6,
+    "cached_tokens_saved_mean": 1898.8,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniGridRelational",
+    "target": "target1",
+    "tok_mean": 4628.31784715715,
+    "tok_std": 1035.3381728107322,
+    "prompt_mean": 1424.9949987695336,
+    "comp_mean": 3175.2165643013313,
+    "lat_mean": 129.3272,
+    "lat_std": 30.259482384204794,
+    "cache_hit_rate_mean": 28.21999999999999,
+    "cache_hit_rate_std": 29.165075004189514,
+    "cache_hits_mean": 15.2,
+    "cached_tokens_saved_mean": 94349.6,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniGridRelational",
+    "target": "target2",
+    "tok_mean": 2736.430654404559,
+    "tok_std": 353.5017966947498,
+    "prompt_mean": 1323.757711037278,
+    "comp_mean": 1412.6729433672808,
+    "lat_mean": 65.88879999999999,
+    "lat_std": 10.031161077362881,
+    "cache_hit_rate_mean": 19.0,
+    "cache_hit_rate_std": 9.29881712907615,
+    "cache_hits_mean": 27.0,
+    "cached_tokens_saved_mean": 121619.8,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniGridRelational",
+    "target": "target3",
+    "tok_mean": 3298.237115832916,
+    "tok_std": 606.9725877069689,
+    "prompt_mean": 1195.1942153847888,
+    "comp_mean": 2103.042900448127,
+    "lat_mean": 90.2584,
+    "lat_std": 33.951147188865356,
+    "cache_hit_rate_mean": 28.079999999999995,
+    "cache_hit_rate_std": 12.008563611023593,
+    "cache_hits_mean": 41.4,
+    "cached_tokens_saved_mean": 208845.6,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniGridRelational",
+    "target": "target4",
+    "tok_mean": 3500.839663865546,
+    "tok_std": 438.4170366591841,
+    "prompt_mean": 1410.165709192768,
+    "comp_mean": 2090.1030455818686,
+    "lat_mean": 57.129599999999996,
+    "lat_std": 9.646163332641637,
+    "cache_hit_rate_mean": 13.9,
+    "cache_hit_rate_std": 10.293881677967747,
+    "cache_hits_mean": 19.2,
+    "cached_tokens_saved_mean": 79480.0,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  },
+  {
+    "env": "MiniGridRelational",
+    "target": "target5",
+    "tok_mean": 2572.9699622720827,
+    "tok_std": 178.61702589990145,
+    "prompt_mean": 1419.8577033787178,
+    "comp_mean": 1153.112258893365,
+    "lat_mean": 30.6932,
+    "lat_std": 5.503747210764681,
+    "cache_hit_rate_mean": 14.64,
+    "cache_hit_rate_std": 5.999533315183774,
+    "cache_hits_mean": 33.4,
+    "cached_tokens_saved_mean": 123566.4,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      1024
+    ]
+  }
+]
