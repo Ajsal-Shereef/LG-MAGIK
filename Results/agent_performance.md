@@ -1,7 +1,7 @@
 # Agent Performance Evaluation Summary
 
-**Last Updated:** 2026-11-21 11:33:40
-- **Reasoning Engine:** `google/gemma-4-12B-it`
+**Last Updated:** 2026-11-21 11:38:10
+- **Reasoning Engine:** `nvidia/nemotron-3-ultra-550b-a55b`
 - **Episodes per Scenario:** `10`
 - **Total Completed Runs:** `75`
 

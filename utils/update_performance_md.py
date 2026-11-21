@@ -153,7 +153,7 @@ def append_or_update_metric(
     seed: int,
     agent_name: str,
     performance: dict,
-    engine_name: str = "google/gemma-4-12B-it",
+    engine_name: str = "nvidia/nemotron-3-ultra-550b-a55b",
     num_episodes: int = 10,
     episode_records: dict = None,
     cache_file_path: str = None
@@ -220,7 +220,15 @@ def append_or_update_metric(
     render_markdown_report(md_file_path, records, engine_name, num_episodes)
 
 
-def render_markdown_report(md_file_path: str, records: list, engine_name: str, num_episodes: int):
+def render_markdown_report(md_file_path: str, records: list, engine_name: str = None, num_episodes: int = 10):
+    if not engine_name:
+        # Determine dominant engine_name from records
+        engine_counts = {}
+        for r in records:
+            eng = r.get("engine_name")
+            if eng:
+                engine_counts[eng] = engine_counts.get(eng, 0) + 1
+        engine_name = max(engine_counts, key=engine_counts.get) if engine_counts else "nvidia/nemotron-3-ultra-550b-a55b"
     # Sort order for environments
     env_order = ["SimplePickup", "MiniWorld", "MiniWorldNoisy", "PickEnv", "MiniGridRelational"]
     env_display_names = {
@@ -424,7 +432,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--agent_name", type=str, required=True)
     parser.add_argument("--performance_json", type=str, required=True)
-    parser.add_argument("--engine_name", type=str, default="google/gemma-4-12B-it")
+    parser.add_argument("--engine_name", type=str, default="nvidia/nemotron-3-ultra-550b-a55b")
     parser.add_argument("--num_episodes", type=int, default=10)
 
     args = parser.parse_args()

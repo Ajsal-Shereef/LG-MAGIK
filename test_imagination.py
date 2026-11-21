@@ -661,7 +661,7 @@ def main(args: DictConfig) -> None:
                     seed=base_seed,
                     agent_name=args.agent_name,
                     performance=running_perf,
-                    engine_name=args.get("llm_model", "google/gemma-4-12B-it"),
+                    engine_name=args.get("llm_model", "nvidia/nemotron-3-ultra-550b-a55b"),
                     num_episodes=args.num_episode,
                     episode_records=episode_records_map,
                     cache_file_path=cache_file

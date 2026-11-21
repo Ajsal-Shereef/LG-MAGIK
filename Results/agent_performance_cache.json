@@ -9931,7 +9931,7 @@
       },
       "total_tokens": 364525
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-11 22:24:25",
     "episode_0": {
@@ -10257,7 +10257,7 @@
       },
       "total_tokens": 555343
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 00:02:10",
     "episode_0": {
@@ -10583,7 +10583,7 @@
       },
       "total_tokens": 489351
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 01:35:16",
     "episode_0": {
@@ -10909,7 +10909,7 @@
       },
       "total_tokens": 446369
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 02:46:33",
     "episode_0": {
@@ -11235,7 +11235,7 @@
       },
       "total_tokens": 415614
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 03:58:49",
     "episode_0": {
@@ -11561,7 +11561,7 @@
       },
       "total_tokens": 373290
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 05:00:28",
     "episode_0": {
@@ -11887,7 +11887,7 @@
       },
       "total_tokens": 444604
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 06:14:31",
     "episode_0": {
@@ -12213,7 +12213,7 @@
       },
       "total_tokens": 475975
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 07:35:48",
     "episode_0": {
@@ -12539,7 +12539,7 @@
       },
       "total_tokens": 409374
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 08:46:21",
     "episode_0": {
@@ -12865,7 +12865,7 @@
       },
       "total_tokens": 338043
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 09:41:56",
     "episode_0": {
@@ -13191,7 +13191,7 @@
       },
       "total_tokens": 369813
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 10:45:38",
     "episode_0": {
@@ -13517,7 +13517,7 @@
       },
       "total_tokens": 340151
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 11:46:34",
     "episode_0": {
@@ -13843,7 +13843,7 @@
       },
       "total_tokens": 418817
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 13:10:57",
     "episode_0": {
@@ -14169,7 +14169,7 @@
       },
       "total_tokens": 419446
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 14:44:06",
     "episode_0": {
@@ -14495,7 +14495,7 @@
       },
       "total_tokens": 370443
     },
-    "engine_name": "google/gemma-4-12B-it",
+    "engine_name": "nvidia/nemotron-3-ultra-550b-a55b",
     "num_episodes": 10,
     "timestamp": "2026-10-12 16:01:11",
     "episode_0": {

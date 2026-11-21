@@ -9,7 +9,7 @@ result_dir: result
 mode: transfer
 mapping_strategy: "llm" # options: "llm", "retrieval"
 querry_mode: huggingface # Querry mode for LLM. options openrouter/huggingface
-llm_model: "google/gemma-4-12B-it"  #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free, model_weights/FineTunedGemma/final, Qwen/Qwen3.8-27B, google/gemma-4-12B-it, nvidia/nemotron-3-ultra-550b-a55b
+llm_model: "nvidia/nemotron-3-ultra-550b-a55b"  #"qwen/qwen3.6-plus:free", meta-llama/llama-3.3-70b-instruct:free, model_weights/FineTunedGemma/final, Qwen/Qwen3.8-27B, google/gemma-4-12B-it, nvidia/nemotron-3-ultra-550b-a55b
 alternate_llm_model: "nvidia/nemotron-3.5-lightning-30b-a3b"
 secondary_llm_model: "gemini-3.1-pro-preview"
 max_tokens: 6000
