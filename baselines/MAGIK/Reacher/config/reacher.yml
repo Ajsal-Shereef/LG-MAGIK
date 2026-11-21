@@ -1,0 +1,3 @@
+max_steps : 50
+goal_target_idx : 2 # 0 to 3
+reaching_threshold : 0.05

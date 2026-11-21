@@ -1,0 +1,33 @@
+General:
+  env : "SimplePickup"
+  max_ep_len : 20
+  agent_view_size : 3
+  load_model_path : 'models/'
+  datapath : "data"
+  human_label_ratio : 0.5
+Network:
+  dim: 64                 # number of filters in the bottommost layer
+  activ: relu            # activation function [relu/lrelu/prelu/selu/tanh]
+  n_downsample: 2           # number of downsampling layers in content encoder
+  n_res: 2                # number of residual blocks in content encoder/decoder
+  pad_type : reflect          # padding type [zero/reflect]
+  input_dim : 3
+  classifier_hidden_dim : [64] 
+  feature_encoder_hidden : [2048,512]
+  feature_encoder_conv_out_dim : [10,10]
+  h_dim : 128
+  z_dim : 16
+  y_dim : 4
+  epochs : 300
+  batch_size : 100
+  save_freequency : 100
+  lr_model : 5e-4
+  kl_weight_start : 0.01
+  kl_weight_end : 0.1
+  kl_divergence_weight : 0.01
+  label_weight : 5
+  recon_weight : 2
+Test:
+  vae_checkpoint : "models/m2_vae/2025-02-19_12-43-57_HZ4M71/model.pt"
+  agent : "sac"
+  agent_checkpoint : "models/sac_agent/Both/2025-03-11_18-58-25_XXNLA8//SAC_discrete.tar"

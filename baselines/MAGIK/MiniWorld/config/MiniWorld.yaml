@@ -1,0 +1,61 @@
+General:
+  env: "MiniWorld"
+  task_mode: "target3"          # Case 3 of MiniWorld: pick green ball, avoid blue box
+  source_task_mode: "source"    # Source task: pick blue box, avoid green ball
+  size: 10
+  max_steps: 50
+  obs_width: 80
+  obs_height: 80
+  fps: 2.5
+  render_mode: "none"
+  verbose: true
+  observation_mode: "image"
+  caption_mode: "precise"
+  load_model_path: "model_weights/"
+  datapath: "data"
+  human_label_ratio: 0.5
+  num_collect_samples: 150000
+  collect_if_missing: false
+  seed: 42
+  use_wandb: false
+
+Network:
+  dim: 64                       # number of filters in the bottommost layer
+  activ: relu                   # activation function [relu/lrelu/prelu/selu/tanh]
+  n_downsample: 3               # 80x80 -> 40x40 -> 20x20 -> 10x10
+  n_res: 2                      # number of residual blocks in content encoder/decoder
+  pad_type: reflect             # padding type [zero/reflect]
+  input_dim: 3
+  classifier_hidden_dim: [64]
+  feature_encoder_hidden: [2048, 512]
+  feature_encoder_conv_out_dim: [10, 10]
+  h_dim: 128
+  z_dim: 16
+  y_dim: 4                      # 4 classes: [green_ball_only, blue_box_only, both, no_object]
+  epochs: 300
+  batch_size: 100
+  save_freequency: 50
+  lr_model: 5e-4
+  kl_weight_start: 0.01
+  kl_weight_end: 0.1
+  kl_divergence_weight: 0.01
+  label_weight: 5
+  recon_weight: 2
+  hsic_weight: 0.10
+  use_class_weights: true
+
+Test:
+  seed: 42
+  num_episode: 10
+  is_agent: false
+  policy_mode: "single_objects" # "single_objects" (Case 3: pick green ball, avoid blue box) or "all_objects"
+  distractor_mode: "empty"      # "empty" ([0, 0, 0, 1] as in original MAGIK) or "distractor" ([1, 0, 0, 0])
+  agent_name: "PPO"
+  agent_checkpoint: "model_weights/${General.env}/${Test.agent_name}/seed_${Test.seed}/${Test.agent_name}.zip"
+  vae_checkpoint: "model_weights/${General.env}/MAGIK/m2_vae/seed_${General.seed}/model.pt"
+  save_dir: "model_weights/${General.env}/MAGIK/m2_vae/seed_${General.seed}"
+  result_dir: "result"
+  performance_md_file: "Results/baselines/magik.md"
+  cache_file: "Results/baselines/magik_cache.json"
+  deterministic: false
+  run_Swap_viz: true

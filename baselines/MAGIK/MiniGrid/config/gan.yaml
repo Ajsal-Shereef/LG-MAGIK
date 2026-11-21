@@ -1,0 +1,36 @@
+General:
+  env : SimplePickup
+  datapath : data
+  human_label_ratio : 0.015
+
+Network:
+  dim: 64                 # number of filters in the bottommost layer
+  activ: relu            # activation function [relu/lrelu/prelu/selu/tanh]
+  n_downsample: 2           # number of downsampling layers in content encoder
+  n_res: 2                # number of residual blocks in content encoder/decoder
+  pad_type : reflect          # padding type [zero/reflect]
+  input_dim : 3
+  classifier_hidden_dim : [64] 
+  feature_encoder_hidden : [2048,512]
+  feature_encoder_conv_out_dim : [10,10]
+  h_dim : 128
+  z_dim : 16
+  y_dim : 4
+  batch_size : 250
+  epochs : 500
+  save_freequency : 100
+  lambda_disentangle : 0.10
+  aux_reconstruction_loss_weight : 0.10
+  discriminator_lr : 0.0002
+  aux_classifier_lr : 0.0002
+  encoder_lr : 0.0002
+  mapper_hidden_layers : [512, 256, 128]
+  lambda_identity : 5.0    # Strong identity preservation
+  lambda_class : 10.0      # Prioritize classification
+  lambda_sim : 1.0         # Relax similarity initially
+  lambda_cycle : 5.0       # Optional cycle consistency
+
+Test:
+  gan_checkpoint : "model_weights/SimplePickup/MAGIK/gan/2025-05-02_16-42-36_XWSH28/model.pt"
+  agent : "sac"
+  agent_checkpoint : "models/sac_agent/SAC_discrete.tar"

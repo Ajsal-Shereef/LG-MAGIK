@@ -124,70 +124,89 @@ def main(args: DictConfig) -> None:
         project_config=accelerator_project_config,
     )
     if args.mode == "transfer":
-        #Load the vision models
-        vision_model_path = args.vae_model_dir
-        vison_model_dir = os.path.dirname(vision_model_path)
-        if os.path.exists(vison_model_dir + "/config.yaml"):
-            vision_model_args =  OmegaConf.load(vison_model_dir + "/config.yaml")
-            cfg = vision_model_args.models
-        else:
-            raise FileNotFoundError(f"Config file not found in {vison_model_dir}/config.yaml")
-        accelerator.print("Initializing VAE model...")
-        vision_model = instantiate(cfg.model)
-        vision_model.load_params(vision_model_path)
-
-        # Prepare agent for inference
-        vision_model = accelerator.prepare(vision_model)
-        
-        #Setting the VAE model to eval mode
-        vision_model.eval()
-        
-        system_prompt = args.get("system_prompt", "")
-        # Load the .env file if available
-        if load_dotenv is not None and os.path.exists("config/.env"):
-            load_dotenv(dotenv_path="config/.env")
-    
         mapping_strategy = args.get("mapping_strategy", "llm")
         caption_retriever = None
-        if mapping_strategy == "retrieval":
-            from baselines.retrieval_baseline import CaptionRetriever
-            train_dir = cfg.data.train_dir
-            text_encoder_path = cfg.data.get("text_encoder_path", "openai/clip-vit-base-patch32")
-            caption_col = cfg.data.get("caption_column", "text")
-            unwrapped_vm = accelerator.unwrap_model(vision_model)
-            decoder = getattr(unwrapped_vm, "decoder", None)
-            tok = getattr(decoder, "tokenizer", None)
-            enc = getattr(decoder, "text_encoder", None)
-            caption_retriever = CaptionRetriever(
-                train_dir=train_dir,
-                text_encoder_path=text_encoder_path,
-                tokenizer=tok,
-                text_encoder=enc,
-                device=device,
-                caption_column=caption_col,
-                env_name=args.env.name
+        magik_model = None
+        if mapping_strategy == "magik":
+            from baselines.MAGIK.MiniWorld.architectures.m2_vae.dgm import DeepGenerativeModel
+            from baselines.MAGIK.MiniWorld.test_imagination_net import _resolve_vae_checkpoint
+            magik_cfg_path = os.path.join("baselines", "MAGIK", "MiniWorld", "config", "MiniWorld.yaml")
+            magik_cfg = OmegaConf.load(magik_cfg_path)
+            magik_ckpt = _resolve_vae_checkpoint(
+                args.get("magik_vae_model_dir", f"model_weights/{args.env.name}/MAGIK/m2_vae/seed_42/model.pt"),
+                args.env.name,
+                base_seed if base_seed is not None else 42,
             )
+            magik_model = DeepGenerativeModel(magik_cfg.Network).to(device)
+            magik_model.load(magik_ckpt)
+            magik_model.eval()
+            vision_model = None
             api_key = None
             pipe = None
             alternative_pipe = None
-        elif args.querry_mode == "openrouter":
-            # Access the API key
-            api_key = os.getenv('OPENROUTER_API_KEY')
-            pipe = args.llm_model
-            alternative_pipe = args.alternate_llm_model
-        elif args.querry_mode == "huggingface":
-            api_key = None
-            pipe = initialize_llm_hf_pipeline(args.llm_model)
-            alternative_pipe = None
-        elif args.querry_mode == "google":
-            # Access the API key
-            api_key = os.getenv('GOOGLE_API_KEY')
-            pipe = args.llm_model
-            alternative_pipe = args.alternate_llm_model
-        elif args.querry_mode == "nvidia":
-            api_key = os.getenv('NVIDIA_API')
-            pipe = args.llm_model
-            alternative_pipe = args.alternate_llm_model
+        else:
+            #Load the vision models
+            vision_model_path = args.vae_model_dir
+            vison_model_dir = os.path.dirname(vision_model_path)
+            if os.path.exists(vison_model_dir + "/config.yaml"):
+                vision_model_args =  OmegaConf.load(vison_model_dir + "/config.yaml")
+                cfg = vision_model_args.models
+            else:
+                raise FileNotFoundError(f"Config file not found in {vison_model_dir}/config.yaml")
+            accelerator.print("Initializing VAE model...")
+            vision_model = instantiate(cfg.model)
+            vision_model.load_params(vision_model_path)
+
+            # Prepare agent for inference
+            vision_model = accelerator.prepare(vision_model)
+            
+            #Setting the VAE model to eval mode
+            vision_model.eval()
+            
+            system_prompt = args.get("system_prompt", "")
+            # Load the .env file if available
+            if load_dotenv is not None and os.path.exists("config/.env"):
+                load_dotenv(dotenv_path="config/.env")
+        
+            if mapping_strategy == "retrieval":
+                from baselines.retrieval_baseline import CaptionRetriever
+                train_dir = cfg.data.train_dir
+                text_encoder_path = cfg.data.get("text_encoder_path", "openai/clip-vit-base-patch32")
+                caption_col = cfg.data.get("caption_column", "text")
+                unwrapped_vm = accelerator.unwrap_model(vision_model)
+                decoder = getattr(unwrapped_vm, "decoder", None)
+                tok = getattr(decoder, "tokenizer", None)
+                enc = getattr(decoder, "text_encoder", None)
+                caption_retriever = CaptionRetriever(
+                    train_dir=train_dir,
+                    text_encoder_path=text_encoder_path,
+                    tokenizer=tok,
+                    text_encoder=enc,
+                    device=device,
+                    caption_column=caption_col,
+                    env_name=args.env.name
+                )
+                api_key = None
+                pipe = None
+                alternative_pipe = None
+            elif args.querry_mode == "openrouter":
+                # Access the API key
+                api_key = os.getenv('OPENROUTER_API_KEY')
+                pipe = args.llm_model
+                alternative_pipe = args.alternate_llm_model
+            elif args.querry_mode == "huggingface":
+                api_key = None
+                pipe = initialize_llm_hf_pipeline(args.llm_model)
+                alternative_pipe = None
+            elif args.querry_mode == "google":
+                # Access the API key
+                api_key = os.getenv('GOOGLE_API_KEY')
+                pipe = args.llm_model
+                alternative_pipe = args.alternate_llm_model
+            elif args.querry_mode == "nvidia":
+                api_key = os.getenv('NVIDIA_API')
+                pipe = args.llm_model
+                alternative_pipe = args.alternate_llm_model
         
 
     # Get the mission
@@ -230,6 +249,8 @@ def main(args: DictConfig) -> None:
         do_vae_analysis = False
 
     performance_md_file = args.get("performance_md_file", "Results/agent_performance.md")
+    if args.mode == "transfer" and args.get("mapping_strategy", "llm") == "magik" and performance_md_file == "Results/agent_performance.md":
+        performance_md_file = "Results/baselines/magik.md"
     cache_file = args.get("cache_file", None)
     completed_episodes = {}
     if performance_md_file:
@@ -365,6 +386,16 @@ def main(args: DictConfig) -> None:
                     target_caption = info['description']
                     matched_caption, sim_score = caption_retriever.retrieve(target_caption)
                     changed_state, imagined_state = vision_model.imagine(state, matched_caption)
+                elif mapping_strategy == "magik":
+                    from baselines.MAGIK.MiniWorld.helper_functions.utils import magik_imagine_state
+                    imagined_state, pred_cls_idx, did_transform = magik_imagine_state(
+                        model=magik_model,
+                        state_uint8=state,
+                        device=device,
+                    )
+                    if did_transform:
+                        ep_imagination_steps += 1
+                    changed_state = train_transforms(imagined_state)
                 else:
                     called_model = None
                     is_target2_bg_transfer = (task_mode == "target2" and evaluated_env_name in ("SimplePickup", "MiniWorld"))

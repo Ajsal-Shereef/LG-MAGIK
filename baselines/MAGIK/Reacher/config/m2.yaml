@@ -1,0 +1,40 @@
+General:
+  env : "reacher"
+  load_model_path : 'models/'
+  datapath : "data"
+  human_label_ratio : 0.01
+Network:
+  input_dim : 15
+  hidden_dim : 128
+  classifier_hidden_dim : [64]
+  c_residual_hidden_dim : [64]
+  h_dim : 32
+  z_dim : 11
+  y_dim : 4
+  c_residual_dim : 4
+  decoder_hidden_dims : [256,128]
+  epochs : 500
+  batch_size : 1000
+  lr_model : 1e-2
+  kl_weight_start : 0.0005
+  kl_weight_end : 0.001
+  save_freequency : 100
+  label_weight : 1
+  recon_weight : 10
+  hsic_weight : 0.10
+  aux_loss_weight : 0.10
+  kl_divergence_weight : 0.00001
+Test:
+  vae_checkpoint : "model_weights/reacher/MAGIK/VAE/2025-04-29_18-26-00_YRLCRD/model.pt"
+  agent : "sac"
+  agent_checkpoint : "model_weights/reacher/SAC/2025-04-05_12-43-17_ZKJBJH/sac_agent"
+
+  #Good Agent checkpoint: 
+    # model_weights/reacher/SAC/2025-04-05_12-43-17_ZKJBJH/sac_agent
+    # model_weights/reacher/SAC/2025-04-09_08-33-08_ZSZRGQ/sac_agent
+    # model_weights/reacher/SAC/2025-04-09_09-25-29_43FQHE/sac_agent
+  #VAE checkpoint:
+    # model_weights/reacher/MAGIK/VAE/2025-04-23_14-59-55_BFFNES/model.pt
+    # model_weights/reacher/MAGIK/VAE/2025-04-23_15-24-56_UXMJ3C/model.pt
+    # model_weights/reacher/MAGIK/VAE/2025-04-23_16-11-11_NMZAW3/model.pt
+    # model_weights/reacher/MAGIK/VAE/2025-04-24_09-31-40_S8KM98/model.pt
