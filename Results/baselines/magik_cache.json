@@ -1,0 +1,1147 @@
+[
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 42,
+    "agent_name": "MAGIK_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 0
+      },
+      "non_rewarding_objects": {
+        "box": 0
+      },
+      "running_average_score": 1.9774815623270634,
+      "success_rate": 0.0,
+      "total_imagination_steps": 402,
+      "llm_error_steps": 0,
+      "vae_error_steps": 1,
+      "llm_error_rate_pct": 0.0,
+      "vae_error_rate_pct": 0.25,
+      "failure_breakdown": {
+        "LLM_FAILURE": 0,
+        "VAE_FAILURE": 1,
+        "DQN_POLICY_FAILURE": 9
+      }
+    },
+    "engine_name": "MAGIK (M2-VAE)",
+    "num_episodes": 10,
+    "timestamp": "2026-11-22 11:59:22",
+    "episode_0": {
+      "episode": 0,
+      "seed": 42,
+      "score": 2.6725083121498256,
+      "running_average_score": 2.6725083121498256,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 39,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_1": {
+      "episode": 1,
+      "seed": 43,
+      "score": 3.1087626003398645,
+      "running_average_score": 2.890635456244845,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 42,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_2": {
+      "episode": 2,
+      "seed": 44,
+      "score": 2.308917899502115,
+      "running_average_score": 2.696729603997268,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 38,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_3": {
+      "episode": 3,
+      "seed": 45,
+      "score": 2.8378568309831547,
+      "running_average_score": 2.73201141074374,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 43,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_4": {
+      "episode": 4,
+      "seed": 46,
+      "score": 0.0,
+      "running_average_score": 2.185609128594992,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 37,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_5": {
+      "episode": 5,
+      "seed": 47,
+      "score": 3.103325667234139,
+      "running_average_score": 2.3385618850348497,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 46,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_6": {
+      "episode": 6,
+      "seed": 48,
+      "score": 1.9180557109213692,
+      "running_average_score": 2.27848957444721,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 33,
+      "llm_errors": 0,
+      "vae_errors": 1,
+      "failure_cause": "VAE_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_7": {
+      "episode": 7,
+      "seed": 49,
+      "score": 1.1456999314046317,
+      "running_average_score": 2.1368908690668875,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 44,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_8": {
+      "episode": 8,
+      "seed": 50,
+      "score": 2.3371994063506616,
+      "running_average_score": 2.159147373209529,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 43,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_9": {
+      "episode": 9,
+      "seed": 51,
+      "score": 0.34248926438487337,
+      "running_average_score": 1.9774815623270634,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 37,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 123,
+    "agent_name": "MAGIK_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 1
+      },
+      "non_rewarding_objects": {
+        "box": 3
+      },
+      "running_average_score": -0.23972818987205793,
+      "success_rate": 10.0,
+      "total_imagination_steps": 355,
+      "llm_error_steps": 0,
+      "vae_error_steps": 0,
+      "llm_error_rate_pct": 0.0,
+      "vae_error_rate_pct": 0.0,
+      "failure_breakdown": {
+        "LLM_FAILURE": 0,
+        "VAE_FAILURE": 0,
+        "DQN_POLICY_FAILURE": 9
+      }
+    },
+    "engine_name": "MAGIK (M2-VAE)",
+    "num_episodes": 10,
+    "timestamp": "2026-11-22 12:00:23",
+    "episode_0": {
+      "episode": 0,
+      "seed": 123,
+      "score": 2.7327268106512284,
+      "running_average_score": 2.7327268106512284,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 50,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_1": {
+      "episode": 1,
+      "seed": 124,
+      "score": 2.843744193969511,
+      "running_average_score": 2.7882355023103695,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 41,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_2": {
+      "episode": 2,
+      "seed": 125,
+      "score": -9.413620735360828,
+      "running_average_score": -1.2790499102466963,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 28,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_3": {
+      "episode": 3,
+      "seed": 126,
+      "score": 12.302400794376315,
+      "running_average_score": 2.1163127659090564,
+      "is_success": true,
+      "total_steps": 34,
+      "imagination_steps": 25,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 1
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_4": {
+      "episode": 4,
+      "seed": 127,
+      "score": 1.4310833427906178,
+      "running_average_score": 1.9792668812853687,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 23,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_5": {
+      "episode": 5,
+      "seed": 128,
+      "score": -10.0,
+      "running_average_score": -0.017277598928859383,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 26,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_6": {
+      "episode": 6,
+      "seed": 129,
+      "score": -9.700768670372572,
+      "running_average_score": -1.4006334662779611,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 41,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_7": {
+      "episode": 7,
+      "seed": 130,
+      "score": 2.495763091099695,
+      "running_average_score": -0.9135838966057541,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 32,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_8": {
+      "episode": 8,
+      "seed": 131,
+      "score": 0.6028873609393637,
+      "running_average_score": -0.7450870902118522,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 45,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_9": {
+      "episode": 9,
+      "seed": 132,
+      "score": 4.30850191318609,
+      "running_average_score": -0.23972818987205793,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 44,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 456,
+    "agent_name": "MAGIK_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 0
+      },
+      "non_rewarding_objects": {
+        "box": 0
+      },
+      "running_average_score": 1.107003988718946,
+      "success_rate": 0.0,
+      "total_imagination_steps": 303,
+      "llm_error_steps": 0,
+      "vae_error_steps": 0,
+      "llm_error_rate_pct": 0.0,
+      "vae_error_rate_pct": 0.0,
+      "failure_breakdown": {
+        "LLM_FAILURE": 0,
+        "VAE_FAILURE": 0,
+        "DQN_POLICY_FAILURE": 10
+      }
+    },
+    "engine_name": "MAGIK (M2-VAE)",
+    "num_episodes": 10,
+    "timestamp": "2026-11-22 12:01:36",
+    "episode_0": {
+      "episode": 0,
+      "seed": 456,
+      "score": 1.9499914731061025,
+      "running_average_score": 1.9499914731061025,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 36,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_1": {
+      "episode": 1,
+      "seed": 457,
+      "score": 0.0,
+      "running_average_score": 0.9749957365530513,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 22,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_2": {
+      "episode": 2,
+      "seed": 458,
+      "score": 2.1686946252628045,
+      "running_average_score": 1.372895366122969,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 32,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_3": {
+      "episode": 3,
+      "seed": 459,
+      "score": 0.6046076439322778,
+      "running_average_score": 1.1808234355752962,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 32,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_4": {
+      "episode": 4,
+      "seed": 460,
+      "score": 1.2704669108310223,
+      "running_average_score": 1.1987521306264415,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 16,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_5": {
+      "episode": 5,
+      "seed": 461,
+      "score": 1.866989093912781,
+      "running_average_score": 1.3101249578408314,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 37,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_6": {
+      "episode": 6,
+      "seed": 462,
+      "score": 1.0212459319119134,
+      "running_average_score": 1.2688565255652715,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 25,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_7": {
+      "episode": 7,
+      "seed": 463,
+      "score": 0.02201707497291583,
+      "running_average_score": 1.113001594241227,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 50,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_8": {
+      "episode": 8,
+      "seed": 464,
+      "score": 1.0276854257518788,
+      "running_average_score": 1.1035220199646327,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 38,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_9": {
+      "episode": 9,
+      "seed": 465,
+      "score": 1.1383417075077653,
+      "running_average_score": 1.107003988718946,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 15,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 789,
+    "agent_name": "MAGIK_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 1
+      },
+      "non_rewarding_objects": {
+        "box": 1
+      },
+      "running_average_score": 1.945454157303813,
+      "success_rate": 10.0,
+      "total_imagination_steps": 333,
+      "llm_error_steps": 0,
+      "vae_error_steps": 1,
+      "llm_error_rate_pct": 0.0,
+      "vae_error_rate_pct": 0.3,
+      "failure_breakdown": {
+        "LLM_FAILURE": 0,
+        "VAE_FAILURE": 1,
+        "DQN_POLICY_FAILURE": 8
+      }
+    },
+    "engine_name": "MAGIK (M2-VAE)",
+    "num_episodes": 10,
+    "timestamp": "2026-11-22 12:02:50",
+    "episode_0": {
+      "episode": 0,
+      "seed": 789,
+      "score": -9.144599260826052,
+      "running_average_score": -9.144599260826052,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 31,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_1": {
+      "episode": 1,
+      "seed": 790,
+      "score": 12.618608102669914,
+      "running_average_score": 1.7370044209219309,
+      "is_success": true,
+      "total_steps": 30,
+      "imagination_steps": 25,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 1
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_2": {
+      "episode": 2,
+      "seed": 791,
+      "score": 0.4462731953650829,
+      "running_average_score": 1.3067606790696482,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 34,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_3": {
+      "episode": 3,
+      "seed": 792,
+      "score": 1.1508382153392787,
+      "running_average_score": 1.2677800631370557,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 30,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_4": {
+      "episode": 4,
+      "seed": 793,
+      "score": 0.5428895179996265,
+      "running_average_score": 1.1228019541095697,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 24,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_5": {
+      "episode": 5,
+      "seed": 794,
+      "score": 2.082234355928027,
+      "running_average_score": 1.282707354412646,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 45,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_6": {
+      "episode": 6,
+      "seed": 795,
+      "score": 2.957007054117031,
+      "running_average_score": 1.5218930257989867,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 42,
+      "llm_errors": 0,
+      "vae_errors": 1,
+      "failure_cause": "VAE_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_7": {
+      "episode": 7,
+      "seed": 796,
+      "score": 2.197417488151115,
+      "running_average_score": 1.6063335835930028,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 27,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_8": {
+      "episode": 8,
+      "seed": 797,
+      "score": 3.685097188154633,
+      "running_average_score": 1.837307317433184,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 33,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_9": {
+      "episode": 9,
+      "seed": 798,
+      "score": 2.918775716139474,
+      "running_average_score": 1.945454157303813,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 42,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    }
+  },
+  {
+    "env_name": "MiniWorld",
+    "task_mode": "target3",
+    "seed": 1024,
+    "agent_name": "MAGIK_PPO",
+    "performance": {
+      "rewarding_objects": {
+        "ball": 1
+      },
+      "non_rewarding_objects": {
+        "box": 3
+      },
+      "running_average_score": -0.25916938513887483,
+      "success_rate": 10.0,
+      "total_imagination_steps": 307,
+      "llm_error_steps": 0,
+      "vae_error_steps": 9,
+      "llm_error_rate_pct": 0.0,
+      "vae_error_rate_pct": 2.93,
+      "failure_breakdown": {
+        "LLM_FAILURE": 0,
+        "VAE_FAILURE": 4,
+        "DQN_POLICY_FAILURE": 5
+      }
+    },
+    "engine_name": "MAGIK (M2-VAE)",
+    "num_episodes": 10,
+    "timestamp": "2026-11-22 12:04:04",
+    "episode_0": {
+      "episode": 0,
+      "seed": 1024,
+      "score": 2.1319961897578072,
+      "running_average_score": 2.1319961897578072,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 27,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_1": {
+      "episode": 1,
+      "seed": 1025,
+      "score": -9.177003892948624,
+      "running_average_score": -3.522503851595409,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 27,
+      "llm_errors": 0,
+      "vae_errors": 3,
+      "failure_cause": "VAE_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_2": {
+      "episode": 2,
+      "seed": 1026,
+      "score": 2.5073181798907003,
+      "running_average_score": -1.5125631744333725,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 31,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_3": {
+      "episode": 3,
+      "seed": 1027,
+      "score": 2.1240377127062944,
+      "running_average_score": -0.6034129526484557,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 20,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_4": {
+      "episode": 4,
+      "seed": 1028,
+      "score": 3.165214467476727,
+      "running_average_score": 0.1503125313765808,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 30,
+      "llm_errors": 0,
+      "vae_errors": 3,
+      "failure_cause": "VAE_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_5": {
+      "episode": 5,
+      "seed": 1029,
+      "score": -10.0,
+      "running_average_score": -1.5414062238528494,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 32,
+      "llm_errors": 0,
+      "vae_errors": 1,
+      "failure_cause": "VAE_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_6": {
+      "episode": 6,
+      "seed": 1030,
+      "score": 0.7568594570433984,
+      "running_average_score": -1.2130825551533853,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 36,
+      "llm_errors": 0,
+      "vae_errors": 2,
+      "failure_cause": "VAE_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_7": {
+      "episode": 7,
+      "seed": 1031,
+      "score": 10.515164423970319,
+      "running_average_score": 0.25294831723707767,
+      "is_success": true,
+      "total_steps": 32,
+      "imagination_steps": 26,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "SUCCESS",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 1
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    },
+    "episode_8": {
+      "episode": 8,
+      "seed": 1032,
+      "score": -6.801653614501446,
+      "running_average_score": -0.5308963418449806,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 50,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 1
+        }
+      }
+    },
+    "episode_9": {
+      "episode": 9,
+      "seed": 1033,
+      "score": 2.1863732252160766,
+      "running_average_score": -0.25916938513887483,
+      "is_success": false,
+      "total_steps": 50,
+      "imagination_steps": 28,
+      "llm_errors": 0,
+      "vae_errors": 0,
+      "failure_cause": "DQN_POLICY_FAILURE",
+      "performance": {
+        "rewarding_objects": {
+          "ball": 0
+        },
+        "non_rewarding_objects": {
+          "box": 0
+        }
+      }
+    }
+  }
+]

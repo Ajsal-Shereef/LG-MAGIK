@@ -84,7 +84,7 @@ class Decoder(nn.Module):
         # use reflection padding in the last conv layer
         self.upsample_layers.add_module(
             "Conv2dBlock_{}".format(n_upsample),
-            Conv2dBlock(dim, output_dim, 7, 1, 3, norm="none", activation="tanh", pad_type=pad_type),
+            Conv2dBlock(dim, output_dim, 7, 1, 3, norm="none", activation="none", pad_type=pad_type),
         )
         # Final FiLM layer
         self.flim2 = FiLM(output_dim, y_dim)

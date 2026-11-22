@@ -196,7 +196,7 @@ class DeepGenerativeModel(nn.Module):
     def L(self, x, x_recon, mu_z, logvar_z, y, logits_c, x_c, ws_weight, kl_weight):
         # Reconstruction loss
         recon_loss = F.mse_loss(x_recon, x, reduction="none")
-        recon_loss = torch.mean(recon_loss.sum(dim=-1))
+        recon_loss = torch.mean(recon_loss.sum(dim=[-1, -2, -3]))
         # KL divergence for z
         kl_z = self.kl_divergence_z(mu_z, logvar_z)
         # KL divergence for c
@@ -257,12 +257,12 @@ class DeepGenerativeModel(nn.Module):
                 indent=2,
             )
 
-    def load(self, model_dir):
+    def load(self, model_dir, strict=False):
         target_device = next(self.parameters()).device if list(self.parameters()) else device
         if os.path.isdir(model_dir):
             model_dir = os.path.join(model_dir, "model.pt")
         params = torch.load(model_dir, map_location=target_device, weights_only=True)
         if isinstance(params, dict) and "state_dict" in params:
             params = params["state_dict"]
-        self.load_state_dict(params)
+        self.load_state_dict(params, strict=strict)
         print("[INFO] MAGIK M2-VAE model loaded from:", model_dir)

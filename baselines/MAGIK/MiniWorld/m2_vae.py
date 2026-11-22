@@ -46,6 +46,13 @@ def main(args: DictConfig) -> None:
     seed = int(args.General.get("seed", 42))
     seed_all(seed)
 
+    if torch.cuda.is_available():
+        use_benchmark = bool(args.Network.get("cudnn_benchmark", True))
+        torch.backends.cudnn.benchmark = use_benchmark
+        if hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision("high")
+        print(f"[INFO] cuDNN benchmark: {torch.backends.cudnn.benchmark}, TF32 precision: high")
+
     use_wandb = bool(args.General.get("use_wandb", False))
     if use_wandb:
         import wandb
@@ -59,6 +66,7 @@ def main(args: DictConfig) -> None:
     datasets, class_probs = load_miniworld_magik_dataset(
         datapath=args.General.datapath,
         env_name=args.General.env,
+        data_sub_dir=args.General.get("data_sub_dir", "MAGIK"),
         collect_if_missing=bool(args.General.get("collect_if_missing", False)),
         env_cfg=OmegaConf.to_container(args.General, resolve=True),
         num_samples=int(args.General.get("num_collect_samples", 150000)),
@@ -114,6 +122,32 @@ def main(args: DictConfig) -> None:
             print("[INFO] Balanced class weights:", cw)
 
     batch_size = int(args.Network.batch_size)
+    slurm_cpus = os.environ.get("SLURM_CPUS_PER_TASK") or os.environ.get("SLURM_CPUS_ON_NODE")
+    if slurm_cpus:
+        total_cpus = int(slurm_cpus)
+    else:
+        try:
+            total_cpus = len(os.sched_getaffinity(0))
+        except Exception:
+            total_cpus = os.cpu_count() or 8
+
+    # Set PyTorch intra-op threads to match requested CPU allocation
+    torch.set_num_threads(max(1, total_cpus))
+
+    cfg_workers = args.Network.get("num_workers", "auto")
+    if str(cfg_workers).lower() in ("auto", "none"):
+        # Two simultaneous DataLoaders (unlabelled and labelled):
+        # allocate half to each so total workers match the requested CPUs
+        num_workers = max(1, total_cpus // 2)
+    else:
+        num_workers = int(cfg_workers)
+
+    pin_memory = bool(args.Network.get("pin_memory", True))
+    print(
+        f"[INFO] CPUs allocated: {total_cpus} (PyTorch threads: {torch.get_num_threads()}). "
+        f"DataLoader workers per loader: {num_workers} ({num_workers * 2} total across labelled/unlabelled)."
+    )
+
     unlabelled_ds = TwoListDataset(unlabelled_data, unused_labels)
     labelled_ds = TwoListDataset(labelled_data, labels)
 
@@ -121,10 +155,22 @@ def main(args: DictConfig) -> None:
     drop_last_l = len(labelled_ds) > batch_size
 
     unlabelled_data_loader = DataLoader(
-        unlabelled_ds, batch_size=batch_size, shuffle=True, drop_last=drop_last_u
+        unlabelled_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=drop_last_u,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
     )
     labelled_data_loader = DataLoader(
-        labelled_ds, batch_size=batch_size, shuffle=True, drop_last=drop_last_l
+        labelled_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=drop_last_l,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
     )
 
     model = DeepGenerativeModel(args.Network, class_weights=class_weights_tensor).to(device)
@@ -144,10 +190,22 @@ def main(args: DictConfig) -> None:
         for (unlabelled, unused_lbls), (labelled, lbls) in zip(
             unlabelled_data_loader, cycle(labelled_data_loader)
         ):
-            x = Variable(labelled).to(device).float()
-            y = Variable(lbls).to(device).float()
-            u = Variable(unlabelled).to(device).float()
-            uy = Variable(unused_lbls).to(device).float()
+            # Asynchronous GPU transfer with pinned memory
+            if labelled.dtype == torch.uint8:
+                x = labelled.to(device, non_blocking=True).float().div_(255.0)
+            else:
+                x = labelled.to(device, non_blocking=True).float()
+                if x.max() > 1.0:
+                    x = x / 255.0
+            y = lbls.to(device, non_blocking=True).float()
+
+            if unlabelled.dtype == torch.uint8:
+                u = unlabelled.to(device, non_blocking=True).float().div_(255.0)
+            else:
+                u = unlabelled.to(device, non_blocking=True).float()
+                if u.max() > 1.0:
+                    u = u / 255.0
+            uy = unused_lbls.to(device, non_blocking=True).float()
 
             x_reconstructed, x_z, x_z_mu, x_z_log_var, x_c_logits, x_c = model(x, y)
             kl_divergence_weight = float(args.Network.kl_divergence_weight)

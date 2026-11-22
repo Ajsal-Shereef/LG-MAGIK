@@ -39,7 +39,7 @@ def resolve_project_path(path: str) -> str:
     return path
 
 
-def get_magik_class(obs: np.ndarray, caption: str = None) -> np.ndarray:
+def get_magik_class(obs: np.ndarray, caption: str = None, min_pixel_threshold: int = 20) -> np.ndarray:
     """
     Computes the 4-way one-hot MAGIK class label for MiniWorld (Source & Case 3):
       - Class 0 ([1, 0, 0, 0]): Only green ball is visible (Case 3 target / Source distractor)
@@ -48,6 +48,8 @@ def get_magik_class(obs: np.ndarray, caption: str = None) -> np.ndarray:
       - Class 3 ([0, 0, 0, 1]): No objects are visible in the current view
 
     Uses the exact RGB color bounds defined in `PickObjectEnv.get_class` (`env/MiniWorld.py`).
+    Requires at least `min_pixel_threshold` (default: 20) pixels matching color bounds to
+    prevent edge-grazing viewport slivers from misclassifying views.
     """
     if obs is not None:
         obs_img = np.asarray(obs)
@@ -64,8 +66,8 @@ def get_magik_class(obs: np.ndarray, caption: str = None) -> np.ndarray:
         green_lower, green_upper = np.array([0, 120, 0]), np.array([20, 255, 20])
         blue_lower, blue_upper = np.array([0, 0, 120]), np.array([20, 20, 255])
 
-        has_green = int(np.sum(np.all((obs_img >= green_lower) & (obs_img <= green_upper), axis=-1))) > 2
-        has_blue = int(np.sum(np.all((obs_img >= blue_lower) & (obs_img <= blue_upper), axis=-1))) > 2
+        has_green = int(np.sum(np.all((obs_img >= green_lower) & (obs_img <= green_upper), axis=-1))) >= min_pixel_threshold
+        has_blue = int(np.sum(np.all((obs_img >= blue_lower) & (obs_img <= blue_upper), axis=-1))) >= min_pixel_threshold
     elif caption is not None:
         cap_low = caption.lower()
         has_green = "green ball" in cap_low
@@ -237,27 +239,44 @@ class Dataset(Dataset):
 
 class TwoListDataset(Dataset):
     def __init__(self, list1, list2):
-        self.list1 = list1
-        self.list2 = list2
+        if isinstance(list1, np.ndarray):
+            if list1.ndim == 4 and list1.shape[-1] == 3 and list1.shape[1] != 3:
+                list1 = np.transpose(list1, (0, 3, 1, 2))
+            self.list1 = torch.from_numpy(np.ascontiguousarray(list1))
+        elif isinstance(list1, (list, tuple)) and len(list1) > 0 and isinstance(list1[0], np.ndarray):
+            arr = np.stack(list1, axis=0)
+            if arr.ndim == 4 and arr.shape[-1] == 3 and arr.shape[1] != 3:
+                arr = np.transpose(arr, (0, 3, 1, 2))
+            self.list1 = torch.from_numpy(np.ascontiguousarray(arr))
+        elif torch.is_tensor(list1):
+            self.list1 = list1
+        else:
+            self.list1 = list1
+
+        if isinstance(list2, np.ndarray):
+            self.list2 = torch.from_numpy(np.ascontiguousarray(list2)).float()
+        elif torch.is_tensor(list2):
+            self.list2 = list2.float()
+        else:
+            self.list2 = list2
 
     def __len__(self):
         return len(self.list1)
 
     def __getitem__(self, idx):
-        x = _to_chw_float_tensor(self.list1[idx])
+        x = self.list1[idx]
         y = self.list2[idx]
-        if isinstance(y, np.ndarray):
-            y = torch.from_numpy(y).float()
-        elif not torch.is_tensor(y):
-            y = torch.tensor(y, dtype=torch.float32)
-        else:
-            y = y.float()
+        if not torch.is_tensor(x):
+            x = _to_chw_float_tensor(x)
+        if not torch.is_tensor(y):
+            y = torch.as_tensor(y, dtype=torch.float32)
         return x, y
 
 
 def load_miniworld_magik_dataset(
     datapath: str = "data",
     env_name: str = "MiniWorld",
+    data_sub_dir: str = "MAGIK",
     collect_if_missing: bool = False,
     env_cfg: dict = None,
     num_samples: int = 150000,
@@ -266,19 +285,27 @@ def load_miniworld_magik_dataset(
     """
     Loads (datasets, class_probs) for training MAGIK's M2-VAE on MiniWorld.
     Supports:
-      1. Pre-saved MAGIK pickle files: `data/{env_name}/Random/data.pkl` and `class_prob.pkl`
+      1. Pre-saved MAGIK pickle files: `data/{env_name}/{data_sub_dir}/data.pkl` and `class_prob.pkl`
+         (default: `data/{env_name}/MAGIK/`)
       2. Existing PRISM image datasets: `data/{env_name}/agent/images`, `data/{env_name}/images`,
-         or `data/{env_name}/Random/vae/domain_2/images` (automatically computes the 4-way one-hot
+         or `data/{env_name}/MAGIK/vae/domain_2/images` (automatically computes the 4-way one-hot
          MAGIK class labels for each image and caches `.pkl` files)
       3. On-the-fly collection from `PickObjectEnv` (`env/MiniWorld.py` in `source` task_mode)
          if `collect_if_missing=True`
     """
     base_data_dir = resolve_project_path(os.path.join(datapath, env_name))
-    pkl_dir = os.path.join(base_data_dir, "Random")
+    pkl_dir = os.path.join(base_data_dir, data_sub_dir)
     data_pkl_path = os.path.join(pkl_dir, "data.pkl")
     cls_pkl_path = os.path.join(pkl_dir, "class_prob.pkl")
 
-    # 1. Check for existing MAGIK pickle files
+    # 1. Check for existing MAGIK pickle files (with fallback to Random if present)
+    if not (os.path.isfile(data_pkl_path) and os.path.isfile(cls_pkl_path)):
+        fallback_dir = os.path.join(base_data_dir, "Random")
+        if os.path.isfile(os.path.join(fallback_dir, "data.pkl")) and os.path.isfile(os.path.join(fallback_dir, "class_prob.pkl")):
+            pkl_dir = fallback_dir
+            data_pkl_path = os.path.join(pkl_dir, "data.pkl")
+            cls_pkl_path = os.path.join(pkl_dir, "class_prob.pkl")
+
     if os.path.isfile(data_pkl_path) and os.path.isfile(cls_pkl_path):
         print(f"[INFO] Loading MAGIK dataset from {data_pkl_path} and {cls_pkl_path}...")
         datasets = get_data(data_pkl_path)
@@ -289,6 +316,7 @@ def load_miniworld_magik_dataset(
     candidate_dirs = [
         os.path.join(base_data_dir, "agent"),
         base_data_dir,
+        os.path.join(base_data_dir, data_sub_dir, "vae", "domain_2"),
         os.path.join(base_data_dir, "Random", "vae", "domain_2"),
     ]
     found_img_dir = None
@@ -402,3 +430,36 @@ def write_video(frames, episode, dump_dir, frameSize=(160, 80)):
             img = cv2.resize(img, frameSize)
         video.write(img)
     video.release()
+
+
+def draw_random_samples_from_dataset(
+    datapath: str = "data",
+    env_name: str = "MiniWorld",
+    num_samples: int = 32,
+    save_path: str = "visualizations/sample_32_images.png",
+    mode: str = "random",
+    seed: int = 42,
+    nrows: int = 4,
+    ncols: int = 8,
+):
+    """
+    Loads the dataset for `env_name` and visualizes `num_samples` (default 32) random images with labels.
+    """
+    from .visualize import draw_random_labeled_samples
+    datasets, class_probs = load_miniworld_magik_dataset(
+        datapath=datapath,
+        env_name=env_name,
+        collect_if_missing=False,
+    )
+    return draw_random_labeled_samples(
+        images=datasets,
+        labels=class_probs,
+        num_samples=num_samples,
+        save_path=save_path,
+        class_names=MAGIK_CLASS_NAMES,
+        mode=mode,
+        seed=seed,
+        nrows=nrows,
+        ncols=ncols,
+    )
+

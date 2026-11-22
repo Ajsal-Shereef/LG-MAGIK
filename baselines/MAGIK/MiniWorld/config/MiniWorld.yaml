@@ -13,11 +13,12 @@ General:
   caption_mode: "precise"
   load_model_path: "model_weights/"
   datapath: "data"
+  data_sub_dir: "MAGIK"
   human_label_ratio: 0.5
   num_collect_samples: 150000
   collect_if_missing: false
   seed: 42
-  use_wandb: false
+  use_wandb: true
 
 Network:
   dim: 64                       # number of filters in the bottommost layer
@@ -29,18 +30,21 @@ Network:
   classifier_hidden_dim: [64]
   feature_encoder_hidden: [2048, 512]
   feature_encoder_conv_out_dim: [10, 10]
-  h_dim: 128
-  z_dim: 16
+  h_dim: 256
+  z_dim: 64
   y_dim: 4                      # 4 classes: [green_ball_only, blue_box_only, both, no_object]
   epochs: 300
   batch_size: 100
+  num_workers: auto
+  pin_memory: true
+  cudnn_benchmark: true
   save_freequency: 50
   lr_model: 5e-4
   kl_weight_start: 0.01
   kl_weight_end: 0.1
   kl_divergence_weight: 0.01
-  label_weight: 5
-  recon_weight: 2
+  label_weight: 1.0
+  recon_weight: 5.0
   hsic_weight: 0.10
   use_class_weights: true
 

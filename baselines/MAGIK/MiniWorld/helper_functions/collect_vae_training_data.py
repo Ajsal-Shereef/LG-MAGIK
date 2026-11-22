@@ -48,6 +48,12 @@ def parse_arguments():
         help="Maximum steps per episode during collection (default: 50)",
     )
     parser.add_argument(
+        "--data-sub-dir",
+        type=str,
+        default="MAGIK",
+        help="Subdirectory for MAGIK dataset pickle files (default: MAGIK)",
+    )
+    parser.add_argument(
         "--force-collect",
         action="store_true",
         help="Force fresh data collection from PickObjectEnv even if PRISM images exist",
@@ -71,7 +77,7 @@ def main():
 
     if args.force_collect:
         base_data_dir = resolve_project_path(os.path.join(args.datapath, args.env))
-        pkl_dir = os.path.join(base_data_dir, "Random")
+        pkl_dir = os.path.join(base_data_dir, args.data_sub_dir)
         for fname in ("data.pkl", "class_prob.pkl"):
             fpath = os.path.join(pkl_dir, fname)
             if os.path.exists(fpath):
@@ -80,6 +86,7 @@ def main():
     datasets, class_probs = load_miniworld_magik_dataset(
         datapath=args.datapath,
         env_name=args.env,
+        data_sub_dir=args.data_sub_dir,
         collect_if_missing=True,
         env_cfg=env_cfg,
         num_samples=args.samples,

@@ -547,7 +547,7 @@ class PickObjectEnv(MiniWorldEnv):
     def get_performance_metric(self):
         return self.agent_performance
     
-    def get_class(self, obs=None, thresholds=None):
+    def get_class(self, obs=None, thresholds=None, min_pixel_threshold=20):
         if obs is None:
             obs = self.obs
         if thresholds is None:
@@ -560,7 +560,7 @@ class PickObjectEnv(MiniWorldEnv):
         detected = []
         for color, bounds in thresholds.items():
             mask = np.all((obs >= bounds['lower']) & (obs <= bounds['upper']), axis=-1)
-            if np.sum(mask) > 2:
+            if np.sum(mask) >= min_pixel_threshold:
                 detected.append(color)
                 
         obj_cls = [0] * (len(COLOR_TO_OBJECT) + 1)  # +1 for 'no object' class

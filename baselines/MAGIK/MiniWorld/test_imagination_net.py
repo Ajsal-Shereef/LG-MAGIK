@@ -3,10 +3,12 @@ import sys
 
 MINIWORLD_MAGIK_DIR = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(MINIWORLD_MAGIK_DIR, "../../.."))
-if MINIWORLD_MAGIK_DIR not in sys.path:
-    sys.path.insert(0, MINIWORLD_MAGIK_DIR)
+while sys.path and os.path.abspath(sys.path[0]) == MINIWORLD_MAGIK_DIR:
+    sys.path.pop(0)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+if MINIWORLD_MAGIK_DIR not in sys.path:
+    sys.path.append(MINIWORLD_MAGIK_DIR)
 
 import copy
 import glob
@@ -17,7 +19,7 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-from helper_functions.utils import (
+from baselines.MAGIK.MiniWorld.helper_functions.utils import (
     Dataset,
     get_magik_class,
     magik_imagine_state,
@@ -25,8 +27,8 @@ from helper_functions.utils import (
     resolve_project_path,
     MAGIK_CLASS_NAMES,
 )
-from helper_functions.visualize import Visualizer
-from architectures.m2_vae.dgm import DeepGenerativeModel
+from baselines.MAGIK.MiniWorld.helper_functions.visualize import Visualizer
+from baselines.MAGIK.MiniWorld.architectures.m2_vae.dgm import DeepGenerativeModel
 from utils.update_performance_md import (
     get_completed_episodes_from_cache,
     append_or_update_metric,
