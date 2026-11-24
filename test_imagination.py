@@ -329,7 +329,7 @@ def main(args: DictConfig) -> None:
                             )
                 if evaluated_env_name == "MiniWorldNoisy":
                     # Capture the frame
-                    frame = state
+                    frame = state["image"] if isinstance(state, dict) else state
                     # Encode the frame
                     base64_image = encode_image(frame)
                     
@@ -544,12 +544,23 @@ def main(args: DictConfig) -> None:
                                     binary_mask=vae_res.get("metrics", {}).get("binary_mask")
                                 )
                     else:
-                        changed_state, imagined_state = train_transforms(state), state
+                        if isinstance(state, dict):
+                            changed_state, imagined_state = state, state
+                        else:
+                            changed_state, imagined_state = train_transforms(state), state
             else:
-                changed_state, imagined_state = train_transforms(state), state
+                if isinstance(state, dict):
+                    changed_state, imagined_state = state, state
+                else:
+                    changed_state, imagined_state = train_transforms(state), state
             action = agent.predict(imagined_state, deterministic=False)[0]
             next_state, reward, truncated, terminated, info = env.step(action)
-            frame_array_partial.append(np.hstack((state, imagined_state)))
+            if isinstance(state, dict):
+                vis_state = state["image"]
+                vis_imagined = imagined_state["image"] if isinstance(imagined_state, dict) else imagined_state
+                frame_array_partial.append(np.hstack((vis_state, vis_imagined)))
+            else:
+                frame_array_partial.append(np.hstack((state, imagined_state)))
             frame_array_full.append(env.unwrapped.get_frame())
             done = truncated + terminated
             cumulative_reward += reward

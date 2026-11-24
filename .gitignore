@@ -33,4 +33,5 @@ out
 !Results/agent_performance_cache.json
 !Results/baselines
 Results/diagnostics/error_samples
+Results/baselines/*backup*
 AAMAS

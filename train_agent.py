@@ -427,7 +427,9 @@ def main(args: DictConfig) -> None:
     OmegaConf.save(config=args, f=config_path)
 
     # --- TRAINING ---
-    if args.env.observation_mode == "feature":
+    if isinstance(env.observation_space, gym.spaces.Dict) or getattr(args.env, "observation_mode", "") in ["multimodal", "image_vector"]:
+        policy = "MultiInputPolicy"
+    elif args.env.observation_mode == "feature":
         policy = "MlpPolicy"
     else:
         policy = "CnnPolicy"
@@ -442,42 +444,42 @@ def main(args: DictConfig) -> None:
     if args.fine_tune and not os.path.exists(args.fine_tune_checkpoint):
         raise FileNotFoundError(f"Checkpoint not found at {args.fine_tune_checkpoint}")
 
-    if args.agent_name == "SAC":
+    if args.agent_name.startswith("SAC"):
         from stable_baselines3 import SAC
         if args.fine_tune:
             model = SAC.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded SAC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = SAC(policy, env, verbose=0, seed=seed)
-    elif args.agent_name == "TQC":
+    elif args.agent_name.startswith("TQC"):
         from sb3_contrib import TQC
         if args.fine_tune:
             model = TQC.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded TQC model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = TQC(policy, env, verbose=0, seed=seed)
-    elif args.agent_name == "PPO":
+    elif args.agent_name.startswith("PPO"):
         from stable_baselines3 import PPO
         if args.fine_tune:
             model = PPO.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded PPO model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = PPO(policy, env, verbose=0, seed=seed)
-    elif args.agent_name == "DQN":
+    elif args.agent_name.startswith("DQN"):
         from stable_baselines3 import DQN
         if args.fine_tune:
             model = DQN.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DQN model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = DQN(policy, env, verbose=0, seed=seed)
-    elif args.agent_name == "DDPG":
+    elif args.agent_name.startswith("DDPG"):
         from stable_baselines3 import DDPG
         if args.fine_tune:
             model = DDPG.load(args.fine_tune_checkpoint, env=env)
             print(f"[INFO] Loaded DDPG model from {args.fine_tune_checkpoint} for fine tuning")
         else:
             model = DDPG(policy, env, verbose=0, seed=seed)
-    elif args.agent_name == "TD3":
+    elif args.agent_name.startswith("TD3"):
         from stable_baselines3 import TD3
         if args.fine_tune:
             model = TD3.load(args.fine_tune_checkpoint, env=env)

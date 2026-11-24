@@ -236,10 +236,12 @@ class PickObjectEnv(MiniWorldEnv):
         """
         self.size = config["size"]
         max_steps=config.get("max_steps")
-        kwargs["obs_width"] = config["obs_width"]
-        kwargs["obs_height"] = config["obs_height"]
-        kwargs["window_width"] = config["obs_width"]*10
-        kwargs["window_height"] = config["obs_height"]*10
+        self.obs_width = config.get("obs_width", 80)
+        self.obs_height = config.get("obs_height", 80)
+        kwargs["obs_width"] = self.obs_width
+        kwargs["obs_height"] = self.obs_height
+        kwargs["window_width"] = self.obs_width * 10
+        kwargs["window_height"] = self.obs_height * 10
         self.verbose = config.get("verbose", False)
         if max_steps is None:
             self.max_steps = 4 * self.size * self.size
@@ -261,8 +263,32 @@ class PickObjectEnv(MiniWorldEnv):
         # caption_mode: "precise" (default) keeps exact numbers;
         # "qualitative" replaces them with structured distance/angle buckets.
         self.caption_mode = config.get("caption_mode", "precise")
+        self.observation_mode = config.get("observation_mode", "image")
+        self.current_objects_index = 0
+        if "vector_object_order" in config and config["vector_object_order"] is not None:
+            self.vector_object_order = list(config["vector_object_order"])
+        elif self.task_mode in ["source", "target3"]:
+            # Standard MiniWorld Case 3 objects: ball (object 1) and box (object 2)
+            self.vector_object_order = ["ball", "box"]
+        else:
+            self.vector_object_order = None
         
         super().__init__(max_episode_steps=self.max_steps, **kwargs)
+        if self.observation_mode in ["multimodal", "image_vector"]:
+            self.observation_space = spaces.Dict({
+                "image": spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(self.obs_height, self.obs_width, 3),
+                    dtype=np.uint8,
+                ),
+                "vector": spaces.Box(
+                    low=-1.0,
+                    high=100.0,
+                    shape=(4,),
+                    dtype=np.float32,
+                ),
+            })
         self.action_space = spaces.Discrete(self.actions.pickup + 1)
         self.action_dict = self.get_action_dict()
         self.env_name = self.set_env_name()
@@ -427,10 +453,19 @@ class PickObjectEnv(MiniWorldEnv):
         info = {}
         if self.verbose:
             info["description"] = self.get_frame_description(self.obs)
+            info["sensor_data"] = self.get_sensor_data(self.obs)
         # --- Reset the distance tracker ---
         self.dist_to_target = None
         
-        return self.obs, info
+        if self.observation_mode in ["multimodal", "image_vector"]:
+            obs_out = {
+                "image": self.obs,
+                "vector": self.get_object_vector(self.obs),
+            }
+        else:
+            obs_out = self.obs
+
+        return obs_out, info
     
     def _add_layout(self):
         layout = random.choice(self.layout)
@@ -451,6 +486,7 @@ class PickObjectEnv(MiniWorldEnv):
         """
         self._add_layout()
         index = random.randint(0,len(self.objects)-1)
+        self.current_objects_index = index
         objects = self.objects[index]
         for obj in objects:
             if obj in OBJECT_TO_ENITTY:
@@ -542,7 +578,16 @@ class PickObjectEnv(MiniWorldEnv):
         if self.verbose:
             info["description"] = description
             info["sensor_data"] = self.get_sensor_data(obs)
-        return obs, reward, terminated, truncated, info
+
+        if self.observation_mode in ["multimodal", "image_vector"]:
+            obs_out = {
+                "image": obs,
+                "vector": self.get_object_vector(obs),
+            }
+        else:
+            obs_out = obs
+
+        return obs_out, reward, terminated, truncated, info
     
     def get_performance_metric(self):
         return self.agent_performance
@@ -550,6 +595,8 @@ class PickObjectEnv(MiniWorldEnv):
     def get_class(self, obs=None, thresholds=None, min_pixel_threshold=20):
         if obs is None:
             obs = self.obs
+        elif isinstance(obs, dict) and "image" in obs:
+            obs = obs["image"]
         if thresholds is None:
             thresholds = {
                 'red': {'lower': np.array([120, 0, 0]), 'upper': np.array([255, 60, 60])},
@@ -613,6 +660,8 @@ class PickObjectEnv(MiniWorldEnv):
     def get_frame_description(self, obs=None):
         if obs is None:
             obs = self.obs
+        elif isinstance(obs, dict) and "image" in obs:
+            obs = obs["image"]
 
         obj_cls = self.get_class(obs)
         color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
@@ -652,6 +701,8 @@ class PickObjectEnv(MiniWorldEnv):
     def get_sensor_data(self, obs=None):
         if obs is None:
             obs = self.obs
+        elif isinstance(obs, dict) and "image" in obs:
+            obs = obs["image"]
 
         obj_cls = self.get_class(obs)
         color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
@@ -681,6 +732,70 @@ class PickObjectEnv(MiniWorldEnv):
             sensor_data_str += f"- {color} {object_name}: distance {dist:.1f}, angle {abs(angle_deg):.1f} deg {direction}. "
 
         return sensor_data_str
+
+    def get_object_vector(self, obs=None):
+        """
+        Returns a 4-dimensional vector containing object presence and location (distance):
+        [
+            <1 if object 1 present, 0 otherwise>,
+            <1 if object 2 present, 0 otherwise>,
+            <-1 if object 1 not present, if present exact location information as PRISM>,
+            <-1 if second object not present, if present exact location information as PRISM>
+        ]
+        """
+        if obs is None:
+            obs = self.obs
+        elif isinstance(obs, dict) and "image" in obs:
+            obs = obs["image"]
+
+        obj_cls = self.get_class(obs)
+        color_to_index = {'blue': 0, 'green': 1, 'yellow': 2, 'red': 3}
+        detected_colors = {color for color, idx in color_to_index.items() if obj_cls[idx] == 1}
+
+        # Determine target objects (either configured order or task mode objects)
+        if hasattr(self, "vector_object_order") and self.vector_object_order is not None and len(self.vector_object_order) >= 2:
+            current_objs = list(self.vector_object_order)
+        else:
+            index = getattr(self, "current_objects_index", 0)
+            if hasattr(self, "objects") and self.objects and index < len(self.objects):
+                current_objs = self.objects[index]
+            else:
+                current_objs = ["ball", "box"]
+
+        obj1_name = current_objs[0] if len(current_objs) > 0 else "ball"
+        obj2_name = current_objs[1] if len(current_objs) > 1 else "box"
+
+        color1 = OBJECT_TO_COLOR.get(obj1_name, "green")
+        color2 = OBJECT_TO_COLOR.get(obj2_name, "blue")
+
+        ent1 = None
+        ent2 = None
+        for e in self.entities:
+            if hasattr(e, 'color') and e is not self.agent:
+                if e.color == color1 and ent1 is None:
+                    ent1 = e
+                elif e.color == color2 and ent2 is None:
+                    ent2 = e
+
+        # Object 1: presence & distance
+        if color1 in detected_colors and ent1 is not None:
+            pres1 = 1.0
+            dist1, _ = self._get_relative_position(ent1)
+            loc1 = float(dist1)
+        else:
+            pres1 = 0.0
+            loc1 = -1.0
+
+        # Object 2: presence & distance
+        if color2 in detected_colors and ent2 is not None:
+            pres2 = 1.0
+            dist2, _ = self._get_relative_position(ent2)
+            loc2 = float(dist2)
+        else:
+            pres2 = 0.0
+            loc2 = -1.0
+
+        return np.array([pres1, pres2, loc1, loc2], dtype=np.float32)
     
     # def get_frame_description(self, obs=None):
     #     # This function remains unchanged
